@@ -5,6 +5,7 @@ import (
 	"os"
 	"strings"
 
+	client "github.com/Kafcafe/CoffeShopAnalysis/client/common"
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
 )
@@ -85,4 +86,21 @@ func main() {
 	PrintConfig(v)
 
 	log.Infof("Client %s started", v.GetString("id"))
+
+	clientConfig := client.NewClientConfig(
+		v.GetString("id"),
+		v.GetString("server.address"),
+		v.GetString("batch.maxAmount"),
+	)
+
+	client := client.NewClient(clientConfig)
+
+	if err := client.Run(); err != nil {
+		log.Criticalf("Client execution failed: %s", err)
+		os.Exit(1)
+	}
+
+	log.Infof("Client %s finished", v.GetString("id"))
+	os.Exit(0)
+
 }
