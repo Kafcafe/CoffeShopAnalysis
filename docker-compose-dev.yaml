@@ -43,4 +43,4 @@ services:
           dockerfile: Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
-          - ../../data:/data
+          - ./.data:/data

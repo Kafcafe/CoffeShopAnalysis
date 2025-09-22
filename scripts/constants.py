@@ -47,6 +47,6 @@ CLIENTS_TEMPLATE = """
           context: ./src/client
           dockerfile: Dockerfile
         volumes:
-          - ./src/client/config.yaml:/client/config.yaml
-          - ../../data:/data
+          - ./src/client/config.yaml:/config.yaml
+          - ./.data:/data
 """
