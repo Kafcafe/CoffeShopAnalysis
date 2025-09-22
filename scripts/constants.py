@@ -28,6 +28,6 @@ services:
           test: ["CMD", "rabbitmq-diagnostics", "ping"]
           interval: 10s
           timeout: 5s
-          retries: 10
+          retries: 3
           start_period: 30s
 """
