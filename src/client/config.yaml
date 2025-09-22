@@ -1,0 +1,6 @@
+server:
+  address: "server:12345"
+log:
+  level: "INFO"
+batch:
+  maxAmount: 5
