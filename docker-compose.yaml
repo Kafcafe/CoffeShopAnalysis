@@ -1,0 +1,37 @@
+
+name: tp1
+
+networks:
+  analysis_net:
+    ipam:
+      driver: default
+      config:
+        - subnet: 172.25.125.0/24
+
+services:
+
+  rabbitmq: 
+    image: 
+    networks:
+      - analysis_net
+
+  clientHandler1: 
+    container_name: clientHandler
+    image: clientHandler:latest
+    entrypoint: /clientHandler
+    environment:
+      - CLI_ID=1
+    networks:
+      - analysis_net
+    volumes:
+    - ./src/clientHandler/config.yaml:/clientHandler/config.yaml
+  client1:
+    container_name: client
+    image: client:latest
+    entrypoint: /client
+    environment:
+      - CLI_ID=1
+    networks:
+      - server_net
+    volumes:
+    - ./src/client/config.yaml:/Client/config.yaml
