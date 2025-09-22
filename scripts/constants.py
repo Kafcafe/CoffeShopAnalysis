@@ -31,3 +31,22 @@ services:
           retries: 3
           start_period: 30s
 """
+
+CLIENTS_TEMPLATE = """
+    client_{id}:
+        container_name: "client_{id}"
+        entrypoint: /client
+        environment:
+          CLIENT_ID: "{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        build:
+          context: ./src/client
+          dockerfile: Dockerfile
+        volumes:
+          - ./src/client/config.yaml:/client/config.yaml
+          - ../../data:/data
+"""

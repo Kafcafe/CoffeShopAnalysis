@@ -21,3 +21,26 @@ services:
         environment:
           RABBITMQ_DEFAULT_USER: user
           RABBITMQ_DEFAULT_PASS: password
+        healthcheck:
+          test: ["CMD", "rabbitmq-diagnostics", "ping"]
+          interval: 10s
+          timeout: 5s
+          retries: 3
+          start_period: 30s
+
+    client_1:
+        container_name: "client_1"
+        entrypoint: /client
+        environment:
+          CLIENT_ID: "1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        build:
+          context: ./src/client
+          dockerfile: Dockerfile
+        volumes:
+          - ./src/client/config.yaml:/config.yaml
+          - ../../data:/data

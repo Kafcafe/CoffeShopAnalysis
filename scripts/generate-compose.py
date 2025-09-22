@@ -6,6 +6,8 @@ def generate_compose(file_destination, client_nums):
     with open(file_destination, 'w') as f:
         f.write(constants.NETWORK_TEMPLATE)
         f.write(constants.RABBITMQ_SERVICE_TEMPLATE)
+        for i in range(client_nums):
+            f.write(constants.CLIENTS_TEMPLATE.format(id=i+1))
 
 def main():
     try:
