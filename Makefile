@@ -42,3 +42,24 @@ start:
 stop:
 	docker compose -f $(FILE) stop
 .PHONY: stop
+
+# Comandos de limpieza Docker
+clean-images:
+	docker image prune -a
+.PHONY: clean-images
+
+clean-all-images:
+	docker rmi $$(docker images -q) 2>/dev/null || true
+.PHONY: clean-all-images
+
+clean-system:
+	docker system prune -a --volumes
+.PHONY: clean-system
+
+clean-containers:
+	docker container prune
+.PHONY: clean-containers
+
+clean: clean-containers clean-images
+	@echo "Limpieza básica completada"
+.PHONY: clean
