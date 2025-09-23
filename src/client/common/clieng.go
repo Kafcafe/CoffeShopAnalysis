@@ -25,5 +25,12 @@ func (c *Client) Run() ClientExecutionError {
 		c.config.serverAddress,
 		c.config.batchMaxAmount,
 	)
+
+	batchGenerator := NewBatchGenerator(c.config.dataPath)
+
+	log.Infof("BatchGenerator created with folder path: %s", batchGenerator.folderPath)
+
+	batchGenerator.SetUp()
+
 	return nil
 }
