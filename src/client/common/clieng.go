@@ -85,28 +85,10 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		}
 
 		for batchGenerator.IsReading() {
-			batch, err := batchGenerator.GetNextBatch(c.config.batchMaxAmount)
-
-			if err != nil {
-				log.Errorf("Error getting next batch from file %s: %v", file, err)
+			if err := c.processBatch(batchGenerator, file); err != nil {
+				log.Errorf("Error processing batch for file %s: %v", file, err)
 				return err
 			}
-
-			err = c.protocol.SendBatch(batch)
-
-			if err != nil {
-				log.Errorf("Error sending batch from file %s: %v", file, err)
-				return err
-			}
-
-			log.Infof("Sent batch with information of file: %s", file)
-
-			err = c.protocol.receivedConfirmation()
-			if err != nil {
-				log.Errorf("Error receiving confirmation for batch from file %s: %v", file, err)
-				return err
-			}
-
 		}
 
 		err := c.protocol.FinishSendingFilesOf(pattern)
@@ -119,4 +101,31 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 
 	return nil
 
+}
+
+func (c *Client) processBatch(bg *BatchGenerator, file string) error {
+
+	batch, err := bg.GetNextBatch(c.config.batchMaxAmount)
+
+	if err != nil {
+		log.Errorf("Error getting next batch from file %s: %v", file, err)
+		return err
+	}
+
+	err = c.protocol.SendBatch(batch)
+
+	if err != nil {
+		log.Errorf("Error sending batch from file %s: %v", file, err)
+		return err
+	}
+
+	log.Infof("Sent batch with information of file: %s", file)
+
+	err = c.protocol.receivedConfirmation()
+	if err != nil {
+		log.Errorf("Error receiving confirmation for batch from file %s: %v", file, err)
+		return err
+	}
+
+	return nil
 }
