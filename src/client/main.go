@@ -92,11 +92,16 @@ func main() {
 	clientConfig := client.NewClientConfig(
 		v.GetString("id"),
 		v.GetString("server.address"),
-		v.GetString("batch.maxAmount"),
 		v.GetString("datapath.folder"),
+		v.GetInt("batch.maxAmount"),
 	)
 
 	client := client.NewClient(clientConfig)
+
+	if client == nil {
+		log.Criticalf("Client could not be created")
+		os.Exit(1)
+	}
 
 	if err := client.Run(); err != nil {
 		log.Criticalf("Client execution failed: %s", err)

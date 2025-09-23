@@ -1,70 +1,73 @@
 package client
 
 import (
+	"bufio"
 	"os"
-	"strings"
 )
 
 type BatchGenerator struct {
-	folderPath string
-	files      []string
-	isReading  bool
+	dataPath     string
+	filename     string
+	scanner      *bufio.Scanner
+	isReading    bool
+	lastLineRead string
 }
 
-func NewBatchGenerator(folderPath string) *BatchGenerator {
-	return &BatchGenerator{
-		folderPath: folderPath,
-		files:      []string{},
-		isReading:  true,
-	}
-}
+func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
 
-func (bg *BatchGenerator) SetUp() error {
-	entries, err := os.ReadDir(bg.folderPath)
+	file, err := os.Open(dataPath + "/" + filename)
 
 	if err != nil {
-		log.Error("Error reading directory:", err)
-		return err
+		log.Errorf("Error opening file %s: %v", filename, err)
+		return nil
 	}
 
-	for _, entry := range entries {
-		if entry.IsDir() {
+	return &BatchGenerator{
+		dataPath:     dataPath,
+		filename:     filename,
+		scanner:      bufio.NewScanner(file),
+		isReading:    true,
+		lastLineRead: "",
+	}
+}
+
+func (bg *BatchGenerator) IsReading() bool {
+	return bg.isReading
+}
+
+func (bg *BatchGenerator) GetNextBatch(batchSize int) (*Batch, error) {
+	batch := NewBatch(batchSize)
+
+	err := bg.processLastLine(batch)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for bg.scanner.Scan() {
+		line := bg.scanner.Text()
+
+		if batch.AddItem(line) {
 			continue
 		}
 
-		file := entry.Name()
-		bg.files = append(bg.files, file)
+		bg.lastLineRead = line
+		return batch, nil
+	}
 
-		transactions := []os.DirEntry{}
-		users := []os.DirEntry{}
-		transactionItems := []os.DirEntry{}
-		stores := []os.DirEntry{}
-		items := []os.DirEntry{}
-		menuItems := []os.DirEntry{}
+	bg.isReading = false
 
-		if strings.HasPrefix(file, "transaction_items") {
-			transactionItems = append(transactionItems, entry)
-		} else if strings.HasPrefix(file, "transactions") {
-			transactions = append(transactions, entry)
-		} else if strings.HasPrefix(file, "users") {
-			users = append(users, entry)
-		} else if strings.HasPrefix(file, "stores") {
-			stores = append(stores, entry)
-		} else if strings.HasPrefix(file, "items") {
-			items = append(items, entry)
-		} else if strings.HasPrefix(file, "menu_items") {
-			menuItems = append(menuItems, entry)
-		}
+	return batch, nil
+}
 
-		matrix := [][]os.DirEntry{}
+func (bg *BatchGenerator) processLastLine(batch *Batch) error {
+	if bg.lastLineRead == "" {
+		return nil
+	}
 
-		matrix = append(matrix, transactions, transactionItems, stores, items, users, menuItems)
-
-		for _, group := range matrix {
-			for _, fileEntry := range group {
-				log.Infof("File detected: %s", fileEntry.Name())
-			}
-		}
+	if batch.AddItem(bg.lastLineRead) {
+		bg.lastLineRead = ""
+		return nil
 	}
 
 	return nil
