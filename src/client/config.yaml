@@ -4,3 +4,5 @@ log:
   level: "INFO"
 batch:
   maxAmount: 5
+datapath:
+  folder: "./data"
