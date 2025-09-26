@@ -53,6 +53,11 @@ func (p *Protocol) SendFilesTopic(pattern string, amount int) error {
 		return err
 	}
 
+	lenBytes = p.htonsUint32(uint32(amount))
+	if err := p.sendAll(lenBytes); err != nil {
+		return err
+	}
+
 	return nil
 }
 
@@ -60,6 +65,7 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 
 	opCode := []byte{MoreBatches}
 
+	log.Info("[PROTOCOL] Sending more batches code")
 	if err := p.sendAll(opCode); err != nil {
 		return err
 	}
@@ -67,28 +73,32 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	dataLen := uint32(len(batch.Items))
 	lenBytes := p.htonsUint32(dataLen)
 
+	log.Info("[PROTOCOL] Sending batch data", lenBytes)
 	if err := p.sendAll(lenBytes); err != nil {
 		return err
 	}
 
 	for _, item := range batch.Items {
-		itemLen := uint32(len(item))
-		itemLenBytes := p.htonsUint32(itemLen)
 
+		itemLenBytes := p.htonsUint32(uint32(len(item)))
+		log.Info("[PROTOCOL] Sending item of length ", itemLenBytes)
 		if err := p.sendAll(itemLenBytes); err != nil {
 			return err
 		}
 
+		log.Info("[PROTOCOL] Items: ", item)
+
+		log.Info("[PROTOCOL] Sending item data")
 		if err := p.sendAll([]byte(item)); err != nil {
 			return err
 		}
 	}
 
+	log.Info("[PROTOCOL] Batch sent successfully")
 	return nil
 }
 
 func (p *Protocol) receivedConfirmation() error {
-	// Implement confirmation receiving logic here
 	code := make([]byte, 1)
 	err := p.receiveAll(code)
 	if err != nil {

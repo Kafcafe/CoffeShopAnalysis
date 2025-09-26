@@ -25,7 +25,7 @@ func (ch *ClientHandler) Handle() error {
 		return err
 	}
 
-	log.Info("Number of topics to receive: %d", amountOfTopics)
+	log.Info("Number of topics to receive: %v", amountOfTopics)
 
 	topic, amountOfFiles, err := ch.handleTopic()
 
@@ -50,12 +50,14 @@ func (ch *ClientHandler) handleTopic() (string, int, error) {
 
 	amountOfFiles, err := ch.protocol.rcvAmountOfFiles()
 
+	log.Info("Amount of files to receive for topic %s: %d", topic, amountOfFiles)
+
 	if err != nil {
 		log.Errorf("Error receiving amount of files for topic %s: %v", topic, err)
 		return "", 0, err
 	}
 
-	err = ch.processTopics(amountOfFiles, topic)
+	err = ch.processTopic(amountOfFiles, topic)
 
 	if err != nil {
 		log.Errorf("Error processing files for topic %s: %v", topic, err)
@@ -65,9 +67,10 @@ func (ch *ClientHandler) handleTopic() (string, int, error) {
 	return topic, amountOfFiles, nil
 }
 
-func (ch *ClientHandler) processTopics(amountOfFiles int, topic string) error {
+func (ch *ClientHandler) processTopic(amountOfFiles int, topic string) error {
 	currFile := 0
 	for currFile < amountOfFiles {
+		log.Infof("Processing file %d for topic %s", currFile, topic)
 		err := ch.processFile(topic)
 		if err != nil {
 			log.Errorf("Error processing file %d for topic %s: %v", currFile, topic, err)
@@ -82,6 +85,7 @@ func (ch *ClientHandler) processFile(topic string) error {
 	receivingFile := true
 	batchCounter := 0
 	for receivingFile {
+		log.Infof("Receiving batch %d for topic %s", batchCounter, topic)
 		batch, isLast, err := ch.protocol.ReceiveBatch()
 
 		if err != nil {

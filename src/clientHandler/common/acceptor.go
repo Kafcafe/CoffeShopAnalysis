@@ -34,6 +34,7 @@ func (a *Acceptor) Run() error {
 	// Implement the logic to accept client connections and handle them
 	log.Info("Acceptor is running and ready to accept connections")
 	for a.isRunning {
+		log.Info("Waiting for a new client connection...")
 		conn, err := a.listener.Accept()
 		if err != nil {
 			log.Errorf("Failed to accept connection: %v", err)
