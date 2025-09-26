@@ -1,6 +1,8 @@
 package clientHandler
 
-import "net"
+import (
+	"net"
+)
 
 type ClientHandler struct {
 	protocol *Protocol
@@ -15,6 +17,7 @@ func NewClientHandler(conn net.Conn) *ClientHandler {
 
 func (ch *ClientHandler) Handle() error {
 	// Implement the logic to handle client requests using the protocol
+	log.Info("Handling client connection")
 	return nil
 }
 
