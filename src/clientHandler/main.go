@@ -1,4 +1,4 @@
-package clienthandler
+package main
 
 import (
 	clientHandler "ClientHandler/common"

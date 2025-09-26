@@ -4,11 +4,11 @@ import constants
 
 def generate_compose(file_destination, client_nums):
     compose = ""
-    compose.append(constants.NETWORK_TEMPLATE)
-    compose.append(constants.RABBITMQ_SERVICE_TEMPLATE)
+    compose += constants.NETWORK_TEMPLATE
+    compose += constants.RABBITMQ_SERVICE_TEMPLATE
+    compose += constants.CLIENT_HANDLER_TEMPLATE
     for i in range(client_nums):
-        compose.append(constants.CLIENTS_TEMPLATE.format(id=i+1))
-    compose.append(constants.CLIENT_HANDLER_TEMPLATE)
+        compose += constants.CLIENTS_TEMPLATE.format(id=i+1)
     with open(file_destination, 'w') as f:
         f.write(compose)
         
