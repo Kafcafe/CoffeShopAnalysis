@@ -14,7 +14,6 @@ type Client struct {
 
 var log = logging.MustGetLogger("log")
 
-// ClientExecutionError represents an error during client execution.
 type ClientExecutionError error
 
 func NewClient(config *ClientConfig) *Client {
@@ -100,6 +99,16 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 				return err
 			}
 		}
+
+		err := c.protocol.finishBatch()
+
+		if err != nil {
+			log.Errorf("Error finishing batch for file %s: %v", file, err)
+			return err
+		}
+
+		log.Infof("Finished processing file: %s", file)
+
 	}
 
 	err := c.protocol.FinishSendingFilesOf(pattern)

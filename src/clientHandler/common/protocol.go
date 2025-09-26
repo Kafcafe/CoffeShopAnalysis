@@ -12,6 +12,7 @@ type Protocol struct {
 const (
 	BatchRcvCode = 0x01
 	EndOfBatch   = 0x02
+	MoreBatches  = 0x03
 )
 
 func NewProtocol(conn net.Conn) *Protocol {

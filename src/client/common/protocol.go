@@ -6,6 +6,12 @@ import (
 	"net"
 )
 
+const (
+	BatchRcvCode = 0x01
+	EndOfBatch   = 0x02
+	MoreBatches  = 0x03
+)
+
 type Protocol struct {
 	serverAddress string
 	conn          net.Conn
@@ -36,7 +42,6 @@ func (p *Protocol) sendAmountOfTopics(amount int) error {
 }
 
 func (p *Protocol) SendFilesTopic(pattern string, amount int) error {
-	// Implement file topic sending logic here
 	dataLen := uint32(len(pattern))
 	lenBytes := p.htonsUint32(dataLen)
 
@@ -52,7 +57,13 @@ func (p *Protocol) SendFilesTopic(pattern string, amount int) error {
 }
 
 func (p *Protocol) SendBatch(batch *Batch) error {
-	// Implement batch sending logic here
+
+	opCode := []byte{MoreBatches}
+
+	if err := p.sendAll(opCode); err != nil {
+		return err
+	}
+
 	dataLen := uint32(len(batch.Items))
 	lenBytes := p.htonsUint32(dataLen)
 
@@ -81,6 +92,19 @@ func (p *Protocol) receivedConfirmation() error {
 	code := make([]byte, 1)
 	err := p.receiveAll(code)
 	if err != nil {
+		return err
+	}
+
+	if code[0] != BatchRcvCode {
+		return fmt.Errorf("invalid confirmation code received")
+	}
+
+	return nil
+}
+
+func (p *Protocol) finishBatch() error {
+	code := []byte{EndOfBatch}
+	if err := p.sendAll(code); err != nil {
 		return err
 	}
 	return nil
