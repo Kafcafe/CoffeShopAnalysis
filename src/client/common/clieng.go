@@ -43,10 +43,22 @@ func (c *Client) Run() ClientExecutionError {
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 
+	err := c.protocol.sendAmountOfTopics(len(listfiles))
+
+	if err != nil {
+		log.Errorf("Error sending amount of topics: %v", err)
+		return err
+	}
+
 	for _, pattern := range listfiles {
 		files, err := c.GetFilesWithPattern(pattern, fileHandler)
 		if err != nil {
 			log.Errorf("Error getting files: %v", err)
+			return err
+		}
+
+		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
+			log.Errorf("Error sending files topic: %v", err)
 			return err
 		}
 
@@ -88,15 +100,14 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 				return err
 			}
 		}
-
-		err := c.protocol.FinishSendingFilesOf(pattern)
-
-		if err != nil {
-			log.Errorf("Error finishing sending files of pattern %s: %v", pattern, err)
-			return err
-		}
 	}
 
+	err := c.protocol.FinishSendingFilesOf(pattern)
+
+	if err != nil {
+		log.Errorf("Error finishing sending files of pattern %s: %v", pattern, err)
+		return err
+	}
 	return nil
 
 }
