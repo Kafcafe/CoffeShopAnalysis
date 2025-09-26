@@ -108,6 +108,5 @@ func (ch *ClientHandler) processFile(topic string) error {
 }
 
 func (ch *ClientHandler) Shutdown() error {
-	// Implement the logic to gracefully shutdown the client handler
 	return ch.protocol.conn.Close()
 }

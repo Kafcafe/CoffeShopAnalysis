@@ -32,7 +32,6 @@ func (p *Protocol) rcvAmountOfTopics() (int, error) {
 }
 
 func (p *Protocol) ReceiveFilesTopic() (string, error) {
-	// Implement file topic receiving logic here
 	lenBytes := make([]byte, 4)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return "", err
@@ -64,8 +63,6 @@ func (p *Protocol) receiveLine() (string, error) {
 }
 
 func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
-	// Implement batch receiving logic here
-
 	endOfBatch := make([]byte, 1)
 	if err := p.receiveAll(endOfBatch); err != nil {
 		return []string{}, false, err
@@ -82,7 +79,6 @@ func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
 	dataLen := int(p.ntohsUint32(lenBytes))
 	lines := make([]string, dataLen)
 	for i := 0; i < dataLen; i++ {
-		// Process each item in the batch
 		line, err := p.receiveLine()
 		if err != nil {
 			return lines, false, err
