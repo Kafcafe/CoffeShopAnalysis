@@ -22,10 +22,13 @@ func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
 		return nil
 	}
 
+	scanner := bufio.NewScanner(file)
+	scanner.Scan()
+
 	return &BatchGenerator{
 		dataPath:     dataPath,
 		filename:     filename,
-		scanner:      bufio.NewScanner(file),
+		scanner:      scanner,
 		isReading:    true,
 		lastLineRead: "",
 	}
