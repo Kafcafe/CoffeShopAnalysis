@@ -50,3 +50,19 @@ CLIENTS_TEMPLATE = """
           - ./src/client/config.yaml:/config.yaml
           - ./.data:/data
 """
+
+CLIENT_HANDLER_TEMPLATE = """
+    client_handler:
+        container_name: "client_handler"
+        entrypoint: /clienthandler
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        build:
+          context: ./src/clientHandler
+          dockerfile: Dockerfile
+        volumes:
+          - ./src/clientHandler/config.yaml:/server.yaml 
+"""
