@@ -18,9 +18,7 @@ var log = logging.MustGetLogger("log")
 type ClientExecutionError error
 
 func NewClient(config *ClientConfig) *Client {
-	protocol := NewProtocol(config.serverAddress)
-
-	err := protocol.Connect()
+	protocol, err := NewProtocol(config.serverAddress)
 
 	if err != nil {
 		log.Errorf("Error connecting to server: %v", err)
