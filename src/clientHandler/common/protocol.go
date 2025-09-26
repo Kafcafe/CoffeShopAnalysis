@@ -9,6 +9,11 @@ type Protocol struct {
 	conn net.Conn
 }
 
+const (
+	BatchRcvCode = 0x01
+	EndOfBatch   = 0x02
+)
+
 func NewProtocol(conn net.Conn) *Protocol {
 	return &Protocol{
 		conn: conn,
@@ -40,6 +45,59 @@ func (p *Protocol) ReceiveFilesTopic() (string, error) {
 	}
 
 	return string(data), nil
+}
+
+func (p *Protocol) receiveLine() (string, error) {
+
+	lenBytes := make([]byte, 4)
+	if err := p.receiveAll(lenBytes); err != nil {
+		return "", err
+	}
+
+	dataLen := p.ntohsUint32(lenBytes)
+	data := make([]byte, dataLen)
+	if err := p.receiveAll(data); err != nil {
+		return "", err
+	}
+
+	return string(data), nil
+}
+
+func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
+	// Implement batch receiving logic here
+
+	endOfBatch := make([]byte, 1)
+	if err := p.receiveAll(endOfBatch); err != nil {
+		return []string{}, false, err
+	}
+	if endOfBatch[0] == EndOfBatch {
+		return []string{}, true, nil
+	}
+
+	lenBytes := make([]byte, 4)
+	if err := p.receiveAll(lenBytes); err != nil {
+		return []string{}, false, err
+	}
+
+	dataLen := int(p.ntohsUint32(lenBytes))
+	lines := make([]string, dataLen)
+	for i := 0; i < dataLen; i++ {
+		// Process each item in the batch
+		line, err := p.receiveLine()
+		if err != nil {
+			return lines, false, err
+		}
+		lines[i] = line
+	}
+	return lines, false, nil
+}
+
+func (p *Protocol) ConfirmBatchReceived() error {
+	code := []byte{BatchRcvCode}
+	if err := p.sendAll(code); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (p *Protocol) rcvAmountOfFiles() (int, error) {
