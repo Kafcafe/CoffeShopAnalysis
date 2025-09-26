@@ -84,7 +84,11 @@ func main() {
 		config.GetInt("server.port"),
 	)
 
-	acceptor := clientHandler.NewAcceptor(serverConfigs)
+	acceptor, err := clientHandler.NewAcceptor(serverConfigs)
+	if err != nil {
+		log.Error("Error creating acceptor: %v", err)
+		return
+	}
 	err = acceptor.Run()
 	if err != nil {
 		fmt.Printf("Error running acceptor: %v\n", err)
