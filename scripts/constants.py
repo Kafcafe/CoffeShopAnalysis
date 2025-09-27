@@ -33,8 +33,8 @@ services:
 """
 
 CLIENTS_TEMPLATE = """
-    client_{id}:
-        container_name: "client_{id}"
+    client{id}:
+        container_name: "client{id}"
         entrypoint: /client
         environment:
           CLIENT_ID: "{id}"
