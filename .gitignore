@@ -37,3 +37,7 @@ __pycache__
 src/client/client
 src/clientHandler/ClientHandler
 src/clientHandler/clientHandler
+
+# Pycache
+scripts/__pycache__
+scripts/*.pyc
