@@ -2,6 +2,10 @@ package client
 
 import (
 	"fmt"
+	"os"
+	"os/signal"
+	"strings"
+	"syscall"
 
 	"github.com/op/go-logging"
 )
@@ -10,6 +14,9 @@ type Client struct {
 	config    *ClientConfig
 	protocol  *Protocol
 	isRunning bool
+	sigChan   chan os.Signal
+	currBg    *BatchGenerator
+	Id        string
 }
 
 var log = logging.MustGetLogger("log")
@@ -24,21 +31,35 @@ func NewClient(config *ClientConfig) *Client {
 		return nil
 	}
 
-	return &Client{
+	client := &Client{
 		config:    config,
 		protocol:  protocol,
 		isRunning: true,
+		sigChan:   make(chan os.Signal, 1),
+		currBg:    nil,
 	}
+
+	signal.Notify(client.sigChan, syscall.SIGTERM)
+	return client
+}
+
+func (c *Client) handleSignals() {
+	<-c.sigChan
+	c.Shutdown()
 }
 
 func (c *Client) Run() ClientExecutionError {
-	log.Infof("Client %s is running with server address %s and batch max amount %s",
-		c.config.Id,
+	log.Infof("Client %s is running with server address %s and batch max amount %d",
 		c.config.serverAddress,
 		c.config.batchMaxAmount,
 	)
 
-	var listfiles []string = []string{"transactions", "transaction_items", "stores", "menu", "users"}
+	var fileTypes string = os.Getenv("FILETYPES")
+	c.Id = os.Getenv("ID")
+	var listfiles []string = strings.Split(fileTypes, ",")
+	log.Info(listfiles)
+	defer c.Shutdown()
+	go c.handleSignals()
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 
@@ -86,15 +107,15 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 	for _, file := range files {
 		log.Infof("Processing file: %s", file)
 
-		batchGenerator := NewBatchGenerator(c.config.dataPath, file)
+		c.currBg = NewBatchGenerator(c.config.dataPath, file)
 
-		if batchGenerator == nil {
+		if c.currBg == nil {
 			log.Error("Error creating batch generator for file %s", file)
 			return fmt.Errorf("error creating batch generator for file %s", file)
 		}
 
-		for batchGenerator.IsReading() {
-			if err := c.processBatch(batchGenerator, file); err != nil {
+		for c.currBg.IsReading() {
+			if err := c.processBatch(c.currBg, file); err != nil {
 				log.Error("Error processing batch for file %s: %v", file, err)
 				return err
 			}
@@ -147,4 +168,21 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 	}
 
 	return nil
+}
+
+func (c *Client) Shutdown() {
+	if c.protocol != nil {
+		c.protocol.Shutdown()
+	}
+
+	if c.currBg != nil {
+		c.currBg.Close()
+	}
+
+	if c.sigChan != nil {
+		signal.Stop(c.sigChan)
+	}
+
+	c.isRunning = false
+	log.Info("Client shutdown complete")
 }
