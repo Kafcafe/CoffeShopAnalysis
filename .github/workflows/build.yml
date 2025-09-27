@@ -26,6 +26,18 @@ jobs:
           )
 
           for module in "${modules[@]}"; do
-            echo "Building $module..."
-            (cd "$module" && go build .)
+            echo "========================================"
+            echo "🔨 Building module: $module"
+            echo "📂 Working directory: $(realpath "$module")"
+            echo "💾 Output binary: $(basename "$module")"
+            echo "========================================"
+
+            if (cd "$module" && go build -o "../../bin/$(basename "$module")" .); then
+              echo "✅ Successfully built: $module -> bin/$(basename "$module")"
+            else
+              echo "❌ Failed to build: $module"
+              exit 1
+            fi
+
+            echo "" # blank line for readability
           done
