@@ -65,7 +65,7 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 
 	opCode := []byte{MoreBatches}
 
-	log.Info("[PROTOCOL] Sending more batches code")
+	log.Debug("[PROTOCOL] Sending more batches code")
 	if err := p.sendAll(opCode); err != nil {
 		return err
 	}
@@ -73,7 +73,7 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	dataLen := uint32(len(batch.Items))
 	lenBytes := p.htonsUint32(dataLen)
 
-	log.Info("[PROTOCOL] Sending batch data", lenBytes)
+	log.Debug("[PROTOCOL] Sending batch data", lenBytes)
 	if err := p.sendAll(lenBytes); err != nil {
 		return err
 	}
@@ -81,20 +81,18 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	for _, item := range batch.Items {
 
 		itemLenBytes := p.htonsUint32(uint32(len(item)))
-		log.Info("[PROTOCOL] Sending item of length ", itemLenBytes)
+		log.Debug("[PROTOCOL] Sending item of length ", itemLenBytes)
 		if err := p.sendAll(itemLenBytes); err != nil {
 			return err
 		}
 
-		log.Info("[PROTOCOL] Items: ", item)
-
-		log.Info("[PROTOCOL] Sending item data")
+		log.Debug("[PROTOCOL] Sending item data")
 		if err := p.sendAll([]byte(item)); err != nil {
 			return err
 		}
 	}
 
-	log.Info("[PROTOCOL] Batch sent successfully")
+	log.Debug("[PROTOCOL] Batch sent successfully")
 	return nil
 }
 

@@ -49,7 +49,7 @@ func (p *Protocol) ReceiveFilesTopic() (string, error) {
 
 func (p *Protocol) receiveLine() (string, error) {
 
-	log.Info("[PROTOCOL] rcv line length")
+	log.Debug("[PROTOCOL] rcv line length")
 	lenBytes := make([]byte, 4)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return "", err
@@ -57,20 +57,20 @@ func (p *Protocol) receiveLine() (string, error) {
 
 	dataLen := int(p.ntohsUint32(lenBytes))
 
-	log.Info("[PROTOCOL] rcv line data %v", dataLen)
+	log.Debug("[PROTOCOL] rcv line data %v", dataLen)
 	data := make([]byte, dataLen)
 	if err := p.receiveAll(data); err != nil {
 		return "", err
 	}
 
-	log.Info("[PROTOCOL] line received successfully")
+	log.Debug("[PROTOCOL] line received successfully")
 	return string(data), nil
 }
 
 func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
 	endOfBatch := make([]byte, 1)
 
-	log.Info("[PROTOCOL] rcv end of batch code")
+	log.Debug("[PROTOCOL] rcv end of batch code")
 	if err := p.receiveAll(endOfBatch); err != nil {
 		return []string{}, false, err
 	}
@@ -79,24 +79,24 @@ func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
 		return []string{}, true, nil
 	}
 
-	log.Info("[PROTOCOL] rcv batch data")
+	log.Debug("[PROTOCOL] rcv batch data")
 	lenBytes := make([]byte, 4)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return []string{}, false, err
 	}
 
 	dataLen := int(p.ntohsUint32(lenBytes))
-	log.Info("[PROTOCOL] rcv batch with ", dataLen, " lines")
+	log.Debug("[PROTOCOL] rcv batch with ", dataLen, " lines")
 	lines := make([]string, dataLen)
 	for i := 0; i < dataLen; i++ {
-		log.Info("[PROTOCOL] rcv line ")
+		log.Debug("[PROTOCOL] rcv line ")
 		line, err := p.receiveLine()
 		if err != nil {
 			return lines, false, err
 		}
 		lines[i] = line
 	}
-	log.Info("[PROTOCOL] batch received successfully")
+	log.Debug("[PROTOCOL] batch received successfully")
 	return lines, false, nil
 }
 

@@ -48,6 +48,7 @@ func (a *Acceptor) Run() error {
 			log.Errorf("Error handling client connection: %v", err)
 		}
 
+		log.Info("Closing client connection, conection finished successfully")
 		clientHandler.Shutdown()
 
 	}
