@@ -59,7 +59,6 @@ services:
 CLIENT_HANDLER_TEMPLATE = """
     client_handler:
         container_name: "client-handler"
-        entrypoint: /client-handler
         depends_on:
           rabbitmq:
             condition: service_healthy
@@ -80,7 +79,6 @@ CLIENT_HANDLER_TEMPLATE = """
 CLIENTS_TEMPLATE = """
     client{id}:
         container_name: "client{id}"
-        entrypoint: /client
         environment:
           CLIENT_ID: "{id}"
           FILETYPES: "transactions,transaction_items,stores,menu,users"

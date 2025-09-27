@@ -30,7 +30,6 @@ services:
 
     client_handler:
         container_name: "client-handler"
-        entrypoint: /client-handler
         depends_on:
           rabbitmq:
             condition: service_healthy
@@ -45,7 +44,6 @@ services:
 
     client1:
         container_name: "client1"
-        entrypoint: /client
         environment:
           CLIENT_ID: "1"
           FILETYPES: "transactions,transaction_items,stores,menu,users"
