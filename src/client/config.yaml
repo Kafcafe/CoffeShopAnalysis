@@ -1,0 +1,8 @@
+server:
+  address: "server:12345"
+log:
+  level: "INFO"
+batch:
+  maxAmount: 10
+datapath:
+  folder: "./data"
