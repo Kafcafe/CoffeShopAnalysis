@@ -25,7 +25,7 @@ func (ch *ClientHandler) Handle() error {
 		return err
 	}
 
-	for i := 0; i < amountOfdataTypes; i++ {
+	for range amountOfdataTypes {
 
 		log.Info("Number of dataTypes to receive: %v", amountOfdataTypes)
 
@@ -98,6 +98,10 @@ func (ch *ClientHandler) processFile(dataType string) error {
 			return err
 		}
 
+		if isLast {
+			return nil
+		}
+
 		batchCounter++
 		log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
 
@@ -109,11 +113,6 @@ func (ch *ClientHandler) processFile(dataType string) error {
 			log.Errorf("Error confirming batch %d for dataType %s: %v", batchCounter, dataType, err)
 			return err
 		}
-
-		if isLast {
-			return nil
-		}
-
 	}
 	return nil
 }

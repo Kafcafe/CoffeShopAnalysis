@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -15,6 +16,7 @@ type Client struct {
 	isRunning bool
 	sigChan   chan os.Signal
 	currBg    *BatchGenerator
+	Id        string
 }
 
 var log = logging.MustGetLogger("log")
@@ -47,13 +49,15 @@ func (c *Client) handleSignals() {
 }
 
 func (c *Client) Run() ClientExecutionError {
-	log.Infof("Client %s is running with server address %s and batch max amount %s",
-		c.config.Id,
+	log.Infof("Client %s is running with server address %s and batch max amount %d",
 		c.config.serverAddress,
 		c.config.batchMaxAmount,
 	)
 
-	var listfiles []string = []string{"transactions", "transaction_items", "stores", "menu", "users"}
+	var fileTypes string = os.Getenv("FILETYPES")
+	c.Id = os.Getenv("ID")
+	var listfiles []string = strings.Split(fileTypes, ",")
+	log.Info(listfiles)
 	defer c.Shutdown()
 	go c.handleSignals()
 
@@ -177,7 +181,6 @@ func (c *Client) Shutdown() {
 
 	if c.sigChan != nil {
 		signal.Stop(c.sigChan)
-		close(c.sigChan)
 	}
 
 	c.isRunning = false

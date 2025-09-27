@@ -38,6 +38,7 @@ CLIENTS_TEMPLATE = """
         entrypoint: /client
         environment:
           CLIENT_ID: "{id}"
+          FILETYPES: "transactions,transaction_items,stores,menu,users"
         depends_on:
           - client_handler
         networks:

@@ -48,6 +48,7 @@ services:
         entrypoint: /client
         environment:
           CLIENT_ID: "1"
+          FILETYPES: "transactions,transaction_items,stores,menu,users"
         depends_on:
           - client_handler
         networks:

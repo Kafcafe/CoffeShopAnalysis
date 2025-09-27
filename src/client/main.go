@@ -28,7 +28,6 @@ func InitConfig() (*viper.Viper, error) {
 	v.BindEnv("log", "level")
 	v.BindEnv("batch", "maxAmount")
 	v.BindEnv("datapath", "folder")
-
 	// Try to read configuration from config file. If config file
 	// does not exists then ReadInConfig will fail but configuration
 	// can be loaded from the environment variables so we shouldn't
@@ -90,7 +89,6 @@ func main() {
 	log.Infof("Client %s started", v.GetString("id"))
 
 	clientConfig := client.NewClientConfig(
-		v.GetString("id"),
 		v.GetString("server.address"),
 		v.GetString("datapath.folder"),
 		v.GetInt("batch.maxAmount"),
