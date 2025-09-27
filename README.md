@@ -47,7 +47,10 @@ Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
   - Runs containers in detached mode with `--build` flag
 - `make down` - Stop and remove all services
   - Gracefully stops containers with 1s timeout, then removes them
-- `make logs` - View real-time logs from all services
+- `make logs` - View real-time logs from services
+  - `make logs` - All services (default)
+  - `make logs no-rabbitmq` - All services except rabbitmq
+  - `make logs rabbitmq` - Only rabbitmq service
   - Follows log output continuously
 - `make start` - Start previously stopped services
 - `make stop` - Stop all running services without removing them

@@ -76,11 +76,22 @@ down:
 	docker compose -f $(FILE) down
 .PHONY: down
 
-# View real-time logs from all services
+# View real-time logs from services
+# Use positional argument to specify which services to log:
+#   make logs              - All services (default)
+#   make logs no-rabbit  - All services except rabbitmq
+#   make logs only-rabbit     - Only rabbitmq service
 # Follows log output continuously until interrupted (Ctrl+C)
 logs:
-	docker compose -f $(FILE) logs -f
-.PHONY: logs
+	@filter=$$(echo $(MAKECMDGOALS) | sed 's/logs //'); \
+	if [ "$$filter" = "only-rabbit" ]; then \
+		docker compose -f $(FILE) logs -f rabbitmq; \
+	elif [ "$$filter" = "no-rabbit" ]; then \
+		docker compose -f $(FILE) logs -f $$(docker compose -f $(FILE) config --services | grep -v rabbitmq); \
+	else \
+		docker compose -f $(FILE) logs -f; \
+	fi
+.PHONY: logs only-rabbit no-rabbit
 
 # Start previously stopped services
 # Resumes containers without rebuilding
