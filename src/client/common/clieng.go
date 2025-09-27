@@ -55,6 +55,7 @@ func (c *Client) Run() ClientExecutionError {
 
 	var listfiles []string = []string{"transactions", "transaction_items", "stores", "menu", "users"}
 	defer c.Shutdown()
+	go c.handleSignals()
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 

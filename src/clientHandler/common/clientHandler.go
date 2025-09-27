@@ -119,5 +119,8 @@ func (ch *ClientHandler) processFile(dataType string) error {
 }
 
 func (ch *ClientHandler) Shutdown() error {
-	return ch.protocol.conn.Close()
+	if ch.protocol != nil {
+		ch.protocol.Shutdown()
+	}
+	return nil
 }
