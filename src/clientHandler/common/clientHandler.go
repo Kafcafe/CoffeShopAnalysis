@@ -25,15 +25,18 @@ func (ch *ClientHandler) Handle() error {
 		return err
 	}
 
-	log.Info("Number of topics to receive: %v", amountOfTopics)
+	for i := 0; i < amountOfTopics; i++ {
 
-	topic, amountOfFiles, err := ch.handleTopic()
+		log.Info("Number of topics to receive: %v", amountOfTopics)
 
-	if err != nil {
-		log.Errorf("Error handling topic: %v", err)
+		topic, amountOfFiles, err := ch.handleTopic()
+
+		if err != nil {
+			log.Errorf("Error handling topic: %v", err)
+		}
+
+		log.Info("Number of files to receive for topic %s: %d", topic, amountOfFiles)
 	}
-
-	log.Info("Number of files to receive for topic %s: %d", topic, amountOfFiles)
 
 	return nil
 }
@@ -76,8 +79,10 @@ func (ch *ClientHandler) processTopic(amountOfFiles int, topic string) error {
 			log.Errorf("Error processing file %d for topic %s: %v", currFile, topic, err)
 			return err
 		}
+		log.Infof("Finished processing file %d for topic %s", currFile, topic)
 		currFile++
 	}
+	log.Infof("Finished processing all %d files for topic %s", amountOfFiles, topic)
 	return nil
 }
 
