@@ -11,6 +11,7 @@ type BatchGenerator struct {
 	scanner      *bufio.Scanner
 	isReading    bool
 	lastLineRead string
+	file         *os.File
 }
 
 func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
@@ -31,6 +32,7 @@ func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
 		scanner:      scanner,
 		isReading:    true,
 		lastLineRead: "",
+		file:         file,
 	}
 }
 
@@ -74,4 +76,10 @@ func (bg *BatchGenerator) processLastLine(batch *Batch) error {
 	}
 
 	return nil
+}
+
+func (bg *BatchGenerator) Close() {
+	if bg.file != nil {
+		bg.file.Close()
+	}
 }

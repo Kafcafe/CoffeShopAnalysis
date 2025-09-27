@@ -161,3 +161,10 @@ func (p *Protocol) htonsUint32(val uint32) []byte {
 func (p *Protocol) ntohsUint32(data []byte) uint32 {
 	return binary.BigEndian.Uint32(data)
 }
+
+func (p *Protocol) Shutdown() error {
+	if p.conn != nil {
+		return p.conn.Close()
+	}
+	return nil
+}
