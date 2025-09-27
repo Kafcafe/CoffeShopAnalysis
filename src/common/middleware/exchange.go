@@ -59,3 +59,7 @@ func (m *MessageMiddlewareExchange) Close() (error MessageMiddlewareError) {
 	}
 	return 0
 }
+
+func (m *MessageMiddlewareExchange) Delete() (error MessageMiddlewareError) {
+	return
+}

@@ -52,3 +52,7 @@ func (m *MessageMiddlewareQueue) Close() (error MessageMiddlewareError) {
 	}
 	return 0
 }
+
+func (m *MessageMiddlewareQueue) Delete() (error MessageMiddlewareError) {
+	return
+}
