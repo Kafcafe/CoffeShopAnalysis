@@ -5,6 +5,7 @@ import (
 	"net"
 	"os"
 	"os/signal"
+	"syscall"
 
 	"github.com/op/go-logging"
 )
@@ -39,10 +40,8 @@ func NewAcceptor(serverConfigs *ServerConfig) (*Acceptor, error) {
 		currClient: nil,
 		sigChan:    make(chan os.Signal, 1),
 	}
-
-	signal.Notify(acceptor.sigChan, os.Interrupt)
+	signal.Notify(acceptor.sigChan, syscall.SIGTERM)
 	return acceptor, nil
-
 }
 
 func (a *Acceptor) Run() error {
@@ -55,7 +54,7 @@ func (a *Acceptor) Run() error {
 		conn, err := a.listener.Accept()
 		if err != nil {
 			log.Errorf("Failed to accept connection: %v", err)
-			return err
+			return nil
 		}
 		log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 		a.currClient = NewClientHandler(conn)

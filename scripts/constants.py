@@ -52,7 +52,7 @@ CLIENTS_TEMPLATE = """
 """
 
 CLIENT_HANDLER_TEMPLATE = """
-    clientHandler:
+    client_handler:
         container_name: "clientHandler"
         entrypoint: /client
         depends_on:

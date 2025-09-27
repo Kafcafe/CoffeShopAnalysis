@@ -43,8 +43,8 @@ services:
         volumes:
           - ./src/clientHandler/config.yaml:/server.yaml 
 
-    client_1:
-        container_name: "client_1"
+    client1:
+        container_name: "client1"
         entrypoint: /client
         environment:
           CLIENT_ID: "1"

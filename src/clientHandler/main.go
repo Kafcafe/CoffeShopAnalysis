@@ -87,11 +87,15 @@ func main() {
 	acceptor, err := clientHandler.NewAcceptor(serverConfigs)
 	if err != nil {
 		log.Error("Error creating acceptor: %v", err)
-		return
+		os.Exit(1)
 	}
 	err = acceptor.Run()
 	if err != nil {
-		fmt.Printf("Error running acceptor: %v\n", err)
+		log.Error("Error running acceptor: %v\n", err)
+		os.Exit(2)
 	}
+
+	log.Info("Accepter shut down gracefully")
+	os.Exit(0)
 
 }
