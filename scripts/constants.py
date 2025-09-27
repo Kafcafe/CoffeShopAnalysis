@@ -1,4 +1,21 @@
 
+"""
+Docker Compose YAML templates for distributed coffee shop analysis system.
+
+This module contains string templates used to generate Docker Compose files
+for a distributed system that analyzes coffee shop data. The templates define:
+
+- Network configuration for service communication
+- RabbitMQ message broker service with management interface
+- Client handler service for coordinating clients
+- Client service template for data processing clients
+
+All templates use YAML format and include proper service dependencies,
+health checks, and network configuration for the distributed system.
+"""
+
+# Network configuration template for Docker Compose
+# Defines a custom network with specific subnet for service communication
 NETWORK_TEMPLATE = """
 name: tp1
 networks:
@@ -10,6 +27,9 @@ networks:
 
 """
 
+# RabbitMQ message broker service template
+# Provides message queue functionality with management interface
+# Includes health check to ensure service readiness before starting dependent services
 RABBITMQ_SERVICE_TEMPLATE = """
 services:
     rabbitmq:
@@ -32,6 +52,9 @@ services:
           start_period: 30s
 """
 
+# Client service template (parameterized by client ID)
+# Each client processes different types of coffee shop data files
+# Template is formatted with unique client ID when generating compose file
 CLIENTS_TEMPLATE = """
     client{id}:
         container_name: "client{id}"
@@ -51,6 +74,9 @@ CLIENTS_TEMPLATE = """
           - ./.data:/data
 """
 
+# Client handler service template
+# Coordinates client activities and manages the distributed processing workflow
+# Waits for RabbitMQ to be healthy before starting
 CLIENT_HANDLER_TEMPLATE = """
     client_handler:
         container_name: "clientHandler"
