@@ -32,3 +32,8 @@ go.work.sum
 # .vscode/
 
 __pycache__
+
+# Binaries
+src/client/client
+src/clientHandler/ClientHandler
+src/clientHandler/clientHandler

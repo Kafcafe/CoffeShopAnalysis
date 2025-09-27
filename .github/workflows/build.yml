@@ -1,0 +1,40 @@
+name: Build
+
+on:
+  push:
+    branches: [ main, dev ]
+  pull_request:
+    branches: [ main, dev ]
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    strategy:
+      matrix:
+        go-version: [1.25]
+        modules: [src/client, src/clientHandler]
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ matrix.go-version }}
+
+    # - name: Check Go formatting
+    #   working-directory: ${{ matrix.modules }}
+    #   run: |
+    #     if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+    #       echo "The following files are not formatted:"
+    #       gofmt -s -l .
+    #       exit 1
+    #     fi
+
+    # - name: Run tests
+    #   working-directory: ${{ matrix.modules }}
+    #   run: go test ./...
+
+    - name: Build
+      working-directory: ${{ matrix.modules }}
+      run: go build .
