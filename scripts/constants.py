@@ -17,7 +17,7 @@ health checks, and network configuration for the distributed system.
 # Network configuration template for Docker Compose
 # Defines a custom network with specific subnet for service communication
 NETWORK_TEMPLATE = """
-name: tp1
+name: coffee-shop-analysis-system
 networks:
   analysis_net:
     ipam:
@@ -33,7 +33,7 @@ networks:
 RABBITMQ_SERVICE_TEMPLATE = """
 services:
     rabbitmq:
-        image: "rabbitmq:management"
+        image: "rabbitmq:4.1.4-management"
         container_name: "rabbitmq"
         hostname: "rabbitmq"
         ports:
@@ -43,7 +43,7 @@ services:
           - analysis_net
         environment:
           RABBITMQ_DEFAULT_USER: user
-          RABBITMQ_DEFAULT_PASS: password
+          RABBITMQ_DEFAULT_PASS: user
         healthcheck:
           test: ["CMD", "rabbitmq-diagnostics", "ping"]
           interval: 10s
@@ -51,6 +51,28 @@ services:
           retries: 3
           start_period: 30s
 """
+
+
+# Client handler service template
+# Coordinates client activities and manages the distributed processing workflow
+# Waits for RabbitMQ to be healthy before starting
+CLIENT_HANDLER_TEMPLATE = """
+    client_handler:
+        container_name: "client-handler"
+        entrypoint: /client-handler
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        hostname: "server"
+        build:
+          context: ./src/clientHandler
+          dockerfile: Dockerfile
+        volumes:
+          - ./src/clientHandler/config.yaml:/config.yaml 
+"""
+
 
 # Client service template (parameterized by client ID)
 # Each client processes different types of coffee shop data files
@@ -72,24 +94,4 @@ CLIENTS_TEMPLATE = """
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./.data:/data
-"""
-
-# Client handler service template
-# Coordinates client activities and manages the distributed processing workflow
-# Waits for RabbitMQ to be healthy before starting
-CLIENT_HANDLER_TEMPLATE = """
-    client_handler:
-        container_name: "clientHandler"
-        entrypoint: /client
-        depends_on:
-          rabbitmq:
-            condition: service_healthy
-        networks:
-          - analysis_net
-        hostname: "server"
-        build:
-          context: ./src/clientHandler
-          dockerfile: Dockerfile
-        volumes:
-          - ./src/clientHandler/config.yaml:/server.yaml 
 """
