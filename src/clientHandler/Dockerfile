@@ -11,10 +11,11 @@ RUN mkdir -p /build
 WORKDIR /build/
 
 # Pre-cache dependencies
-COPY go.mod go.sum ./
+COPY ./clientHandler/go.mod ./clientHandler/go.sum ./
+COPY ./common ../common
 RUN go mod download
 
-COPY . .
+COPY ./clientHandler .
 # CGO_ENABLED must be disabled to run go binary in Alpine
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/client-handler .
 

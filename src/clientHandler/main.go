@@ -1,7 +1,7 @@
 package main
 
 import (
-	clientHandler "ClientHandler/common"
+	clientHandler "ClientHandler/lib"
 	"fmt"
 	"os"
 	"strings"
