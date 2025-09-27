@@ -23,20 +23,24 @@ func NewAcceptor(serverConfigs *ServerConfig) (*Acceptor, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to start server: %v", err)
 	}
+	log.Infof("Server listening on %s", listenAddr)
 	return &Acceptor{
-		listener: listener,
+		listener:  listener,
+		isRunning: true,
 	}, nil
 }
 
 func (a *Acceptor) Run() error {
 	// Implement the logic to accept client connections and handle them
+	log.Info("Acceptor is running and ready to accept connections")
 	for a.isRunning {
+		log.Info("Waiting for a new client connection...")
 		conn, err := a.listener.Accept()
 		if err != nil {
 			log.Errorf("Failed to accept connection: %v", err)
 			return err
 		}
-
+		log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 		clientHandler := NewClientHandler(conn)
 		err = clientHandler.Handle()
 
@@ -44,6 +48,7 @@ func (a *Acceptor) Run() error {
 			log.Errorf("Error handling client connection: %v", err)
 		}
 
+		log.Info("Closing client connection, conection finished successfully")
 		clientHandler.Shutdown()
 
 	}

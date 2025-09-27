@@ -1,5 +1,5 @@
 server:
   ip: "server"
   port: "12345"
-logging:
-  level: "info"
+log:
+  level: "INFO"

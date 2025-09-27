@@ -39,8 +39,7 @@ CLIENTS_TEMPLATE = """
         environment:
           CLIENT_ID: "{id}"
         depends_on:
-          rabbitmq:
-            condition: service_healthy
+          - client_handler
         networks:
           - analysis_net
         build:
@@ -53,13 +52,14 @@ CLIENTS_TEMPLATE = """
 
 CLIENT_HANDLER_TEMPLATE = """
     client_handler:
-        container_name: "client_handler"
-        entrypoint: /clienthandler
+        container_name: "clientHandler"
+        entrypoint: /clientHandler
         depends_on:
           rabbitmq:
             condition: service_healthy
         networks:
           - analysis_net
+        hostname: "server"
         build:
           context: ./src/clientHandler
           dockerfile: Dockerfile

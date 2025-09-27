@@ -3,6 +3,6 @@ server:
 log:
   level: "INFO"
 batch:
-  maxAmount: 5
+  maxAmount: 10
 datapath:
   folder: "./data"
