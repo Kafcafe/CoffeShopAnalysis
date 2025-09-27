@@ -52,9 +52,9 @@ CLIENTS_TEMPLATE = """
 """
 
 CLIENT_HANDLER_TEMPLATE = """
-    client_handler:
+    clientHandler:
         container_name: "clientHandler"
-        entrypoint: /clientHandler
+        entrypoint: /client
         depends_on:
           rabbitmq:
             condition: service_healthy
