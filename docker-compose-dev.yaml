@@ -37,8 +37,8 @@ services:
           - analysis_net
         hostname: "server"
         build:
-          context: ./src/clientHandler
-          dockerfile: Dockerfile
+          context: ./src/
+          dockerfile: clientHandler/Dockerfile
         volumes:
           - ./src/clientHandler/config.yaml:/config.yaml 
 
