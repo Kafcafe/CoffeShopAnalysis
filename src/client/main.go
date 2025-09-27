@@ -5,7 +5,7 @@ import (
 	"os"
 	"strings"
 
-	client "github.com/Kafcafe/CoffeShopAnalysis/client/common"
+	client "github.com/Kafcafe/CoffeShopAnalysis/client/lib"
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
 )
