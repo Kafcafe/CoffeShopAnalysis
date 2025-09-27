@@ -1,6 +1,8 @@
 package middleware
 
 import (
+	"fmt"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -9,8 +11,14 @@ type Rabbit struct {
 	Channel MiddlewareChannel
 }
 
+const (
+	AMQP_PROTOCOL                 = "amqp"
+	DEFAULT_RABBITMQ_SERVICE_PORT = 5672
+)
+
 func NewRabbit(user, password, host string) (*Rabbit, error) {
-	conn, err := amqp.Dial("amqp://" + user + ":" + password + "@" + host + ":5672/")
+	connectionString := fmt.Sprintf("%s://%s:%s@%s:%d/", AMQP_PROTOCOL, user, password, host, DEFAULT_RABBITMQ_SERVICE_PORT)
+	conn, err := amqp.Dial(connectionString)
 	if err != nil {
 		return nil, err
 	}

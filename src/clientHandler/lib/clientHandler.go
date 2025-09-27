@@ -29,7 +29,7 @@ func (ch *ClientHandler) Handle() error {
 
 		log.Info("Number of dataTypes to receive: %v", amountOfdataTypes)
 
-		dataType, amountOfFiles, err := ch.handledataType()
+		dataType, amountOfFiles, err := ch.handleDataType()
 
 		if err != nil {
 			log.Errorf("Error handling dataType: %v", err)
@@ -41,7 +41,7 @@ func (ch *ClientHandler) Handle() error {
 	return nil
 }
 
-func (ch *ClientHandler) handledataType() (string, int, error) {
+func (ch *ClientHandler) handleDataType() (string, int, error) {
 	dataType, err := ch.protocol.ReceiveFilesdataType()
 
 	if err != nil {
@@ -89,6 +89,7 @@ func (ch *ClientHandler) processdataType(amountOfFiles int, dataType string) err
 func (ch *ClientHandler) processFile(dataType string) error {
 	receivingFile := true
 	batchCounter := 0
+
 	for receivingFile {
 		log.Infof("Receiving batch %d for dataType %s", batchCounter, dataType)
 		batch, isLast, err := ch.protocol.ReceiveBatch()

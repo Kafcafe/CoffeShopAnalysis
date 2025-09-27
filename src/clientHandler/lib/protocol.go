@@ -88,6 +88,7 @@ func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
 	dataLen := int(p.ntohsUint32(lenBytes))
 	log.Debug("[PROTOCOL] rcv batch with ", dataLen, " lines")
 	lines := make([]string, dataLen)
+
 	for i := 0; i < dataLen; i++ {
 		log.Debug("[PROTOCOL] rcv line ")
 		line, err := p.receiveLine()
