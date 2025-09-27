@@ -1,8 +1,10 @@
-package middleware
+package test
 
 import (
 	"context"
 	"testing"
+
+	middleware "common/middleware"
 
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/wait"
@@ -41,7 +43,7 @@ func TestRabbitConnection(t *testing.T) {
 	}
 
 	// Test connection
-	rabbit, err := NewRabbit("user", "password", host, port.Int())
+	rabbit, err := middleware.NewRabbit("user", "password", host, port.Int())
 	if err != nil {
 		t.Fatalf("Failed to connect to RabbitMQ: %v", err)
 	}

@@ -1,4 +1,4 @@
-module mr-hello-world
+module coffee-shop-analysis
 
 go 1.25.0
 
