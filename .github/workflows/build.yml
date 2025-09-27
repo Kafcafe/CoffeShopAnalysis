@@ -1,4 +1,4 @@
-name: Build
+name: Build all binaries
 
 on:
   push:
@@ -7,34 +7,25 @@ on:
     branches: [ main, dev ]
 
 jobs:
-  test:
+  build:
     runs-on: ubuntu-24.04
-    strategy:
-      matrix:
-        go-version: [1.25]
-        modules: [src/client, src/clientHandler]
 
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-    - name: Set up Go
-      uses: actions/setup-go@v4
-      with:
-        go-version: ${{ matrix.go-version }}
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
 
-    # - name: Check Go formatting
-    #   working-directory: ${{ matrix.modules }}
-    #   run: |
-    #     if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
-    #       echo "The following files are not formatted:"
-    #       gofmt -s -l .
-    #       exit 1
-    #     fi
+      - name: Build all binaries
+        run: |
+          modules=(
+            "src/client"
+            "src/clientHandler"
+          )
 
-    # - name: Run tests
-    #   working-directory: ${{ matrix.modules }}
-    #   run: go test ./...
-
-    - name: Build
-      working-directory: ${{ matrix.modules }}
-      run: go build .
+          for module in "${modules[@]}"; do
+            echo "Building $module..."
+            (cd "$module" && go build .)
+          done
