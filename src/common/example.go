@@ -131,7 +131,7 @@ func exchangeSendExample(rabbit *middleware.Rabbit) {
 func main() {
 	InitLogger("DEBUG")
 
-	rabbit, err := middleware.NewRabbit("guest", "guest", "localhost")
+	rabbit, err := middleware.NewRabbit("guest", "guest", "localhost", 5672)
 	failOnError(err)
 	defer rabbit.Close()
 

@@ -16,8 +16,8 @@ const (
 	DEFAULT_RABBITMQ_SERVICE_PORT = 5672
 )
 
-func NewRabbit(user, password, host string) (*Rabbit, error) {
-	connectionString := fmt.Sprintf("%s://%s:%s@%s:%d/", AMQP_PROTOCOL, user, password, host, DEFAULT_RABBITMQ_SERVICE_PORT)
+func NewRabbit(user, password, host string, port int) (*Rabbit, error) {
+	connectionString := fmt.Sprintf("%s://%s:%s@%s:%d/", AMQP_PROTOCOL, user, password, host, port)
 	conn, err := amqp.Dial(connectionString)
 	if err != nil {
 		return nil, err
