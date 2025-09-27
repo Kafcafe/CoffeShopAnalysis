@@ -13,18 +13,20 @@ func NewMessageMiddlewareQueue(queueName string, channel MiddlewareChannel, cons
 }
 
 func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback onMessageCallback) MessageMiddlewareError {
-	done := make(chan error, 1)
-	for msg := range *m.consumeChannel {
-		onMessageCallback(m.consumeChannel, done)
-		err := <-done
-		if err == nil {
-			msg.Ack(false)
-		}
+	done := make(chan error)
+	onMessageCallback(m.consumeChannel, done)
+	err := <-done
+	if err != nil {
+		return MessageMiddlewareMessageError
 	}
 	return 0
 }
 
 func (m *MessageMiddlewareQueue) StopConsuming() (error MessageMiddlewareError) {
+	err := m.channel.Cancel("", false)
+	if err != nil {
+		return MessageMiddlewareDisconnectedError
+	}
 	return 0
 }
 
@@ -51,8 +53,4 @@ func (m *MessageMiddlewareQueue) Close() (error MessageMiddlewareError) {
 		return MessageMiddlewareCloseError
 	}
 	return 0
-}
-
-func (m *MessageMiddlewareQueue) Delete() (error MessageMiddlewareError) {
-	return
 }

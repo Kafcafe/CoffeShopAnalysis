@@ -14,14 +14,7 @@ func NewMessageMiddlewareExchange(exchangeName string, routeKeys []string, chann
 }
 
 func (m *MessageMiddlewareExchange) StartConsuming(onMessageCallback onMessageCallback) MessageMiddlewareError {
-	done := make(chan error, 1)
-	for msg := range *m.consumeChannel {
-		onMessageCallback(m.consumeChannel, done)
-		err := <-done
-		if err == nil {
-			msg.Ack(false)
-		}
-	}
+	onMessageCallback(m.consumeChannel, nil)
 	return 0
 }
 
@@ -58,8 +51,4 @@ func (m *MessageMiddlewareExchange) Close() (error MessageMiddlewareError) {
 		return MessageMiddlewareCloseError
 	}
 	return 0
-}
-
-func (m *MessageMiddlewareExchange) Delete() (error MessageMiddlewareError) {
-	return
 }
