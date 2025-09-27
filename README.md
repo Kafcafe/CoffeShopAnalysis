@@ -1,6 +1,18 @@
-# CoffeeShopAnalysis
+# Coffee Shop Analysis Distributed System
 
-Distributed coffee shop data analysis system using microservices architecture with Docker, RabbitMQ, and Go.
+Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
+
+<p align="center">
+    <img src="./docs/logo.png" alt="Kafcafe logo" height="400px">
+</p>
+
+### Team members
+
+| Name                          | Padrón | Email              |
+| ----------------------------- | ------ | ------------------ |
+| Castro Martinez, Jose Ignacio | 106957 | jcastrom@fi.uba.ar |
+| Diem, Walter Gabriel          | 105618 | wdiem@fi.uba.ar    |
+| Gestoso, Ramiro               | 105950 | rgestoso@fi.uba.ar |
 
 ## Table of Contents
 
