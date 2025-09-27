@@ -89,6 +89,7 @@ func main() {
 		log.Error("Error creating acceptor: %v", err)
 		os.Exit(1)
 	}
+
 	err = acceptor.Run()
 	if err != nil {
 		log.Error("Error running acceptor: %v\n", err)
