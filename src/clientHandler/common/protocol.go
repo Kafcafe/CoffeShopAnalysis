@@ -21,7 +21,7 @@ func NewProtocol(conn net.Conn) *Protocol {
 	}
 }
 
-func (p *Protocol) rcvAmountOfTopics() (int, error) {
+func (p *Protocol) rcvAmountOfDataTypes() (int, error) {
 	lenBytes := make([]byte, 4)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return 0, err
@@ -32,7 +32,7 @@ func (p *Protocol) rcvAmountOfTopics() (int, error) {
 	return int(amount), nil
 }
 
-func (p *Protocol) ReceiveFilesTopic() (string, error) {
+func (p *Protocol) ReceiveFilesdataType() (string, error) {
 	lenBytes := make([]byte, 4)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return "", err
