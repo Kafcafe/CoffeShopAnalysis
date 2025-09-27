@@ -1,9 +1,11 @@
+package middleware
+
 import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type MiddlewareChannel *amqp.Channel
-type ConsumeChannel *<-chan amqp.Delivery
+type MiddlewareChannel = *amqp.Channel
+type ConsumeChannel = *<-chan amqp.Delivery
 
 type MessageMiddlewareError int
 
