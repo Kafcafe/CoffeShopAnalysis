@@ -12,25 +12,47 @@ func NewMessageMiddlewareQueue(queueName string, channel MiddlewareChannel, cons
 	}
 }
 
-func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback onMessageCallback) MessageMiddlewareError {
-	done := make(chan error)
-	onMessageCallback(m.consumeChannel, done)
-	err := <-done
+func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback onMessageCallback, errChan chan<- MessageMiddlewareError) {
+	consumeChannel, err := m.channel.Consume(
+		m.queueName, // queue
+		"",          // consumer
+		false,       // auto-ack
+		false,       // exclusive
+		false,       // no-local
+		false,       // no-wait
+		nil,         // args
+	)
+
 	if err != nil {
-		return MessageMiddlewareMessageError
+		middleware_logger.Errorf("failed to start consuming channel: %v", err)
+		errChan <- MessageMiddlewareDisconnectedError
+		return
 	}
-	return 0
+	m.consumeChannel = &consumeChannel
+
+	go func() {
+		for msg := range consumeChannel {
+			err := onMessageCallback(msg)
+			if err != nil {
+				errChan <- MessageMiddlewareMessageError
+			}
+		}
+	}()
 }
 
-func (m *MessageMiddlewareQueue) StopConsuming() (error MessageMiddlewareError) {
-	err := m.channel.Cancel("", false)
+func (m *MessageMiddlewareQueue) StopConsuming() (middlewareError MessageMiddlewareError) {
+	err := m.channel.Cancel(
+		"",    // Consumer
+		false, // noWait
+	)
+
 	if err != nil {
 		return MessageMiddlewareDisconnectedError
 	}
-	return 0
+	return MessageMiddlewareSuccess
 }
 
-func (m *MessageMiddlewareQueue) Send(message []byte) (error MessageMiddlewareError) {
+func (m *MessageMiddlewareQueue) Send(message []byte) (middlewareError MessageMiddlewareError) {
 	err := m.channel.Publish(
 		"",          // exchange
 		m.queueName, // routing key (queue name)
@@ -41,16 +63,19 @@ func (m *MessageMiddlewareQueue) Send(message []byte) (error MessageMiddlewareEr
 			Body:        message,
 		},
 	)
+
 	if err != nil {
 		return MessageMiddlewareMessageError
 	}
-	return 0
+
+	return MessageMiddlewareSuccess
 }
 
-func (m *MessageMiddlewareQueue) Close() (error MessageMiddlewareError) {
+func (m *MessageMiddlewareQueue) Close() (middlewareError MessageMiddlewareError) {
 	err := m.channel.Close()
 	if err != nil {
 		return MessageMiddlewareCloseError
 	}
-	return 0
+
+	return MessageMiddlewareSuccess
 }

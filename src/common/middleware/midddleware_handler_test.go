@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -65,18 +66,32 @@ func TestMain(m *testing.M) {
 	os.Exit(code)
 }
 
+func createMiddleware(host string, port int) (*MiddlewareHandler, error) {
+	// Test connection
+	rabbitConn, err := NewRabbitConnection("user", "password", host, port)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to connect to RabbitMQ: %v", err)
+	}
+
+	middleHandler, err := NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("Failed to create middleware channel: %v", err)
+	}
+
+	return middleHandler, nil
+}
+
 func TestRabbitConnection(t *testing.T) {
 	host, port := setupRabbitContainer(t)
-
-	// Test connection
-	rabbit, err := NewRabbit("user", "password", host, port)
+	middleHandler, err := createMiddleware(host, port)
 	if err != nil {
-		t.Fatalf("Failed to connect to RabbitMQ: %v", err)
+		t.Fatalf("Failed to initialize middleware connection: %v", err)
 	}
-	defer rabbit.Close()
+
+	defer middleHandler.Close()
 
 	// Test declaring a queue
-	queue, err := rabbit.DeclareQueue("test_queue")
+	queue, err := middleHandler.DeclareQueue("test_queue")
 	if err != nil {
 		t.Fatalf("Failed to declare queue: %v", err)
 	}
@@ -88,21 +103,21 @@ func TestRabbitConnection(t *testing.T) {
 
 func TestDeclareExchange(t *testing.T) {
 	host, port := setupRabbitContainer(t)
-
-	rabbit, err := NewRabbit("user", "password", host, port)
+	middleHandler, err := createMiddleware(host, port)
 	if err != nil {
-		t.Fatalf("Failed to connect to RabbitMQ: %v", err)
+		t.Fatalf("Failed to initialize middleware connection: %v", err)
 	}
-	defer rabbit.Close()
+
+	defer middleHandler.Close()
 
 	// Test declaring a direct exchange
-	err = rabbit.DeclareExchange("test_exchange", "direct")
+	err = middleHandler.DeclareExchange("test_exchange", "direct")
 	if err != nil {
 		t.Fatalf("Failed to declare exchange: %v", err)
 	}
 
 	// Test declaring a topic exchange
-	err = rabbit.DeclareExchange("test_topic_exchange", "topic")
+	err = middleHandler.DeclareExchange("test_topic_exchange", "topic")
 	if err != nil {
 		t.Fatalf("Failed to declare topic exchange: %v", err)
 	}
@@ -110,26 +125,26 @@ func TestDeclareExchange(t *testing.T) {
 
 func TestBindQueue(t *testing.T) {
 	host, port := setupRabbitContainer(t)
-
-	rabbit, err := NewRabbit("user", "password", host, port)
+	middleHandler, err := createMiddleware(host, port)
 	if err != nil {
-		t.Fatalf("Failed to connect to RabbitMQ: %v", err)
+		t.Fatalf("Failed to initialize middleware connection: %v", err)
 	}
-	defer rabbit.Close()
+
+	defer middleHandler.Close()
 
 	// Declare exchange and queue
-	err = rabbit.DeclareExchange("test_exchange", "direct")
+	err = middleHandler.DeclareExchange("test_exchange", "direct")
 	if err != nil {
 		t.Fatalf("Failed to declare exchange: %v", err)
 	}
 
-	_, err = rabbit.DeclareQueue("test_queue")
+	_, err = middleHandler.DeclareQueue("test_queue")
 	if err != nil {
 		t.Fatalf("Failed to declare queue: %v", err)
 	}
 
 	// Test binding queue to exchange
-	err = rabbit.BindQueue("test_queue", "test_exchange", "test_key")
+	err = middleHandler.BindQueue("test_queue", "test_exchange", "test_key")
 	if err != nil {
 		t.Fatalf("Failed to bind queue: %v", err)
 	}

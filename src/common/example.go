@@ -47,7 +47,7 @@ func processMessages(consumeChannel middleware.ConsumeChannel, done chan error) 
 	done <- nil
 }
 
-func queueExample(rabbit *middleware.Rabbit) {
+func queueExample(rabbit *middleware.MiddlewareHandler) {
 	queueName := "year_month_queue"
 
 	log.Infof("Queue: %s", queueName)
@@ -70,7 +70,7 @@ func queueExample(rabbit *middleware.Rabbit) {
 	<-forever
 }
 
-func exchangeExample(rabbit *middleware.Rabbit) {
+func exchangeExample(rabbit *middleware.MiddlewareHandler) {
 	exchangeName := "year_month_exchange"
 	queueName := ""
 	routingKey := "year_month"
@@ -106,7 +106,7 @@ func exchangeExample(rabbit *middleware.Rabbit) {
 	exchange.StopConsuming()
 }
 
-func exchangeSendExample(rabbit *middleware.Rabbit) {
+func exchangeSendExample(rabbit *middleware.MiddlewareHandler) {
 	exchangeName := "year_month_exchange"
 	routingKey := "year_month"
 
@@ -131,7 +131,10 @@ func exchangeSendExample(rabbit *middleware.Rabbit) {
 func main() {
 	InitLogger("DEBUG")
 
-	rabbit, err := middleware.NewRabbit("guest", "guest", "localhost", 5672)
+	rabbitConn, err := middleware.NewRabbitConnection("guest", "guest", "localhost", 5672)
+	failOnError(err)
+
+	rabbit, err := middleware.NewMiddlewareHandler(rabbitConn)
 	failOnError(err)
 	defer rabbit.Close()
 

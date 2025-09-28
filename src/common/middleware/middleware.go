@@ -11,7 +11,8 @@ type ConsumeChannel = *<-chan amqp.Delivery
 type MessageMiddlewareError int
 
 const (
-	MessageMiddlewareMessageError MessageMiddlewareError = iota + 1
+	MessageMiddlewareSuccess MessageMiddlewareError = iota
+	MessageMiddlewareMessageError
 	MessageMiddlewareDisconnectedError
 	MessageMiddlewareCloseError
 	MessageMiddlewareDeleteError
@@ -25,12 +26,12 @@ type MessageMiddlewareQueue struct {
 
 type MessageMiddlewareExchange struct {
 	exchangeName   string
-	routeKeys      []string
-	amqpChannel    MiddlewareChannel
+	routeKey       string
+	channel        MiddlewareChannel
 	consumeChannel ConsumeChannel
 }
 
-type onMessageCallback func(consumeChannel ConsumeChannel, done chan error)
+type onMessageCallback func(message amqp.Delivery) error
 
 // Puede especificarse un tipo más específico para T si se desea
 type MessageMiddleware[T any] interface {
@@ -40,31 +41,31 @@ type MessageMiddleware[T any] interface {
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
 	*/
-	StartConsuming(m *T, onMessageCallback onMessageCallback) (error MessageMiddlewareError)
+	StartConsuming(m *T) (onMessageCallback onMessageCallback, errChan chan<- MessageMiddlewareError)
 
 	/*
 	   Si se estaba consumiendo desde la cola/exchange, se detiene la escucha. Si
 	   no se estaba consumiendo de la cola/exchange, no tiene efecto, ni levanta
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	*/
-	StopConsuming(m *T) (error MessageMiddlewareError)
+	StopConsuming(m *T) (middlewareError MessageMiddlewareError)
 
 	/*
 	   Envía un mensaje a la cola o al tópico con el que se inicializó el exchange.
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
 	*/
-	Send(m *T, message []byte) (error MessageMiddlewareError)
+	Send(m *T, message []byte) (middlewareError MessageMiddlewareError)
 
 	/*
 	   Se desconecta de la cola o exchange al que estaba conectado.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareCloseError.
 	*/
-	Close(m *T) (error MessageMiddlewareError)
+	Close(m *T) (middlewareError MessageMiddlewareError)
 
 	/*
 	   Se fuerza la eliminación remota de la cola o exchange.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareDeleteError.
 	*/
-	Delete(m *T) (error MessageMiddlewareError)
+	Delete(m *T) (middlewareError MessageMiddlewareError)
 }

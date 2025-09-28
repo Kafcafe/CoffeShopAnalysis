@@ -39,6 +39,7 @@ src/client/client
 src/clientHandler/ClientHandler
 src/clientHandler/clientHandler
 src/common/common
+src/common/example
 
 # Pycache
 scripts/__pycache__
