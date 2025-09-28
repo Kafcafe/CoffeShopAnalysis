@@ -12,10 +12,6 @@ func NewFilter() *Filter {
 	return &Filter{}
 }
 
-func (f *Filter) Run() error {
-	return nil
-}
-
 func (f *Filter) FilterByDatetimeHour(batch []string, fromYear, toYear, fromHour, toHour int) []string {
 	byYear := f.FilterByYear(batch, fromYear, toYear)
 	result := make([]string, 0)
