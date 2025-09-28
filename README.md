@@ -18,11 +18,12 @@ Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
 
 1. [Quick Start](#quick-start)
 1. [Makefile Commands](#makefile-commands)
-   1. [Dependencies & Setup](#dependencies--setup)
-   1. [Building Docker Images](#building-docker-images)
-   1. [Docker Compose Management](#docker-compose-management)
-   1. [Cleanup Commands](#cleanup-commands)
-   1. [Default Targets](#default-targets)
+    1. [Dependencies & Setup](#dependencies--setup)
+    1. [Building Docker Images](#building-docker-images)
+    1. [Docker Compose Management](#docker-compose-management)
+    1. [Testing](#testing)
+    1. [Cleanup Commands](#cleanup-commands)
+    1. [Default Targets](#default-targets)
 
 - `docker-compose-dev.yaml` -> Use this for development
 - `docker-compose.yaml` -> Temporary testing file
@@ -56,6 +57,18 @@ Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
 - `make stop` - Stop all running services without removing them
 
 **Note**: Use `FILE=docker-compose.yaml make up` to use alternative compose file
+
+### Testing
+
+- `make test` - Run tests for common/middleware using Docker (no Go installation required)
+  - Runs containerized tests with testcontainers support
+  - Includes coverage reporting
+- `make test-v` - Run tests with verbose output
+  - Same as `make test` but with detailed test output
+- `make raw-test` - Run tests directly with Go (requires Go installation)
+- `make raw-test-v` - Run tests directly with Go and verbose output
+
+**Note**: Containerized tests (`make test`) run in a Docker container and require Docker socket access for testcontainers. Raw tests (`make raw-test`) require Go to be installed locally.
 
 ### Cleanup Commands
 
