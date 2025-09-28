@@ -126,6 +126,7 @@ raw-test raw-test-v:
 		verbosity="-v"; \
 	fi; \
 	cd src/common/middleware && go test $$verbosity -coverpkg=common/middleware
+	cd src/group/yearmonth && go test $$verbosity -coverpkg=group/yearmonth
 .PHONY: raw-test raw-test-v
 
 # ==============================================================================
