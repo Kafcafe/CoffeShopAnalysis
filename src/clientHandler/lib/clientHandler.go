@@ -41,14 +41,14 @@ func (cl_h *ClientHandler) Handle() error {
 
 	// Loop over each data type
 	for range amountOfdataTypes {
-		cl_h.log.Info("Number of dataTypes to receive: %v", amountOfdataTypes)
+		cl_h.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
 
 		dataType, amountOfFiles, err := cl_h.handleDataType()
 		if err != nil {
 			cl_h.log.Errorf("Error handling dataType: %v", err)
 		}
 
-		cl_h.log.Info("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
+		cl_h.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
 	}
 
 	return nil
@@ -66,7 +66,7 @@ func (cl_h *ClientHandler) handleDataType() (dataType string, amountOfFiles int,
 	cl_h.log.Infof("Received files dataType: %s", dataType)
 
 	amountOfFiles, err = cl_h.protocol.RcvAmountOfFiles()
-	cl_h.log.Info("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
+	cl_h.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
 
 	if err != nil {
 		return "", 0, fmt.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)

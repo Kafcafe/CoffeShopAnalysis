@@ -7,7 +7,6 @@ import (
 )
 
 var (
-	log         = logging.MustGetLogger("default")
 	initialized bool
 	backend     logging.Backend
 )
@@ -18,12 +17,11 @@ func InitGlobalLogger(logLevel string) error {
 		return nil
 	}
 
-	// Create backend (writes to stderr)
 	backend = logging.NewLogBackend(os.Stderr, "", 0)
 
-	// Format with prefix support
+	// %{module} will be the prefix set in logging.MustGetLogger(prefix)
 	format := logging.MustStringFormatter(
-		`%{time:2006-01-02 15:04:05.000} [%{color} %{level:.5s} %{color:reset}] %{message}`,
+		`%{time:2006-01-02 15:04:05.000} [%{color}%{level:.5s}%{color:reset}] %{module}: %{message}`,
 	)
 
 	backendFormatter := logging.NewBackendFormatter(backend, format)
@@ -36,7 +34,7 @@ func InitGlobalLogger(logLevel string) error {
 
 	backendLeveled.SetLevel(logLevelCode, "")
 
-	logging.SetBackend(backendFormatter)
+	logging.SetBackend(backendLeveled)
 
 	initialized = true
 	return nil

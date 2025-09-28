@@ -49,7 +49,7 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("[MAIN] ClientHandler up with configuration: ip %s, port %d, log level %s",
+	logger.Infof("ClientHandler up with configuration: ip %s, port %d, log level %s",
 		v.GetString("server.ip"),
 		v.GetInt("server.port"),
 		v.GetString("log.level"),
