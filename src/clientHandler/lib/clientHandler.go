@@ -1,126 +1,182 @@
 package clientHandler
 
 import (
+	logger "common/logger"
+	"fmt"
 	"net"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/op/go-logging"
 )
 
 type ClientHandler struct {
-	protocol *Protocol
+	protocol      *Protocol
+	log           *logging.Logger
+	ClientId      string
+	ClientIdShort string
 }
 
+const (
+	SHORT_UUID_LEN = 8
+)
+
+func shortenUuid(longUUID string) string {
+	noDashUuid := strings.ReplaceAll(longUUID, "-", "")
+
+	if SHORT_UUID_LEN > len(noDashUuid) {
+		return noDashUuid
+	}
+
+	return noDashUuid[:SHORT_UUID_LEN]
+}
+
+// NewClientHandler creates a new ClientHandler instance for the given connection.
+// Parameters:
+//
+//	conn: the network connection to handle
+//
+// Returns a pointer to the ClientHandler.
 func NewClientHandler(conn net.Conn) *ClientHandler {
 	protocol := NewProtocol(conn)
+
+	// UUIDv4 Random based
+	clientUuid, _ := uuid.NewRandom()
+	clientId := clientUuid.String()
+	clientIdShorten := shortenUuid(clientId)
+
+	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientIdShorten)
+
 	return &ClientHandler{
-		protocol: protocol,
+		protocol:      protocol,
+		log:           logger.GetLoggerWithPrefix(loggerPrefix),
+		ClientId:      clientId,
+		ClientIdShort: clientIdShorten,
 	}
 }
 
-func (ch *ClientHandler) Handle() error {
-	log.Info("Handling client connection")
+// Handle processes the client connection by receiving and handling data types and files.
+// Returns an error if any step fails.
+func (clH *ClientHandler) Handle() error {
+	clH.log.Info("Handling client connection")
 
-	amountOfdataTypes, err := ch.protocol.rcvAmountOfDataTypes()
-
+	// Receive the number of data types to process
+	amountOfdataTypes, err := clH.protocol.rcvAmountOfDataTypes()
 	if err != nil {
-		log.Errorf("Error receiving amount of dataTypes: %v", err)
-		return err
+		return fmt.Errorf("Error receiving amount of dataTypes: %v", err)
 	}
 
+	// Loop over each data type
 	for range amountOfdataTypes {
+		clH.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
 
-		log.Info("Number of dataTypes to receive: %v", amountOfdataTypes)
-
-		dataType, amountOfFiles, err := ch.handleDataType()
-
+		dataType, amountOfFiles, err := clH.handleDataType()
 		if err != nil {
-			log.Errorf("Error handling dataType: %v", err)
+			clH.log.Errorf("Error handling dataType: %v", err)
 		}
 
-		log.Info("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
+		clH.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
 	}
 
 	return nil
 }
 
-func (ch *ClientHandler) handleDataType() (string, int, error) {
-	dataType, err := ch.protocol.ReceiveFilesdataType()
+// handleDataType receives and processes a single data type, including its files.
+// Returns the data type name, number of files, and any error.
+func (clH *ClientHandler) handleDataType() (dataType string, amountOfFiles int, err error) {
+	dataType, err = clH.protocol.ReceiveFilesDataType()
 
 	if err != nil {
-		log.Errorf("Error receiving files dataType: %v", err)
-		return "", 0, err
+		return "", 0, fmt.Errorf("Error receiving files dataType: %v", err)
 	}
 
-	log.Infof("Received files dataType: %s", dataType)
+	clH.log.Infof("Received files dataType: %s", dataType)
 
-	amountOfFiles, err := ch.protocol.rcvAmountOfFiles()
-
-	log.Info("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
+	amountOfFiles, err = clH.protocol.RcvAmountOfFiles()
+	clH.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
 
 	if err != nil {
-		log.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)
-		return "", 0, err
+		return "", 0, fmt.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
-	err = ch.processdataType(amountOfFiles, dataType)
-
+	err = clH.processdataType(amountOfFiles, dataType)
 	if err != nil {
-		log.Errorf("Error processing files for dataType %s: %v", dataType, err)
-		return "", 0, err
+		return "", 0, fmt.Errorf("Error processing files for dataType %s: %v", dataType, err)
 	}
 
 	return dataType, amountOfFiles, nil
 }
 
-func (ch *ClientHandler) processdataType(amountOfFiles int, dataType string) error {
-	currFile := 0
-	for currFile < amountOfFiles {
-		log.Infof("Processing file %d for dataType %s", currFile, dataType)
-		err := ch.processFile(dataType)
+// processdataType processes all files for a given data type.
+// Parameters:
+//
+//	amountOfFiles: number of files to process
+//	dataType: the type of data
+//
+// Returns an error if processing fails.
+func (clH *ClientHandler) processdataType(amountOfFiles int, dataType string) error {
+	for currFile := 0; currFile < amountOfFiles; currFile++ {
+		clH.log.Infof("Processing file %d for dataType %s", currFile, dataType)
+
+		err := clH.processFile(dataType)
 		if err != nil {
-			log.Errorf("Error processing file %d for dataType %s: %v", currFile, dataType, err)
-			return err
+			return fmt.Errorf("Error processing file %d for dataType %s: %v", currFile, dataType, err)
 		}
-		log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
-		currFile++
+
+		clH.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
 	}
-	log.Infof("Finished processing all %d files for dataType %s", amountOfFiles, dataType)
+
+	clH.log.Infof("Finished processing all %d files for dataType %s", amountOfFiles, dataType)
 	return nil
 }
 
-func (ch *ClientHandler) processFile(dataType string) error {
+// processFile processes a single file by receiving its batches until completion.
+// Parameters:
+//
+//	dataType: the type of data for the file
+//
+// Returns an error if processing fails.
+func (clH *ClientHandler) processFile(dataType string) error {
+	// Flag to control the receiving loop
 	receivingFile := true
 	batchCounter := 0
 
+	// Loop to receive batches until the file is complete
 	for receivingFile {
-		log.Infof("Receiving batch %d for dataType %s", batchCounter, dataType)
-		batch, isLast, err := ch.protocol.ReceiveBatch()
+		clH.log.Infof("Receiving batch %d for dataType %s", batchCounter, dataType)
+		batch, isLast, err := clH.protocol.ReceiveBatch()
 
 		if err != nil {
-			log.Errorf("Error receiving file batch for dataType %s: %v", dataType, err)
-			return err
+			return fmt.Errorf("Error receiving file batch for dataType %s: %v", dataType, err)
 		}
 
+		// If this is the last batch, stop receiving
 		if isLast {
-			return nil
+			receivingFile = false
+			break
 		}
 
 		batchCounter++
-		log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
+		clH.log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
 
 		// stays for compiling porposes, batch is not process
-		log.Infof("Batch data: %s", batch)
+		// Placeholder for batch processing (not implemented)
+		clH.log.Infof("Batch data: %s", batch)
 
-		err = ch.protocol.ConfirmBatchReceived()
+		err = clH.protocol.ConfirmBatchReceived()
 		if err != nil {
-			log.Errorf("Error confirming batch %d for dataType %s: %v", batchCounter, dataType, err)
-			return err
+			return fmt.Errorf("Error confirming batch %d for dataType %s: %v", batchCounter, dataType, err)
 		}
 	}
 	return nil
 }
 
-func (ch *ClientHandler) Shutdown() error {
-	if ch.protocol != nil {
-		ch.protocol.Shutdown()
+// Shutdown closes the protocol connection.
+// Returns an error if closing fails.
+func (clH *ClientHandler) Shutdown() error {
+	if clH.protocol != nil {
+		clH.protocol.Shutdown()
 	}
+
 	return nil
 }
