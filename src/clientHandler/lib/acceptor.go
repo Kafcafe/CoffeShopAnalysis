@@ -83,7 +83,7 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 func (a *Acceptor) createExchangeHandler(routeKey string) (*middleware.MessageMiddlewareExchange, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(a.rabbitConn)
 	if err != nil {
-		return nil, fmt.Errorf("fialed to create middleware handler: %w", middlewareHandler)
+		return nil, fmt.Errorf("fialed to create middleware handler: %w", err)
 	}
 
 	return middlewareHandler.CreateTopicExchange(routeKey)

@@ -54,7 +54,7 @@ func (m *MessageMiddlewareExchange) StopConsuming() (middlewareError MessageMidd
 	if err != nil {
 		return MessageMiddlewareDisconnectedError
 	}
-	return 0
+	return MessageMiddlewareSuccess
 }
 
 func (m *MessageMiddlewareExchange) Send(message []byte) (middlewareError MessageMiddlewareError) {
@@ -72,7 +72,7 @@ func (m *MessageMiddlewareExchange) Send(message []byte) (middlewareError Messag
 	if err != nil {
 		return MessageMiddlewareMessageError
 	}
-	return 0
+	return MessageMiddlewareSuccess
 }
 
 func (m *MessageMiddlewareExchange) Close() (middlewareError MessageMiddlewareError) {
@@ -81,5 +81,5 @@ func (m *MessageMiddlewareExchange) Close() (middlewareError MessageMiddlewareEr
 		return MessageMiddlewareCloseError
 	}
 
-	return 0
+	return MessageMiddlewareSuccess
 }

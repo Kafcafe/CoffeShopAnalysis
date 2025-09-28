@@ -49,7 +49,7 @@ func (m *MessageMiddlewareQueue) StopConsuming() (middlewareError MessageMiddlew
 	if err != nil {
 		return MessageMiddlewareDisconnectedError
 	}
-	return 0
+	return MessageMiddlewareSuccess
 }
 
 func (m *MessageMiddlewareQueue) Send(message []byte) (middlewareError MessageMiddlewareError) {
@@ -68,7 +68,7 @@ func (m *MessageMiddlewareQueue) Send(message []byte) (middlewareError MessageMi
 		return MessageMiddlewareMessageError
 	}
 
-	return 0
+	return MessageMiddlewareSuccess
 }
 
 func (m *MessageMiddlewareQueue) Close() (middlewareError MessageMiddlewareError) {
@@ -77,5 +77,5 @@ func (m *MessageMiddlewareQueue) Close() (middlewareError MessageMiddlewareError
 		return MessageMiddlewareCloseError
 	}
 
-	return 0
+	return MessageMiddlewareSuccess
 }

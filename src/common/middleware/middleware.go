@@ -11,7 +11,8 @@ type ConsumeChannel = *<-chan amqp.Delivery
 type MessageMiddlewareError int
 
 const (
-	MessageMiddlewareMessageError MessageMiddlewareError = iota + 1
+	MessageMiddlewareSuccess MessageMiddlewareError = iota
+	MessageMiddlewareMessageError
 	MessageMiddlewareDisconnectedError
 	MessageMiddlewareCloseError
 	MessageMiddlewareDeleteError
