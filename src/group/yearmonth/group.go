@@ -27,7 +27,9 @@ func (g Group) Add(record Record) {
 }
 
 func ExtractYearMonth(record Record) YearMonth {
-	// Assuming the date is in the format "YYYY-MM-DD HH:MM:SS" and is the last field
+	// Assuming the date is in the format "YYYY-MM-DD HH:MM:SS"
+	// Assumming item_id,quantity,subtotal,date
+	// Example: "6,3,28.5,2023-07-01 07:00:00"
 	fields := strings.Split(record, ",")
 	dateField := fields[len(fields)-1]
 	dateField = strings.TrimSpace(dateField)
