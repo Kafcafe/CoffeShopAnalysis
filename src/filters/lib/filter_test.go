@@ -55,3 +55,19 @@ func TestFilterByAmountBatch(t *testing.T) {
 	}
 	require.Equal(t, expectedResult, result, "Expected FilterByAmount to return the correct filtered slice")
 }
+
+func TestFilterBatchByAmount2(t *testing.T) {
+	filter := lib.NewFilter()
+	result := filter.FilterByAmount(batchExample, 70)
+	expectedResult := []string{
+		"6b00c575-ec6e-4070-82d2-26d66b017b8b,3,1,,,77.0,0.0,77.0,2023-07-01 07:00:57",
+	}
+	require.Equal(t, expectedResult, result, "Expected FilterByAmount to return the correct filtered slice")
+}
+
+func TestFilterBatchByAmountAllFiltered(t *testing.T) {
+	filter := lib.NewFilter()
+	result := filter.FilterByAmount(batchExample, 80)
+	expectedResult := []string{}
+	require.Equal(t, expectedResult, result, "Expected FilterByAmount to return the correct filtered slice")
+}
