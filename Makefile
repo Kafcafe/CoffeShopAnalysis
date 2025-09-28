@@ -9,6 +9,7 @@
 #   make image    - Build Docker images
 #   make up       - Start all services
 #   make down     - Stop all services
+#   make test     - Run tests (containerized, no Go required)
 #   make clean    - Clean up Docker resources
 # ==============================================================================
 
@@ -107,14 +108,25 @@ stop:
 
 
 test test-v:
-	@echo "🧪 Running tests for common/middleware"
+	@echo "🧪 Running tests for common/middleware using Docker"
 	@echo ""; \
 	verbosity=""; \
 	if [ "$@" = "test-v" ]; then \
 		verbosity="-v"; \
 	fi; \
-	cd src/common/middleware && go test $$verbosity -coverpkg=common/middleware
+	docker build -f ./src/common/Dockerfile.test -t go-test:latest ./src/common/ && \
+	docker run --rm -v /var/run/docker.sock:/var/run/docker.sock go-test:latest test ./middleware $$verbosity -coverpkg=common/middleware
 .PHONY: test test-v
+
+raw-test raw-test-v:
+	@echo "🧪 Running tests for common/middleware"
+	@echo ""; \
+	verbosity=""; \
+	if [ "$@" = "raw-test-v" ]; then \
+		verbosity="-v"; \
+	fi; \
+	cd src/common/middleware && go test $$verbosity -coverpkg=common/middleware
+.PHONY: raw-test raw-test-v
 
 # ==============================================================================
 # DOCKER CLEANUP COMMANDS
@@ -152,3 +164,4 @@ clean-containers:
 clean: clean-containers clean-images
 	@echo "Limpieza básica completada"
 .PHONY: clean
+

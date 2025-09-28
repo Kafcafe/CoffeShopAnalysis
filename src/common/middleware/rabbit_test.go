@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"github.com/testcontainers/testcontainers-go"
-	"github.com/testcontainers/testcontainers-go/wait"
+	"github.com/testcontainers/testcontainers-go/modules/rabbitmq"
 )
 
 var (
@@ -22,20 +22,15 @@ func setupRabbitContainer(t *testing.T) (host string, port int) {
 	containerOnce.Do(func() {
 		ctx := context.Background()
 
-		req := testcontainers.ContainerRequest{
-			Image:        "rabbitmq:4.1.4-management",
-			ExposedPorts: []string{"5672/tcp"},
-			Env: map[string]string{
+		rabbitContainer, containerErr = rabbitmq.Run(ctx,
+			"rabbitmq:4.1.4-management",
+			rabbitmq.WithAdminUsername("user"),
+			rabbitmq.WithAdminPassword("password"),
+			testcontainers.WithEnv(map[string]string{
 				"RABBITMQ_DEFAULT_USER": "user",
 				"RABBITMQ_DEFAULT_PASS": "password",
-			},
-			WaitingFor: wait.ForLog("Server startup complete"),
-		}
-
-		rabbitContainer, containerErr = testcontainers.GenericContainer(ctx, testcontainers.GenericContainerRequest{
-			ContainerRequest: req,
-			Started:          true,
-		})
+			}),
+		)
 		if containerErr != nil {
 			return
 		}
