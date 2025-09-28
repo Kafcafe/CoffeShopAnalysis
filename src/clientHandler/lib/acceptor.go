@@ -81,6 +81,7 @@ func (a *Acceptor) Run() error {
 
 		a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 		a.currClient = NewClientHandler(conn)
+		a.log.Infof("Assigned client id %s with short form %s", a.currClient.ClientId, a.currClient.ClientIdShort)
 
 		err = a.currClient.Handle()
 		if err != nil {

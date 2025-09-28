@@ -3,7 +3,8 @@ module ClientHandler
 go 1.25.0
 
 require (
-	"common" v0.0.1
+	common v0.0.1
+	github.com/google/uuid v1.6.0
 	github.com/op/go-logging v0.0.0-20160315200505-970db520ece7
 	github.com/spf13/viper v1.21.0
 )
