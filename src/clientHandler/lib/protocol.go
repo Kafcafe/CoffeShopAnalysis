@@ -1,28 +1,45 @@
 package clientHandler
 
 import (
+	"ClientHandler/logger"
 	"encoding/binary"
 	"net"
+
+	"github.com/op/go-logging"
 )
 
 type Protocol struct {
 	conn net.Conn
+	log  *logging.Logger
 }
 
 const (
 	BatchRcvCode = 0x01
 	EndOfBatch   = 0x02
 	MoreBatches  = 0x03
+
+	SIZEOF_UINT32 = 4
+	SIZEOF_UINT8  = 1
 )
 
+// NewProtocol creates a new Protocol instance for the given connection.
+// Parameters:
+//
+//	conn: the network connection
+//
+// Returns a pointer to the Protocol.
 func NewProtocol(conn net.Conn) *Protocol {
 	return &Protocol{
 		conn: conn,
+		log:  logger.GetLoggerWithPrefix("[PROTOCOL]"),
 	}
 }
 
-func (p *Protocol) rcvAmountOfDataTypes() (int, error) {
-	lenBytes := make([]byte, 4)
+// rcvAmountOfDataTypes receives the number of data types from the connection.
+// Returns the amount as int or an error.
+func (p *Protocol) rcvAmountOfDataTypes() (amountOfDataTypes int, err error) {
+	lenBytes := make([]byte, SIZEOF_UINT32)
+
 	if err := p.receiveAll(lenBytes); err != nil {
 		return 0, err
 	}
@@ -32,85 +49,110 @@ func (p *Protocol) rcvAmountOfDataTypes() (int, error) {
 	return int(amount), nil
 }
 
-func (p *Protocol) ReceiveFilesdataType() (string, error) {
-	lenBytes := make([]byte, 4)
+// ReceiveFilesdataType receives the data type string from the connection.
+// Returns the data type or an error.
+func (p *Protocol) ReceiveFilesDataType() (dataType string, err error) {
+	lenBytes := make([]byte, SIZEOF_UINT32)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return "", err
 	}
+
 	dataLen := p.ntohsUint32(lenBytes)
 
-	data := make([]byte, dataLen)
-	if err := p.receiveAll(data); err != nil {
+	dataTypeBytes := make([]byte, dataLen)
+	if err := p.receiveAll(dataTypeBytes); err != nil {
 		return "", err
 	}
 
-	return string(data), nil
+	return string(dataTypeBytes), nil
 }
 
-func (p *Protocol) receiveLine() (string, error) {
+// receiveLine receives a single line string from the connection.
+// Returns the line or an error.
+func (p *Protocol) receiveLine() (line string, err error) {
+	p.log.Debug("rcv line length")
 
-	log.Debug("[PROTOCOL] rcv line length")
-	lenBytes := make([]byte, 4)
+	lenBytes := make([]byte, SIZEOF_UINT32)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return "", err
 	}
 
 	dataLen := int(p.ntohsUint32(lenBytes))
+	p.log.Debug("rcv line data %v", dataLen)
 
-	log.Debug("[PROTOCOL] rcv line data %v", dataLen)
-	data := make([]byte, dataLen)
-	if err := p.receiveAll(data); err != nil {
+	lineBytes := make([]byte, dataLen)
+	if err := p.receiveAll(lineBytes); err != nil {
 		return "", err
 	}
 
-	log.Debug("[PROTOCOL] line received successfully")
-	return string(data), nil
+	p.log.Debug("line received successfully")
+	return string(lineBytes), nil
 }
 
-func (p *Protocol) ReceiveBatch() ([]string, bool, error) {
-	endOfBatch := make([]byte, 1)
+func (p *Protocol) receiveLines(dataLen int) (lines []string, err error) {
+	lines = make([]string, dataLen)
 
-	log.Debug("[PROTOCOL] rcv end of batch code")
-	if err := p.receiveAll(endOfBatch); err != nil {
-		return []string{}, false, err
+	// Loop to receive each line in the batch
+	for i := 0; i < dataLen; i++ {
+		p.log.Debug("rcv line")
+		line, err := p.receiveLine()
+
+		if err != nil {
+			return lines, err
+		}
+
+		lines[i] = line
 	}
 
-	if endOfBatch[0] == EndOfBatch {
+	p.log.Debug("batch received successfully")
+	return lines, nil
+}
+
+// ReceiveBatch receives a batch of lines from the connection.
+// Returns the lines, a flag indicating if it's the last batch, and any error.
+func (p *Protocol) ReceiveBatch() (lines []string, isEndOfBatch bool, err error) {
+	endOfBatchBytes := make([]byte, SIZEOF_UINT8)
+
+	p.log.Debug("rcv end of batch code")
+	if err := p.receiveAll(endOfBatchBytes); err != nil {
+		return []string{}, false, err
+	}
+	endOfBatchCode := endOfBatchBytes[0]
+
+	if endOfBatchCode == EndOfBatch {
 		return []string{}, true, nil
 	}
 
-	log.Debug("[PROTOCOL] rcv batch data")
-	lenBytes := make([]byte, 4)
+	p.log.Debug("rcv batch data")
+
+	lenBytes := make([]byte, SIZEOF_UINT32)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return []string{}, false, err
 	}
 
 	dataLen := int(p.ntohsUint32(lenBytes))
-	log.Debug("[PROTOCOL] rcv batch with ", dataLen, " lines")
-	lines := make([]string, dataLen)
+	p.log.Debugf("rcv batch with %d lines", dataLen)
 
-	for i := 0; i < dataLen; i++ {
-		log.Debug("[PROTOCOL] rcv line ")
-		line, err := p.receiveLine()
-		if err != nil {
-			return lines, false, err
-		}
-		lines[i] = line
-	}
-	log.Debug("[PROTOCOL] batch received successfully")
+	lines, err = p.receiveLines(dataLen)
 	return lines, false, nil
 }
 
+// ConfirmBatchReceived sends a confirmation code for the received batch.
+// Returns an error if sending fails.
 func (p *Protocol) ConfirmBatchReceived() error {
 	code := []byte{BatchRcvCode}
+
 	if err := p.sendAll(code); err != nil {
 		return err
 	}
+
 	return nil
 }
 
-func (p *Protocol) rcvAmountOfFiles() (int, error) {
-	lenBytes := make([]byte, 4)
+// rcvAmountOfFiles receives the number of files from the connection.
+// Returns the amount as int or an error.
+func (p *Protocol) RcvAmountOfFiles() (int, error) {
+	lenBytes := make([]byte, SIZEOF_UINT32)
 	if err := p.receiveAll(lenBytes); err != nil {
 		return 0, err
 	}
@@ -119,48 +161,79 @@ func (p *Protocol) rcvAmountOfFiles() (int, error) {
 	return int(amount), nil
 }
 
+// sendAll sends all data over the connection, handling partial writes.
+// Parameters:
+//
+//	data: the byte slice to send
+//
+// Returns an error if sending fails.
 func (p *Protocol) sendAll(data []byte) error {
-
 	len := len(data)
 
+	// Loop to ensure all data is sent
 	for sent := 0; sent < len; {
 		n, err := p.conn.Write(data[sent:])
 		if err != nil {
 			return err
 		}
+
 		sent += n
 	}
 
 	return nil
 }
 
+// receiveAll receives all expected data into the array, handling partial reads.
+// Parameters:
+//
+//	array: the byte slice to fill
+//
+// Returns an error if receiving fails.
 func (p *Protocol) receiveAll(array []byte) error {
 	len := len(array)
 	received := 0
+
+	// Loop to ensure all data is received
 	for received < int(len) {
 		n, err := p.conn.Read(array[received:])
 		if err != nil {
 			return err
 		}
+
 		received += n
 	}
 
 	return nil
 }
 
+// htonsUint32 converts a uint32 to big-endian byte array.
+// Parameters:
+//
+//	val: the value to convert
+//
+// Returns the byte array.
 func (p *Protocol) htonsUint32(val uint32) []byte {
-	bytes := make([]byte, 4)
+	bytes := make([]byte, SIZEOF_UINT32)
 	binary.BigEndian.PutUint32(bytes, val)
 	return bytes
 }
 
+// ntohsUint32 converts a big-endian byte array to uint32.
+// Parameters:
+//
+//	data: the byte array
+//
+// Returns the uint32 value.
 func (p *Protocol) ntohsUint32(data []byte) uint32 {
 	return binary.BigEndian.Uint32(data)
 }
 
+// Shutdown closes the connection.
+// Returns an error if closing fails.
 func (p *Protocol) Shutdown() error {
 	if p.conn != nil {
 		return p.conn.Close()
 	}
+
 	return nil
 }
