@@ -6,8 +6,7 @@ import (
 	"strings"
 )
 
-type Filter struct {
-}
+type Filter struct{}
 
 func NewFilter() *Filter {
 	return &Filter{}
