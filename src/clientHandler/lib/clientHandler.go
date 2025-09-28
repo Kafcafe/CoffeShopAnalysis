@@ -4,31 +4,15 @@ import (
 	logger "common/logger"
 	"fmt"
 	"net"
-	"strings"
 
-	"github.com/google/uuid"
 	"github.com/op/go-logging"
 )
 
 type ClientHandler struct {
-	protocol      *Protocol
-	log           *logging.Logger
-	ClientId      string
-	ClientIdShort string
-}
-
-const (
-	SHORT_UUID_LEN = 8
-)
-
-func shortenUuid(longUUID string) string {
-	noDashUuid := strings.ReplaceAll(longUUID, "-", "")
-
-	if SHORT_UUID_LEN > len(noDashUuid) {
-		return noDashUuid
-	}
-
-	return noDashUuid[:SHORT_UUID_LEN]
+	protocol         *Protocol
+	log              *logging.Logger
+	ClientId         ClientUuid
+	exchangeHandlers ExchangeHandlers
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -37,21 +21,16 @@ func shortenUuid(longUUID string) string {
 //	conn: the network connection to handle
 //
 // Returns a pointer to the ClientHandler.
-func NewClientHandler(conn net.Conn) *ClientHandler {
+func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers) *ClientHandler {
 	protocol := NewProtocol(conn)
 
-	// UUIDv4 Random based
-	clientUuid, _ := uuid.NewRandom()
-	clientId := clientUuid.String()
-	clientIdShorten := shortenUuid(clientId)
-
-	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientIdShorten)
+	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
 
 	return &ClientHandler{
-		protocol:      protocol,
-		log:           logger.GetLoggerWithPrefix(loggerPrefix),
-		ClientId:      clientId,
-		ClientIdShort: clientIdShorten,
+		protocol:         protocol,
+		log:              logger.GetLoggerWithPrefix(loggerPrefix),
+		ClientId:         clientId,
+		exchangeHandlers: exchangeHandlers,
 	}
 }
 

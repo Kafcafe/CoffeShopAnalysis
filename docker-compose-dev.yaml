@@ -35,6 +35,11 @@ services:
             condition: service_healthy
         networks:
           - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
         hostname: "server"
         build:
           context: ./src/

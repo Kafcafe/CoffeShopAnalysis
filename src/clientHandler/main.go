@@ -26,7 +26,7 @@ func InitConfig() (*viper.Viper, error) {
 
 	// Configure viper to read env variables with the CLI_ prefix
 	v.AutomaticEnv()
-	v.SetEnvPrefix("cli")
+	//v.SetEnvPrefix("cli")
 	// Use a replacer to replace env variables underscores with points. This let us
 	// use nested configurations in the config file and at the same time define
 	// env variables for the nested configurations
@@ -49,10 +49,17 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("ClientHandler up with configuration: ip %s, port %d, log level %s",
+	logger.Infof("ClientHandler up with configuration: ip: %s | port: %d | loglevel: %s",
 		v.GetString("server.ip"),
 		v.GetInt("server.port"),
 		v.GetString("log.level"),
+	)
+
+	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
+		v.GetString("rabbitmq.host"),
+		v.GetInt("rabbitmq.port"),
+		v.GetString("rabbitmq.user"),
+		v.GetString("rabbitmq.pass"),
 	)
 }
 
@@ -77,9 +84,13 @@ func main() {
 	PrintConfig(config, logger)
 
 	// Create clientHandler configuration from the loaded config
-	clientHandlerConfig := clientHandler.NewClientHandlerConfig(
+	clientHandlerConfig := clientHandler.NewAcceptorConfig(
 		config.GetString("server.ip"),
 		config.GetInt("server.port"),
+		config.GetString("rabbitmq.user"),
+		config.GetString("rabbitmq.pass"),
+		config.GetString("rabbitmq.host"),
+		config.GetInt("rabbitmq.port"),
 	)
 
 	// Create acceptor without running it yet
@@ -92,7 +103,7 @@ func main() {
 	// Start acceptor to handle new connections until finished
 	err = acceptor.Run()
 	if err != nil {
-		logger.Error("Error running acceptor: %v\n", err)
+		logger.Errorf("Error running acceptor: %v\n", err)
 		os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
 	}
 

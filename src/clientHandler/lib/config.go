@@ -1,8 +1,12 @@
 package clientHandler
 
-type ClientHandlerConfig struct {
-	Ip   string
-	Port int
+type AcceptorConfig struct {
+	Ip             string
+	Port           int
+	rabbitUser     string
+	rabbitPassword string
+	rabbitHost     string
+	rabbitPort     int
 }
 
 // NewClientHandlerConfig creates a new ClientHandlerConfig instance.
@@ -12,9 +16,13 @@ type ClientHandlerConfig struct {
 //	port: the server port number
 //
 // Returns a pointer to the ClientHandlerConfig.
-func NewClientHandlerConfig(ip string, port int) *ClientHandlerConfig {
-	return &ClientHandlerConfig{
-		Ip:   ip,
-		Port: port,
+func NewAcceptorConfig(ip string, port int, rabbitUser, rabbitPassword, rabbitHost string, rabbitPort int) *AcceptorConfig {
+	return &AcceptorConfig{
+		Ip:             ip,
+		Port:           port,
+		rabbitUser:     rabbitUser,
+		rabbitPassword: rabbitPassword,
+		rabbitHost:     rabbitHost,
+		rabbitPort:     rabbitPort,
 	}
 }
