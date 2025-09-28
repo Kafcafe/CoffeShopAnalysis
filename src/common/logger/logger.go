@@ -21,7 +21,7 @@ func InitGlobalLogger(logLevel string) error {
 
 	// %{module} will be the prefix set in logging.MustGetLogger(prefix)
 	format := logging.MustStringFormatter(
-		`%{time:2006-01-02 15:04:05.000} [%{color}%{level:.5s}%{color:reset}] %{module}: %{message}`,
+		`%{time:2006-01-02 15:04:05.000} %{color}%{level:.5s}%{color:reset} %{module}: %{message}`,
 	)
 
 	backendFormatter := logging.NewBackendFormatter(backend, format)

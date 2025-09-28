@@ -1,7 +1,7 @@
 package clientHandler
 
 import (
-	"ClientHandler/logger"
+	logger "common/logger"
 	"fmt"
 	"net"
 
@@ -24,7 +24,7 @@ func NewClientHandler(conn net.Conn) *ClientHandler {
 
 	return &ClientHandler{
 		protocol: protocol,
-		log:      logger.GetLoggerWithPrefix("[CLIENT_HANDLER]"),
+		log:      logger.GetLoggerWithPrefix("[CL_H]"),
 	}
 }
 

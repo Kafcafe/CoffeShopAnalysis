@@ -1,7 +1,7 @@
 package clientHandler
 
 import (
-	"ClientHandler/logger"
+	logger "common/logger"
 	"encoding/binary"
 	"net"
 
@@ -31,7 +31,7 @@ const (
 func NewProtocol(conn net.Conn) *Protocol {
 	return &Protocol{
 		conn: conn,
-		log:  logger.GetLoggerWithPrefix("[PROTOCOL]"),
+		log:  logger.GetLoggerWithPrefix("[PROTO]"),
 	}
 }
 

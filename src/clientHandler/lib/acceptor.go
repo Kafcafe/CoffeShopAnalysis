@@ -1,7 +1,7 @@
 package clientHandler
 
 import (
-	"ClientHandler/logger"
+	logger "common/logger"
 	"fmt"
 	"net"
 	"os"
