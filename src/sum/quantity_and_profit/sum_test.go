@@ -43,10 +43,12 @@ func TestAddRecords_MultipleDifferentItems(t *testing.T) {
 	}
 }
 
-func TestAddRecords_InvalidRecordIgnored(t *testing.T) {
+func TestAddRecords_InvalidRecordsIgnored(t *testing.T) {
 	sum := New("2025-09")
 	sum.AddRecords([]Record{
 		"x,2,10.5", // invalid
+		"1,x,20.0", // invalid
+		"1,2,x",    // invalid
 		"1,2,20.0", // valid
 	})
 
