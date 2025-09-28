@@ -105,9 +105,16 @@ stop:
 	docker compose -f $(FILE) stop
 .PHONY: stop
 
-test:
-	cd ./test && go test
-.PHONY: test
+
+test test-v:
+	@echo "🧪 Running tests for common/middleware"
+	@echo ""; \
+	verbosity=""; \
+	if [ "$@" = "test-v" ]; then \
+		verbosity="-v"; \
+	fi; \
+	cd src/common/middleware && go test $$verbosity -coverpkg=common/middleware
+.PHONY: test test-v
 
 # ==============================================================================
 # DOCKER CLEANUP COMMANDS
