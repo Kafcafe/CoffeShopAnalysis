@@ -40,6 +40,7 @@ func (m *MessageMiddlewareExchange) StartConsuming(onMessageCallback OnMessageCa
 			err := onMessageCallback(msg)
 			if err != nil {
 				errChan <- MessageMiddlewareMessageError
+				middleware_logger.Errorf("Error while processing message: %v", err)
 			}
 		}
 	}()

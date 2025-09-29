@@ -38,6 +38,7 @@ type ExchangeHandlers struct {
 // handleSignal listens for SIGTERM signal and triggers shutdown.
 func (f *FilterWorker) handleSignal() {
 	<-f.sigChan
+	f.log.Info("Handling signal")
 	f.Shutdown()
 }
 
@@ -105,7 +106,25 @@ func (f *FilterWorker) createExchangeHandlers() error {
 	return nil
 }
 
+const (
+	ACK          = 0
+	NACK_REQUEUE = 1
+	NACK_DISCARD = 2
+)
+
+func (f *FilterWorker) answerMessage(ackType int, message amqp.Delivery) {
+	switch ackType {
+	case ACK:
+	case NACK_REQUEUE:
+		message.Nack(false, true)
+	case NACK_DISCARD:
+		message.Nack(false, false)
+	}
+}
+
 func (f *FilterWorker) filterMessageByYear(message amqp.Delivery) error {
+	defer f.answerMessage(NACK_DISCARD, message)
+
 	var msg middleware.Message
 	err := json.Unmarshal(message.Body, &msg)
 	if err != nil {
@@ -122,6 +141,7 @@ func (f *FilterWorker) filterMessageByYear(message amqp.Delivery) error {
 	filteredBatch := filter.FilterByYear(batch, f.conf.query1.FromYear, f.conf.query1.ToYear)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByYear")
+		f.answerMessage(ACK, message)
 		return nil
 	}
 
@@ -137,12 +157,14 @@ func (f *FilterWorker) filterMessageByYear(message amqp.Delivery) error {
 	}
 
 	switch msg.DataType {
-	case "transaction":
+	case "transactions":
 		f.exchangeHandlers.transactionsYearFilteredPublishing.Send(msgBytes)
+		f.answerMessage(ACK, message)
 	case "transaction_items":
 		f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(msgBytes)
+		f.answerMessage(ACK, message)
 	default:
-		return fmt.Errorf("received unprocessabble message in filterMessageByYear")
+		return fmt.Errorf("received unprocessabble message in filterMessageByYear of type %s", msg.DataType)
 	}
 
 	f.log.Info("Filtered message and sent filterMessageByYear batch")
@@ -160,12 +182,13 @@ func (f *FilterWorker) Run() error {
 
 	f.exchangeHandlers.transactionsSubscribing.StartConsuming(f.filterMessageByYear, f.errChan)
 
-	for err := range <-f.errChan {
+	for err := range f.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
 			f.log.Errorf("Error found while filtering message of type: %v", err)
 		}
 
 		if !f.isRunning {
+			f.log.Info("Inside error loop: breaking")
 			break
 		}
 	}
