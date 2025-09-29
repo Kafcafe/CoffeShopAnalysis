@@ -126,6 +126,11 @@ raw-test raw-test-v:
 		verbosity="-v"; \
 	fi; \
 	cd src/common/middleware && go test $$verbosity -coverpkg=common/middleware
+	@echo ""; \
+
+	@echo "🧪 Running tests for filters/lib"
+	@echo ""; \
+	cd src/filters/lib && go test $$verbosity -coverpkg=filters/lib
 .PHONY: raw-test raw-test-v
 
 # ==============================================================================
