@@ -24,7 +24,8 @@ type FilterByHourWorker struct {
 }
 
 type HourExchangeHandlers struct {
-	transactionsYearFilteredSubscription middleware.MessageMiddlewareExchange
+	transactionsYearFilteredSubscription      middleware.MessageMiddlewareExchange
+	transactionsYearAndHourFilteredPublishing middleware.MessageMiddlewareExchange
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -59,6 +60,45 @@ func NewFilterByHourWorker(rabbitConf middleware.RabbitConfig, filtersConfig Hou
 	}, nil
 }
 
+func (f *FilterByHourWorker) createExchangeHandlersForPostFiltering() (*middleware.MessageMiddlewareExchange, error) {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(f.rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("fialed to create middleware handler: %w", err)
+	}
+
+	transactionsYearAndHourFilteredPublishingRouteKey := "transactions.year-hour-filtered.all"
+	transactionsYearAndHourFilteredPublishingHandler, err := middlewareHandler.CreateTopicExchangeStandalone(transactionsYearAndHourFilteredPublishingRouteKey)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating exchange handler for ransactions.year-hour-filtered.*: %v", err)
+	}
+
+	// Declare and bind for Query 1
+	query1RouteKey := "transactions.year-hour-filtered.q1"
+	_, err = middlewareHandler.DeclareQueue(query1RouteKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare queue %s: %v", query1RouteKey, err)
+	}
+
+	err = middlewareHandler.BindQueue(query1RouteKey, middleware.EXCHANGE_NAME_TOPIC_TYPE, transactionsYearAndHourFilteredPublishingRouteKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	// Declare and bind for Query 3
+	query3RouteKey := "transactions.year-hour-filtered.q3"
+	_, err = middlewareHandler.DeclareQueue(query3RouteKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare queue %s: %v", query3RouteKey, err)
+	}
+
+	err = middlewareHandler.BindQueue(query3RouteKey, middleware.EXCHANGE_NAME_TOPIC_TYPE, transactionsYearAndHourFilteredPublishingRouteKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	return transactionsYearAndHourFilteredPublishingHandler, nil
+}
+
 func (f *FilterByHourWorker) createExchangeHandlers() error {
 	transactionsYearFilteredSubscriptionRouteKey := "transactions.transactions"
 	transactionsYearFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearFilteredSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
@@ -66,9 +106,16 @@ func (f *FilterByHourWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
 
-	f.exchangeHandlers = HourExchangeHandlers{
-		transactionsYearFilteredSubscription: *transactionsYearFilteredSubscriptionHandler,
+	transactionsYearAndHourFilteredPublishingHandler, err := f.createExchangeHandlersForPostFiltering()
+	if err != nil {
+		return err
 	}
+
+	f.exchangeHandlers = HourExchangeHandlers{
+		transactionsYearFilteredSubscription:      *transactionsYearFilteredSubscriptionHandler,
+		transactionsYearAndHourFilteredPublishing: *transactionsYearAndHourFilteredPublishingHandler,
+	}
+
 	return nil
 }
 
@@ -111,23 +158,16 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 	}
 
 	newMsg := middleware.NewMessage(msg.DataType, msg.ClientId, payload)
-	_, err = json.Marshal(newMsg)
+	msgBytes, err := json.Marshal(newMsg)
 	if err != nil {
 		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", msg.DataType, err)
 	}
 
+	middleError := f.exchangeHandlers.transactionsYearAndHourFilteredPublishing.Send(msgBytes)
+	if middleError != middleware.MessageMiddlewareSuccess {
+		return fmt.Errorf("problem while sending message to transactionsYearAndHourFilteredPublishing")
+	}
 	f.answerMessage(ACK, message)
-
-	// switch msg.DataType {
-	// case "transactions":
-	// 	f.exchangeHandlers.transactionsYearFilteredPublishing.Send(msgBytes)
-	// 	f.answerMessage(ACK, message)
-	// case "transaction_items":
-	// 	f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(msgBytes)
-	// 	f.answerMessage(ACK, message)
-	// default:
-	// 	return fmt.Errorf("received unprocessabble message in filterMessageByHour of type %s", msg.DataType)
-	// }
 
 	f.log.Info("Filtered message and sent filterMessageByHour batch")
 	return nil
