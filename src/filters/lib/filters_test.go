@@ -49,8 +49,8 @@ func TestNewFilter(t *testing.T) {
 
 func TestFilterByDatetimeHourEmpty(t *testing.T) {
 	filter := lib.NewFilter()
-	result := filter.FilterByDatetimeHour([]string{}, 2023, 2023, 6, 23)
-	require.Equal(t, []string{}, result, "Expected FilterByDatetimeHour to return an empty slice")
+	result := filter.FilterByHour([]string{}, 6, 23)
+	require.Equal(t, []string{}, result, "Expected FilterByHour to return an empty slice")
 }
 
 func TestFilterByYearMonthEmpty(t *testing.T) {
@@ -109,7 +109,7 @@ func TestFilterByYearMonthBatchNone(t *testing.T) {
 
 func TestFilterByDatetimeHourBatch(t *testing.T) {
 	filter := lib.NewFilter()
-	result := filter.FilterByDatetimeHour(BatchExample2WithHours, 2023, 2023, 6, 23)
+	result := filter.FilterByHour(BatchExample2WithHours, 6, 23)
 	expected := []string{
 		"2ae6d188-76c2-4095-b861-ab97d3cd9312,4,5,,,38.0,0.0,38.0,2023-07-01 06:15:00",
 		"7d0a474d-62f4-442a-96b6-a5df2bda8832,7,1,,,33.0,0.0,33.0,2023-07-01 07:00:02",
@@ -129,12 +129,12 @@ func TestFilterByDatetimeHourBatch(t *testing.T) {
 		"eb89be5f-db4f-4e0d-9196-8bebaac57f33,6,1,,,36.0,0.0,36.0,2023-07-01 21:01:52",
 		"48968d91-dd5a-47f2-8646-42f8b587932f,3,1,,,30.0,0.0,30.0,2023-07-01 22:01:54",
 	}
-	require.Equal(t, expected, result, "Expected FilterByDatetimeHour to return the full batch")
+	require.Equal(t, expected, result, "Expected FilterByHour to return the correct filtered slice")
 }
 
 func TestFilterByDatetimeHourBatchNone(t *testing.T) {
 	filter := lib.NewFilter()
-	result := filter.FilterByDatetimeHour(BatchExample2WithHours, 2022, 2022, 6, 23)
+	result := filter.FilterByHour(BatchExample2WithHours, 24, 25)
 	expectedResult := []string{}
-	require.Equal(t, expectedResult, result, "Expected FilterByDatetimeHour to return an empty slice")
+	require.Equal(t, expectedResult, result, "Expected FilterByHour to return an empty slice")
 }
