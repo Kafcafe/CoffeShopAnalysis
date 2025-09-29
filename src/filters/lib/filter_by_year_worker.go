@@ -3,7 +3,6 @@ package filters
 import (
 	"common/logger"
 	"common/middleware"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -101,43 +100,31 @@ func (f *FilterByYearWorker) answerMessage(ackType int, message amqp.Delivery) {
 func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 	defer f.answerMessage(NACK_DISCARD, message)
 
-	var msg middleware.Message
-	err := json.Unmarshal(message.Body, &msg)
-	if err != nil {
-		return err
-	}
-
-	batch := []string{}
-	err = json.Unmarshal(msg.Payload, &batch)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
 
 	filter := NewFilter()
-	filteredBatch := filter.FilterByYear(batch, f.conf.FromYear, f.conf.ToYear)
+	filteredBatch := filter.FilterByYear(msg.Payload, f.conf.FromYear, f.conf.ToYear)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByYear")
 		f.answerMessage(ACK, message)
 		return nil
 	}
 
-	payload, err := json.Marshal(filteredBatch)
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch)
+	responseBytes, err := response.ToBytes()
 	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", msg.DataType, err)
-	}
-
-	newMsg := middleware.NewMessage(msg.DataType, msg.ClientId, payload)
-	msgBytes, err := json.Marshal(newMsg)
-	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", msg.DataType, err)
+		return err
 	}
 
 	switch msg.DataType {
 	case "transactions":
-		f.exchangeHandlers.transactionsYearFilteredPublishing.Send(msgBytes)
+		f.exchangeHandlers.transactionsYearFilteredPublishing.Send(responseBytes)
 		f.answerMessage(ACK, message)
 	case "transaction_items":
-		f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(msgBytes)
+		f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(responseBytes)
 		f.answerMessage(ACK, message)
 	default:
 		return fmt.Errorf("received unprocessabble message in filterMessageByYear of type %s", msg.DataType)

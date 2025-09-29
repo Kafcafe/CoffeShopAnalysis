@@ -3,7 +3,6 @@ package clientHandler
 import (
 	logger "common/logger"
 	"common/middleware"
-	"encoding/json"
 	"fmt"
 	"net"
 
@@ -62,19 +61,12 @@ func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
-	var msg middleware.Message
-	err := json.Unmarshal(message.Body, &msg)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
 
-	batch := []string{}
-	err = json.Unmarshal(msg.Payload, &batch)
-	if err != nil {
-		return err
-	}
-
-	clh.log.Infof("Received result message: %v", batch)
+	clh.log.Infof("Received result message: %v", msg.Payload)
 	clh.answerMessage(ACK, message)
 	return nil
 }
@@ -142,7 +134,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 		return "", 0, fmt.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
-	err = clh.processdataType(amountOfFiles, dataType)
+	err = clh.processDataType(amountOfFiles, dataType)
 	if err != nil {
 		return "", 0, fmt.Errorf("Error processing files for dataType %s: %v", dataType, err)
 	}
@@ -157,7 +149,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 //	dataType: the type of data
 //
 // Returns an error if processing fails.
-func (clh *ClientHandler) processdataType(amountOfFiles int, dataType string) error {
+func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) error {
 	for currFile := 0; currFile < amountOfFiles; currFile++ {
 		clh.log.Infof("Processing file %d for dataType %s", currFile, dataType)
 
@@ -174,15 +166,10 @@ func (clh *ClientHandler) processdataType(amountOfFiles int, dataType string) er
 }
 
 func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string) error {
-	payload, err := json.Marshal(batch)
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, batch)
+	msgBytes, err := msg.ToBytes()
 	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
-	}
-
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, payload)
-	msgBytes, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
+		return err
 	}
 
 	res := middleware.MessageMiddlewareSuccess

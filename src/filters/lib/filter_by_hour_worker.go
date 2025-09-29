@@ -3,7 +3,6 @@ package filters
 import (
 	"common/logger"
 	"common/middleware"
-	"encoding/json"
 	"fmt"
 	"os"
 	"os/signal"
@@ -132,38 +131,26 @@ func (f *FilterByHourWorker) answerMessage(ackType int, message amqp.Delivery) {
 func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 	defer f.answerMessage(NACK_DISCARD, message)
 
-	var msg middleware.Message
-	err := json.Unmarshal(message.Body, &msg)
-	if err != nil {
-		return err
-	}
-
-	batch := []string{}
-	err = json.Unmarshal(msg.Payload, &batch)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
 
 	filter := NewFilter()
-	filteredBatch := filter.FilterByHour(batch, f.conf.FromHour, f.conf.ToHour)
+	filteredBatch := filter.FilterByHour(msg.Payload, f.conf.FromHour, f.conf.ToHour)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByHour")
 		f.answerMessage(ACK, message)
 		return nil
 	}
 
-	payload, err := json.Marshal(filteredBatch)
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch)
+	responseBytes, err := response.ToBytes()
 	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", msg.DataType, err)
+		return err
 	}
 
-	newMsg := middleware.NewMessage(msg.DataType, msg.ClientId, payload)
-	msgBytes, err := json.Marshal(newMsg)
-	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", msg.DataType, err)
-	}
-
-	middleError := f.exchangeHandlers.transactionsYearAndHourFilteredPublishing.Send(msgBytes)
+	middleError := f.exchangeHandlers.transactionsYearAndHourFilteredPublishing.Send(responseBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("problem while sending message to transactionsYearAndHourFilteredPublishing")
 	}
