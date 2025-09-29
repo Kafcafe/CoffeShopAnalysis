@@ -2,6 +2,8 @@ package main
 
 import (
 	logger "common/logger"
+	middleware "common/middleware"
+	filters "filters/lib"
 	"fmt"
 	"os"
 	"strings"
@@ -96,6 +98,51 @@ func main() {
 	logger := logger.GetLoggerWithPrefix("[MAIN]")
 
 	PrintConfig(config, logger)
+
+	rabbitConf := middleware.NewRabbitConfig(
+		config.GetString("rabbitmq.user"),
+		config.GetString("rabbitmq.pass"),
+		config.GetString("rabbitmq.host"),
+		config.GetInt("rabbitmq.port"),
+	)
+
+	query1 := filters.DatetimeFilterConfig{
+		FromYear: config.GetInt("filter.query1.fromYear"),
+		ToYear:   config.GetInt("filter.query1.toYear"),
+		FromHour: config.GetInt("filter.query1.fromHour"),
+		ToHour:   config.GetInt("filter.query1.toHour"),
+	}
+
+	query2 := filters.YearFilterConfig{
+		FromYear: config.GetInt("filter.query2.fromYear"),
+		ToYear:   config.GetInt("filter.query2.toYear"),
+	}
+
+	query3 := filters.DatetimeFilterConfig{
+		FromYear: config.GetInt("filter.query3.fromYear"),
+		ToYear:   config.GetInt("filter.query3.toYear"),
+		FromHour: config.GetInt("filter.query3.fromHour"),
+		ToHour:   config.GetInt("filter.query3.toHour"),
+	}
+
+	query4 := filters.YearFilterConfig{
+		FromYear: config.GetInt("filter.query4.fromYear"),
+		ToYear:   config.GetInt("filter.query4.toYear"),
+	}
+
+	filtersConfig := filters.NewFiltersConfig(query1, query2, query3, query4)
+
+	filterWorker, err := filters.NewFilterWorker(rabbitConf, filtersConfig)
+	if err != nil {
+		logger.Errorf("Failed creating new filter worker: %s", err)
+		os.Exit(STARTUP_ERROR_EXIT_CODE)
+	}
+
+	err = filterWorker.Run()
+	if err != nil {
+		logger.Errorf("Failed creating new filter worker: %s", err)
+		os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
+	}
 
 	os.Exit(SUCCESS_EXIT_CODE)
 }

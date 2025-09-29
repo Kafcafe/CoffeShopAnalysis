@@ -53,10 +53,12 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d",
 		acceptorConfig.rabbitHost, acceptorConfig.rabbitPort)
 
-	rabbitConn, err := middleware.NewRabbitConnection(acceptorConfig.rabbitUser,
+	rabbitConf := middleware.NewRabbitConfig(acceptorConfig.rabbitUser,
 		acceptorConfig.rabbitPassword,
 		acceptorConfig.rabbitHost,
 		acceptorConfig.rabbitPort)
+
+	rabbitConn, err := middleware.NewRabbitConnection(&rabbitConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
@@ -86,7 +88,7 @@ func (a *Acceptor) createExchangeHandler(routeKey string) (*middleware.MessageMi
 		return nil, fmt.Errorf("fialed to create middleware handler: %w", err)
 	}
 
-	return middlewareHandler.CreateTopicExchange(routeKey)
+	return middlewareHandler.CreateDirectExchange(routeKey)
 }
 
 type ExchangeHandlers struct {
@@ -108,8 +110,8 @@ type ExchangeHandlers struct {
 	// resultQuery4Subscription Exchange
 }
 
-func (a *Acceptor) createExchangeHandlers(clientId ClientUuid) (*ExchangeHandlers, error) {
-	transactionsRouteKey := fmt.Sprintf("transactions.%s", clientId.Full)
+func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
+	transactionsRouteKey := fmt.Sprintf("transactions")
 	transactionsPublishingHandler, err := a.createExchangeHandler(transactionsRouteKey)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating exchange handler for transactions: %v", err)
@@ -133,13 +135,14 @@ func (a *Acceptor) Run() error {
 
 		conn, err := a.listener.Accept()
 		if err != nil {
-			return fmt.Errorf("Failed to accept connection: %v", err)
+			a.log.Warningf("Failed to accept connection: %v", err)
+			return nil
 		}
 
 		a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 		newId := NewClientUuid()
 
-		exchangeHandlers, err := a.createExchangeHandlers(newId)
+		exchangeHandlers, err := a.createExchangeHandlers()
 		if err != nil {
 			return fmt.Errorf("failed to create exchange handlers: %v", err)
 		}
@@ -171,6 +174,8 @@ func (a *Acceptor) Shutdown() {
 	if a.currClient != nil {
 		a.currClient.Shutdown()
 	}
+
+	a.rabbitConn.Close()
 
 	a.log.Info("Shutdown complete")
 }

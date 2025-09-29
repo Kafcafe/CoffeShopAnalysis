@@ -1,4 +1,4 @@
-package filter
+package filters
 
 import (
 	"fmt"
@@ -67,15 +67,13 @@ func (f *Filter) FilterByYear(batch []string, fromYear, toYear int) []string {
 	result := make([]string, 0)
 	for _, record := range batch {
 		splited := strings.Split(record, ",")
-		if len(splited) < 9 {
+		splitedLen := len(splited)
+
+		if splited[splitedLen-1] == "" {
 			continue
 		}
 
-		if splited[8] == "" {
-			continue
-		}
-
-		datetime := splited[8]
+		datetime := splited[splitedLen-1]
 		dateParts := strings.Split(datetime, " ")
 		if len(dateParts) != 2 {
 			continue

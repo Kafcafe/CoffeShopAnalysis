@@ -117,12 +117,21 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
 	}
 
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, payload)
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
+	}
+
 	res := middleware.MessageMiddlewareSuccess
 	err = nil
 
 	switch dataType {
 	case "transactions":
-		res = clh.exchangeHandlers.transactionsPublishing.Send(payload)
+		res = clh.exchangeHandlers.transactionsPublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	case "transaction_items":
+		res = clh.exchangeHandlers.transactionsPublishing.Send(msgBytes)
 		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
 	default:
 		clh.log.Infof("Dispatch for %s dataType not available", dataType)
@@ -182,6 +191,6 @@ func (clh *ClientHandler) Shutdown() error {
 	if clh.protocol != nil {
 		clh.protocol.Shutdown()
 	}
-
+	clh.exchangeHandlers.transactionsPublishing.Close()
 	return nil
 }

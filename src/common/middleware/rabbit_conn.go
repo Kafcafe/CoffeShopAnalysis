@@ -14,8 +14,8 @@ type RabbitConnection struct {
 	conn *amqp.Connection
 }
 
-func NewRabbitConnection(user, password, host string, port int) (*RabbitConnection, error) {
-	connectionString := fmt.Sprintf("%s://%s:%s@%s:%d/", AMQP_PROTOCOL, user, password, host, port)
+func NewRabbitConnection(conf *RabbitConfig) (*RabbitConnection, error) {
+	connectionString := fmt.Sprintf("%s://%s:%s@%s:%d/", AMQP_PROTOCOL, conf.User, conf.Password, conf.Host, conf.Port)
 	conn, err := amqp.Dial(connectionString)
 	if err != nil {
 		return nil, err

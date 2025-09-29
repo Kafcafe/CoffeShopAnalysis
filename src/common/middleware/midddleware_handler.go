@@ -7,8 +7,10 @@ import (
 )
 
 const (
-	EXCHANGE_TYPE_TOPIC      = "topic"
-	EXCHANGE_NAME_TOPIC_TYPE = "coffee-analysis-topic"
+	EXCHANGE_TYPE_TOPIC       = "topic"
+	EXCHANGE_TYPE_DIRECT      = "direct"
+	EXCHANGE_NAME_TOPIC_TYPE  = "coffee-analysis-topic"
+	EXCHANGE_NAME_DIRECT_TYPE = "coffee-analysis-direct"
 
 	EXCHANGE_DURABILITY = false
 	QUEUE_DURABILITY    = false
@@ -89,6 +91,10 @@ func (mh *MiddlewareHandler) ConsumeQueue(queueName string) (<-chan amqp.Deliver
 		nil,       // args
 	)
 	return msgs, err
+}
+
+func (mh *MiddlewareHandler) CreateDirectExchange(routeKey string) (*MessageMiddlewareExchange, error) {
+	return mh.createExchange(EXCHANGE_NAME_DIRECT_TYPE, EXCHANGE_TYPE_DIRECT, routeKey)
 }
 
 func (mh *MiddlewareHandler) CreateTopicExchange(routeKey string) (*MessageMiddlewareExchange, error) {

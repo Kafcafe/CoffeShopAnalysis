@@ -17,7 +17,7 @@ func NewMessageMiddlewareExchange(exchangeName string, routeKey string, channel 
 	}
 }
 
-func (m *MessageMiddlewareExchange) StartConsuming(onMessageCallback onMessageCallback, errChan chan<- MessageMiddlewareError) {
+func (m *MessageMiddlewareExchange) StartConsuming(onMessageCallback OnMessageCallback, errChan chan<- MessageMiddlewareError) {
 	consumeChannel, err := m.channel.Consume(
 		m.routeKey, // queue
 		"",         // consumer

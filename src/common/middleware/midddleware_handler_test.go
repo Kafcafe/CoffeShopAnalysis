@@ -68,7 +68,8 @@ func TestMain(m *testing.M) {
 
 func createMiddleware(host string, port int) (*MiddlewareHandler, error) {
 	// Test connection
-	rabbitConn, err := NewRabbitConnection("user", "password", host, port)
+	rabbitConf := NewRabbitConfig("user", "password", host, port)
+	rabbitConn, err := NewRabbitConnection(&rabbitConf)
 	if err != nil {
 		return nil, fmt.Errorf("Failed to connect to RabbitMQ: %v", err)
 	}

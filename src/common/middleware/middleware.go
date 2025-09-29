@@ -31,7 +31,7 @@ type MessageMiddlewareExchange struct {
 	consumeChannel ConsumeChannel
 }
 
-type onMessageCallback func(message amqp.Delivery) error
+type OnMessageCallback func(message amqp.Delivery) error
 
 // Puede especificarse un tipo más específico para T si se desea
 type MessageMiddleware[T any] interface {
@@ -41,7 +41,7 @@ type MessageMiddleware[T any] interface {
 	   Si se pierde la conexión con el middleware eleva MessageMiddlewareDisconnectedError.
 	   Si ocurre un error interno que no puede resolverse eleva MessageMiddlewareMessageError.
 	*/
-	StartConsuming(m *T) (onMessageCallback onMessageCallback, errChan chan<- MessageMiddlewareError)
+	StartConsuming(m *T) (onMessageCallback OnMessageCallback, errChan chan<- MessageMiddlewareError)
 
 	/*
 	   Si se estaba consumiendo desde la cola/exchange, se detiene la escucha. Si

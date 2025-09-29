@@ -12,7 +12,7 @@ func NewMessageMiddlewareQueue(queueName string, channel MiddlewareChannel, cons
 	}
 }
 
-func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback onMessageCallback, errChan chan<- MessageMiddlewareError) {
+func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback OnMessageCallback, errChan chan<- MessageMiddlewareError) {
 	consumeChannel, err := m.channel.Consume(
 		m.queueName, // queue
 		"",          // consumer
