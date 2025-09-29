@@ -1,0 +1,42 @@
+name: Build all binaries
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: "1.25"
+
+      - name: Build all binaries
+        run: |
+          modules=(
+            "src/client"
+            "src/clientHandler"
+          )
+
+          for module in "${modules[@]}"; do
+            echo "========================================"
+            echo "🔨 Building module: $module"
+            echo "📂 Working directory: $(realpath "$module")"
+            echo "💾 Output binary: $(basename "$module")"
+            echo "========================================"
+
+            if (cd "$module" && go build -o "../../bin/$(basename "$module")" .); then
+              echo "✅ Successfully built: $module -> bin/$(basename "$module")"
+            else
+              echo "❌ Failed to build: $module"
+              exit 1
+            fi
+
+            echo "" # blank line for readability
+          done

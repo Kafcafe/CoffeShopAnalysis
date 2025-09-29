@@ -1,0 +1,10 @@
+filter:
+  year:
+    fromYear: 2024
+    toYear: 2025
+  hour:
+    fromHour: 6
+    toHour: 23
+
+log:
+  level: "INFO"

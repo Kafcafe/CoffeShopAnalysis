@@ -1,0 +1,196 @@
+package clientHandler
+
+import (
+	logger "common/logger"
+	"common/middleware"
+	"encoding/json"
+	"fmt"
+	"net"
+
+	"github.com/op/go-logging"
+)
+
+type ClientHandler struct {
+	protocol         *Protocol
+	log              *logging.Logger
+	ClientId         ClientUuid
+	exchangeHandlers ExchangeHandlers
+}
+
+// NewClientHandler creates a new ClientHandler instance for the given connection.
+// Parameters:
+//
+//	conn: the network connection to handle
+//
+// Returns a pointer to the ClientHandler.
+func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers) *ClientHandler {
+	protocol := NewProtocol(conn)
+
+	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
+
+	return &ClientHandler{
+		protocol:         protocol,
+		log:              logger.GetLoggerWithPrefix(loggerPrefix),
+		ClientId:         clientId,
+		exchangeHandlers: exchangeHandlers,
+	}
+}
+
+// Handle processes the client connection by receiving and handling data types and files.
+// Returns an error if any step fails.
+func (clh *ClientHandler) Handle() error {
+	clh.log.Info("Handling client connection")
+
+	// Receive the number of data types to process
+	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
+	if err != nil {
+		return fmt.Errorf("Error receiving amount of dataTypes: %v", err)
+	}
+
+	// Loop over each data type
+	for range amountOfdataTypes {
+		clh.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
+
+		dataType, amountOfFiles, err := clh.handleDataType()
+		if err != nil {
+			clh.log.Errorf("Error handling dataType: %v", err)
+		}
+
+		clh.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
+	}
+
+	return nil
+}
+
+// handleDataType receives and processes a single data type, including its files.
+// Returns the data type name, number of files, and any error.
+func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, err error) {
+	dataType, err = clh.protocol.ReceiveFilesDataType()
+
+	if err != nil {
+		return "", 0, fmt.Errorf("Error receiving files dataType: %v", err)
+	}
+
+	clh.log.Infof("Received files dataType: %s", dataType)
+
+	amountOfFiles, err = clh.protocol.RcvAmountOfFiles()
+	clh.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
+
+	if err != nil {
+		return "", 0, fmt.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)
+	}
+
+	err = clh.processdataType(amountOfFiles, dataType)
+	if err != nil {
+		return "", 0, fmt.Errorf("Error processing files for dataType %s: %v", dataType, err)
+	}
+
+	return dataType, amountOfFiles, nil
+}
+
+// processdataType processes all files for a given data type.
+// Parameters:
+//
+//	amountOfFiles: number of files to process
+//	dataType: the type of data
+//
+// Returns an error if processing fails.
+func (clh *ClientHandler) processdataType(amountOfFiles int, dataType string) error {
+	for currFile := 0; currFile < amountOfFiles; currFile++ {
+		clh.log.Infof("Processing file %d for dataType %s", currFile, dataType)
+
+		err := clh.processFile(dataType)
+		if err != nil {
+			return fmt.Errorf("Error processing file %d for dataType %s: %v", currFile, dataType, err)
+		}
+
+		clh.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
+	}
+
+	clh.log.Infof("Finished processing all %d files for dataType %s", amountOfFiles, dataType)
+	return nil
+}
+
+func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string) error {
+	payload, err := json.Marshal(batch)
+	if err != nil {
+		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
+	}
+
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, payload)
+	msgBytes, err := json.Marshal(msg)
+	if err != nil {
+		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
+	}
+
+	res := middleware.MessageMiddlewareSuccess
+	err = nil
+
+	switch dataType {
+	case "transactions":
+		res = clh.exchangeHandlers.transactionsPublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	case "transaction_items":
+		res = clh.exchangeHandlers.transactionsPublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	default:
+		clh.log.Infof("Dispatch for %s dataType not available", dataType)
+	}
+
+	if res != middleware.MessageMiddlewareSuccess {
+		return err
+	}
+
+	clh.log.Infof("Successfully sent batch of %s", dataType)
+
+	return nil
+}
+
+// processFile processes a single file by receiving its batches until completion.
+// Parameters:
+//
+//	dataType: the type of data for the file
+//
+// Returns an error if processing fails.
+func (clh *ClientHandler) processFile(dataType string) error {
+	// Flag to control the receiving loop
+	receivingFile := true
+	batchCounter := 0
+
+	// Loop to receive batches until the file is complete
+	for receivingFile {
+		clh.log.Infof("Receiving batch %d for dataType %s", batchCounter, dataType)
+		batch, isLast, err := clh.protocol.ReceiveBatch()
+
+		if err != nil {
+			return fmt.Errorf("Error receiving file batch for dataType %s: %v", dataType, err)
+		}
+
+		// If this is the last batch, stop receiving
+		if isLast {
+			receivingFile = false
+			break
+		}
+
+		batchCounter++
+		clh.log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
+
+		clh.dispatchBatchToMiddleware(dataType, batch)
+
+		err = clh.protocol.ConfirmBatchReceived()
+		if err != nil {
+			return fmt.Errorf("Error confirming batch %d for dataType %s: %v", batchCounter, dataType, err)
+		}
+	}
+	return nil
+}
+
+// Shutdown closes the protocol connection.
+// Returns an error if closing fails.
+func (clh *ClientHandler) Shutdown() error {
+	if clh.protocol != nil {
+		clh.protocol.Shutdown()
+	}
+	clh.exchangeHandlers.transactionsPublishing.Close()
+	return nil
+}

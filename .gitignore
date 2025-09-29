@@ -10,6 +10,7 @@
 
 # Test binary, built with `go test -c`
 *.test
+!Dockerfile.test
 
 # Code coverage profiles and other test artifacts
 *.out
@@ -30,3 +31,16 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+__pycache__
+
+# Binaries
+src/client/client
+src/clientHandler/ClientHandler
+src/clientHandler/clientHandler
+src/common/common
+src/common/example
+
+# Pycache
+scripts/__pycache__
+scripts/*.pyc

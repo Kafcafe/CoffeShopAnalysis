@@ -1,0 +1,29 @@
+# Reusable Dockerfile for running Go tests with testcontainers support
+# This Dockerfile can be used to run tests for any Go module in the project
+#
+# Usage:
+#   docker build -f Dockerfile.test -t go-test:latest .
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/src:/app/src go-test:latest test ./module/path -v -coverpkg=module/name
+#
+# For common/middleware tests:
+#   docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v $(pwd)/src:/app/src go-test:latest test ./middleware -v -coverpkg=common/middleware
+
+FROM golang:1.25.1-alpine3.21
+
+# Install Docker CLI for testcontainers
+RUN apk add docker-cli
+
+# Set working directory
+WORKDIR /app
+
+# Copy go mod files from common module (can be modified for other modules)
+COPY ./go.mod ./go.sum ./
+
+# Download dependencies
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Default entrypoint - accepts go commands as arguments
+ENTRYPOINT ["go"]

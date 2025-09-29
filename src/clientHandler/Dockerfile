@@ -9,12 +9,18 @@ LABEL intermediateStageToBeDeleted=true
 
 RUN mkdir -p /build
 WORKDIR /build/
-COPY . .
+
+# Pre-cache dependencies
+COPY ./clientHandler/go.mod ./clientHandler/go.sum ./
+COPY ./common ../common
+RUN go mod download
+
+COPY ./clientHandler .
 # CGO_ENABLED must be disabled to run go binary in Alpine
-RUN CGO_ENABLED=0 GOOS=linux go build -o bin/client .
+RUN CGO_ENABLED=0 GOOS=linux go build -o bin/client-handler .
 
 
 FROM busybox:latest
-COPY --from=builder /build/bin/client /client
-RUN chmod +x /client
-ENTRYPOINT ["/client"]
+COPY --from=builder /build/bin/client-handler /client-handler
+RUN chmod +x /client-handler
+ENTRYPOINT ["/client-handler"]
