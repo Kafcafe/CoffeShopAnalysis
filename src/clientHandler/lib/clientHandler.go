@@ -8,6 +8,15 @@ import (
 	"net"
 
 	"github.com/op/go-logging"
+	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+const (
+	ERROR_CHANNEL_BUFFER_SIZE = 20
+
+	ACK          = 0
+	NACK_REQUEUE = 1
+	NACK_DISCARD = 2
 )
 
 type ClientHandler struct {
@@ -15,6 +24,8 @@ type ClientHandler struct {
 	log              *logging.Logger
 	ClientId         ClientUuid
 	exchangeHandlers ExchangeHandlers
+	errChan          chan middleware.MessageMiddlewareError
+	isRunning        bool
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -33,7 +44,56 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		log:              logger.GetLoggerWithPrefix(loggerPrefix),
 		ClientId:         clientId,
 		exchangeHandlers: exchangeHandlers,
+		errChan:          make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		isRunning:        true,
 	}
+}
+
+func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
+	switch ackType {
+	case ACK:
+	case NACK_REQUEUE:
+		message.Nack(false, true)
+	case NACK_DISCARD:
+		message.Nack(false, false)
+	}
+}
+
+func (clh *ClientHandler) processResults(message amqp.Delivery) error {
+	defer clh.answerMessage(NACK_DISCARD, message)
+
+	var msg middleware.Message
+	err := json.Unmarshal(message.Body, &msg)
+	if err != nil {
+		return err
+	}
+
+	batch := []string{}
+	err = json.Unmarshal(msg.Payload, &batch)
+	if err != nil {
+		return err
+	}
+
+	clh.log.Infof("Received result message: %v", batch)
+	clh.answerMessage(ACK, message)
+	return nil
+}
+
+func (clh *ClientHandler) launchResultsProcessing() {
+	clh.exchangeHandlers.resultsSubscription.StartConsuming(clh.processResults, clh.errChan)
+
+	for err := range clh.errChan {
+		if err != middleware.MessageMiddlewareSuccess {
+			clh.log.Errorf("Error found while filtering message of type: %v", err)
+		}
+
+		if !clh.isRunning {
+			clh.log.Info("Inside error loop: breaking")
+			break
+		}
+	}
+
+	clh.exchangeHandlers.resultsSubscription.Close()
 }
 
 // Handle processes the client connection by receiving and handling data types and files.
@@ -46,6 +106,8 @@ func (clh *ClientHandler) Handle() error {
 	if err != nil {
 		return fmt.Errorf("Error receiving amount of dataTypes: %v", err)
 	}
+
+	go clh.launchResultsProcessing()
 
 	// Loop over each data type
 	for range amountOfdataTypes {
@@ -188,9 +250,13 @@ func (clh *ClientHandler) processFile(dataType string) error {
 // Shutdown closes the protocol connection.
 // Returns an error if closing fails.
 func (clh *ClientHandler) Shutdown() error {
+	clh.isRunning = false
+
 	if clh.protocol != nil {
 		clh.protocol.Shutdown()
 	}
+
 	clh.exchangeHandlers.transactionsPublishing.Close()
+	clh.exchangeHandlers.resultsSubscription.Close()
 	return nil
 }
