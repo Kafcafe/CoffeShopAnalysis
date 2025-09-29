@@ -28,7 +28,7 @@ services:
           retries: 3
           start_period: 30s
 
-    client_handler:
+    client-handler:
         container_name: "client-handler"
         depends_on:
           rabbitmq:
@@ -53,7 +53,7 @@ services:
           CLIENT_ID: "1"
           FILETYPES: "transactions,transaction_items,stores,menu,users"
         depends_on:
-          - client_handler
+          - client-handler
         networks:
           - analysis_net
         build:
