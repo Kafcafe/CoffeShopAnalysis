@@ -1,19 +1,10 @@
 filter:
-  query1:
+  year:
     fromYear: 2024
     toYear: 2025
+  hour:
     fromHour: 6
     toHour: 23
-  query2:
-    fromYear: 2024
-    toYear: 2025
-  query3:
-    fromYear: 2024
-    toYear: 2025
-    fromHour: 6
-    toHour: 23
-  query4:
-    fromYear: 2024
-    toYear: 2025
+
 log:
   level: "INFO"

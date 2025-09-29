@@ -15,8 +15,11 @@ Example:
 import sys
 import constants
 
+FILTER_BY_YEAR_TYPE: str = "year"
+FILTER_BY_HOUR_TYPE: str = "hour"
+FILTER_BY_AMOUNT_TYPE: str = "amount"
 
-def generate_compose(file_destination: str, client_nums: int, filter_nums: int):
+def generate_compose(file_destination: str, client_nums: int, filter_by_year_nums: int, filter_by_hour_nums: int, filter_by_amount_nums: int):
     """
     Generate a Docker Compose file with the specified number of clients.
 
@@ -42,8 +45,17 @@ def generate_compose(file_destination: str, client_nums: int, filter_nums: int):
         # Format the client template with unique ID (starting from 1)
         compose += constants.CLIENTS_TEMPLATE.format(id=i+1)
 
-    for i in range(filter_nums):
-        compose += constants.FILTER_TEMPLATE.format(id=i+1)
+    for i in range(filter_by_year_nums):
+        filter_type = FILTER_BY_YEAR_TYPE
+        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type)
+
+    for i in range(filter_by_hour_nums):
+        filter_type = FILTER_BY_HOUR_TYPE
+        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type)
+
+    for i in range(filter_by_amount_nums):
+        filter_type = FILTER_BY_AMOUNT_TYPE
+        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type)
 
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
@@ -68,7 +80,7 @@ def main():
     """
     try:
         # Validate command line arguments
-        if len(sys.argv) != 4:
+        if len(sys.argv) != 6:
             print("Usage: ./generar-compose.py <output_file> <num_clients>")
             sys.exit(1)
 
@@ -78,11 +90,13 @@ def main():
         # Parse arguments
         file_destination: str = sys.argv[1]
         client_nums: int = int(sys.argv[2])
-        filter_bums: int = int(sys.argv[3])
+        filter_by_year_nums: int = int(sys.argv[3])
+        filter_by_hour_nums: int = int(sys.argv[4])
+        filter_by_amount_nums: int = int(sys.argv[5])
 
         # Generate the compose file
-        generate_compose(file_destination, client_nums, filter_bums)
-        print(f"Compose file '{file_destination}' generated with {client_nums} clients and {filter_bums} filters.")
+        generate_compose(file_destination, client_nums, filter_by_year_nums, filter_by_hour_nums, filter_by_amount_nums)
+        print(f"Compose file '{file_destination}' generated with {client_nums} clients and {filter_by_year_nums} filters by year and {filter_by_hour_nums} filters by hour and {filter_by_amount_nums} filters by amount.")
         sys.exit(SUCCESS_EXIT_CODE)
 
     except ValueError as err:

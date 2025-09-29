@@ -63,8 +63,8 @@ services:
           - ./src/client/config.yaml:/config.yaml
           - ./.data:/data
 
-    filter1:
-        container_name: "filter1"
+    filter-year1:
+        container_name: "filter-year1"
         depends_on:
           rabbitmq:
             condition: service_healthy
@@ -75,6 +75,26 @@ services:
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
+          FILTER_TYPE: year
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-hour1:
+        container_name: "filter-hour1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: hour
         build:
           context: ./src/
           dockerfile: filters/Dockerfile

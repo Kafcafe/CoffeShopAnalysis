@@ -12,16 +12,19 @@ func NewFilter() *Filter {
 	return &Filter{}
 }
 
-func (f *Filter) FilterByDatetimeHour(batch []string, fromYear, toYear, fromHour, toHour int) []string {
-	byYear := f.FilterByYear(batch, fromYear, toYear)
+func (f *Filter) FilterByHour(batch []string, fromHour, toHour int) []string {
 	result := make([]string, 0)
-	for _, record := range byYear {
+
+	for _, record := range batch {
 		splited := strings.Split(record, ",")
-		datetime := splited[8]
+		splitedLen := len(splited)
+		datetime := splited[splitedLen-1]
 		dateParts := strings.Split(datetime, " ")
+
 		if !f.respectHourLimits(dateParts[1], fromHour, toHour) {
 			continue
 		}
+
 		result = append(result, record)
 	}
 	return result

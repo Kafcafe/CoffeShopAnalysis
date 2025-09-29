@@ -16,6 +16,10 @@ const (
 	SUCCESS_EXIT_CODE                 = 0
 	STARTUP_ERROR_EXIT_CODE           = 1
 	ERROR_DURING_PROCESSING_EXIT_CODE = 2
+
+	FILTER_TYPE_YEAR   = "year"
+	FILTER_TYPE_HOUR   = "hour"
+	FILTER_TYPE_AMOUNT = "amount"
 )
 
 // InitConfig initializes the application configuration using Viper.
@@ -50,28 +54,14 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("Config for query 1: fromYear: %d | toYear: %d | fromHour: %d | toHour: %d",
-		v.GetInt("filter.query1.fromYear"),
-		v.GetInt("filter.query1.toYear"),
-		v.GetInt("filter.query1.fromHour"),
-		v.GetInt("filter.query1.toHour"),
+	logger.Infof("Config for filter by year: fromYear: %d | toYear: %d",
+		v.GetInt("filter.year.fromYear"),
+		v.GetInt("filter.year.toYear"),
 	)
 
-	logger.Infof("Config for query 2: fromYear: %d | toYear: %d",
-		v.GetInt("filter.query2.fromYear"),
-		v.GetInt("filter.query2.toYear"),
-	)
-
-	logger.Infof("Config for query 3: fromYear: %d | toYear: %d | fromHour: %d | toHour: %d",
-		v.GetInt("filter.query3.fromYear"),
-		v.GetInt("filter.query3.toYear"),
-		v.GetInt("filter.query3.fromHour"),
-		v.GetInt("filter.query3.toHour"),
-	)
-
-	logger.Infof("Config for query 4: fromYear: %d | toYear: %d",
-		v.GetInt("filter.query4.fromYear"),
-		v.GetInt("filter.query4.toYear"),
+	logger.Infof("Config for filter by hour: fromYear: fromHour: %d | toHour: %d",
+		v.GetInt("filter.hour.fromHour"),
+		v.GetInt("filter.hour.toHour"),
 	)
 
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
@@ -106,42 +96,47 @@ func main() {
 		config.GetInt("rabbitmq.port"),
 	)
 
-	query1 := filters.DatetimeFilterConfig{
-		FromYear: config.GetInt("filter.query1.fromYear"),
-		ToYear:   config.GetInt("filter.query1.toYear"),
-		FromHour: config.GetInt("filter.query1.fromHour"),
-		ToHour:   config.GetInt("filter.query1.toHour"),
+	yearConfig := filters.YearFilterConfig{
+		FromYear: config.GetInt("filter.year.fromYear"),
+		ToYear:   config.GetInt("filter.year.toYear"),
 	}
 
-	query2 := filters.YearFilterConfig{
-		FromYear: config.GetInt("filter.query2.fromYear"),
-		ToYear:   config.GetInt("filter.query2.toYear"),
+	hourConfig := filters.HourFilterConfig{
+		FromHour: config.GetInt("filter.hour.fromHour"),
+		ToHour:   config.GetInt("filter.hour.toHour"),
 	}
 
-	query3 := filters.DatetimeFilterConfig{
-		FromYear: config.GetInt("filter.query3.fromYear"),
-		ToYear:   config.GetInt("filter.query3.toYear"),
-		FromHour: config.GetInt("filter.query3.fromHour"),
-		ToHour:   config.GetInt("filter.query3.toHour"),
-	}
+	filterType := config.GetString("filter.type")
 
-	query4 := filters.YearFilterConfig{
-		FromYear: config.GetInt("filter.query4.fromYear"),
-		ToYear:   config.GetInt("filter.query4.toYear"),
-	}
+	switch filterType {
+	case FILTER_TYPE_YEAR:
+		filterWorker, err := filters.NewFilterByYearWorker(rabbitConf, yearConfig)
+		if err != nil {
+			logger.Errorf("Failed creating new filter worker: %s", err)
+			os.Exit(STARTUP_ERROR_EXIT_CODE)
+		}
 
-	filtersConfig := filters.NewFiltersConfig(query1, query2, query3, query4)
+		err = filterWorker.Run()
+		if err != nil {
+			logger.Errorf("Failed creating new filter worker: %s", err)
+			os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
+		}
+	case FILTER_TYPE_HOUR:
+		filterWorker, err := filters.NewFilterByHourWorker(rabbitConf, hourConfig)
+		if err != nil {
+			logger.Errorf("Failed creating new filter worker: %s", err)
+			os.Exit(STARTUP_ERROR_EXIT_CODE)
+		}
 
-	filterWorker, err := filters.NewFilterWorker(rabbitConf, filtersConfig)
-	if err != nil {
-		logger.Errorf("Failed creating new filter worker: %s", err)
+		err = filterWorker.Run()
+		if err != nil {
+			logger.Errorf("Failed creating new filter worker: %s", err)
+			os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
+		}
+	case FILTER_TYPE_AMOUNT:
+	default:
+		logger.Errorf("Unknown filter type: %s", filterType)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
-	}
-
-	err = filterWorker.Run()
-	if err != nil {
-		logger.Errorf("Failed creating new filter worker: %s", err)
-		os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
 	}
 
 	os.Exit(SUCCESS_EXIT_CODE)

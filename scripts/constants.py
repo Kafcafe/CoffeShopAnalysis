@@ -90,6 +90,7 @@ FILTER_TEMPLATE = """
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
+          FILTER_TYPE: {filter_type}
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
