@@ -64,14 +64,38 @@ CLIENT_HANDLER_TEMPLATE = """
             condition: service_healthy
         networks:
           - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
         hostname: "server"
         build:
-          context: ./src/clientHandler
-          dockerfile: Dockerfile
+          context: ./src/
+          dockerfile: clientHandler/Dockerfile
         volumes:
           - ./src/clientHandler/config.yaml:/config.yaml 
 """
 
+FILTER_TEMPLATE = """
+    filter{id}:
+        container_name: "filter{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+"""
 
 # Client service template (parameterized by client ID)
 # Each client processes different types of coffee shop data files

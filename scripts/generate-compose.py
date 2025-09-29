@@ -16,7 +16,7 @@ import sys
 import constants
 
 
-def generate_compose(file_destination: str, client_nums: int):
+def generate_compose(file_destination: str, client_nums: int, filter_nums: int):
     """
     Generate a Docker Compose file with the specified number of clients.
 
@@ -42,6 +42,9 @@ def generate_compose(file_destination: str, client_nums: int):
         # Format the client template with unique ID (starting from 1)
         compose += constants.CLIENTS_TEMPLATE.format(id=i+1)
 
+    for i in range(filter_nums):
+        compose += constants.FILTER_TEMPLATE.format(id=i+1)
+
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
         f.write(compose)
@@ -65,7 +68,7 @@ def main():
     """
     try:
         # Validate command line arguments
-        if len(sys.argv) != 3:
+        if len(sys.argv) != 4:
             print("Usage: ./generar-compose.py <output_file> <num_clients>")
             sys.exit(1)
 
@@ -75,10 +78,11 @@ def main():
         # Parse arguments
         file_destination: str = sys.argv[1]
         client_nums: int = int(sys.argv[2])
+        filter_bums: int = int(sys.argv[3])
 
         # Generate the compose file
-        generate_compose(file_destination, client_nums)
-        print(f"Compose file '{file_destination}' generated with {client_nums} clients.")
+        generate_compose(file_destination, client_nums, filter_bums)
+        print(f"Compose file '{file_destination}' generated with {client_nums} clients and {filter_bums} filters.")
         sys.exit(SUCCESS_EXIT_CODE)
 
     except ValueError as err:

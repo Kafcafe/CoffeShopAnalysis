@@ -66,7 +66,6 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 // main is the entry point of the application.
 // It initializes configuration, logger, and starts the server acceptor.
 func main() {
-
 	config, err := InitConfig()
 	if err != nil {
 		fmt.Printf("Error initializing configuration: %v\n", err)
