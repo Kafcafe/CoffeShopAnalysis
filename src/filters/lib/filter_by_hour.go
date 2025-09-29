@@ -60,7 +60,7 @@ func NewFilterByHourWorker(rabbitConf middleware.RabbitConfig, filtersConfig Hou
 }
 
 func (f *FilterByHourWorker) createExchangeHandlers() error {
-	transactionsYearFilteredSubscriptionRouteKey := fmt.Sprintf("transactions.transactions")
+	transactionsYearFilteredSubscriptionRouteKey := "transactions.transactions"
 	transactionsYearFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearFilteredSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)

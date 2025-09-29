@@ -62,19 +62,19 @@ func NewFilterByYearWorker(rabbitConf middleware.RabbitConfig, filtersConfig Yea
 }
 
 func (f *FilterByYearWorker) createExchangeHandlers() error {
-	transactionsRouteKey := fmt.Sprintf("transactions")
+	transactionsRouteKey := "transactions"
 	transactionsSubscribingHandler, err := createExchangeHandler(f.rabbitConn, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
 
-	transactionsYearFilteredPublishingRouteKey := fmt.Sprintf("transactions.transactions")
+	transactionsYearFilteredPublishingRouteKey := "transactions.transactions"
 	transactionsYearFilteredPublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearFilteredPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions: %v", err)
 	}
 
-	transactionsItemsYearFilteredPublishingRouteKey := fmt.Sprintf("transactions.items")
+	transactionsItemsYearFilteredPublishingRouteKey := "transactions.items"
 	transactionsItemsYearFilteredPublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionsItemsYearFilteredPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions.items: %v", err)
