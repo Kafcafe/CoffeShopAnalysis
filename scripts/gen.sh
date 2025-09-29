@@ -21,11 +21,11 @@ exit_code=$?
 
 # Provide user-friendly messages based on exit code
 if [ $exit_code -eq 0 ]; then
-    echo "✅ docker compose file generated successfully"
+    echo " ✅ docker compose file generated successfully"
 elif [ $exit_code -eq 1 ]; then
-    echo "❌ Error: Please provide valid arguments"
+    echo " ❌ Error: Please provide valid arguments"
     echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount>"
 else
-    echo "❌ Unexpected error occurred with exit code $exit_code"
+    echo " ❌ Unexpected error occurred with exit code $exit_code"
     echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount>"
 fi

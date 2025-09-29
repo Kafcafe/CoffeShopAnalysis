@@ -96,7 +96,14 @@ def main():
 
         # Generate the compose file
         generate_compose(file_destination, client_nums, filter_by_year_nums, filter_by_hour_nums, filter_by_amount_nums)
-        print(f"Compose file '{file_destination}' generated with {client_nums} clients and {filter_by_year_nums} filters by year and {filter_by_hour_nums} filters by hour and {filter_by_amount_nums} filters by amount.")
+        
+        print(f"""
+ Compose file '{file_destination}' generated with:
+ - Clients: {client_nums}
+ - Filters by Year: {filter_by_year_nums}
+ - Filters by Hour: {filter_by_hour_nums}
+ - Filters by Amount: {filter_by_amount_nums}
+        """)        
         sys.exit(SUCCESS_EXIT_CODE)
 
     except ValueError as err:
