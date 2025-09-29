@@ -107,7 +107,7 @@ func (f *Filter) respectLimit(value, upLimit, downLimit int) bool {
 	return value <= upLimit && value >= downLimit
 }
 
-func (f *Filter) FilterByAmount(batch []string, amount int) []string {
+func (f *Filter) FilterByAmount(batch []string, amount float64) []string {
 	result := make([]string, 0)
 	for _, record := range batch {
 		splited := strings.Split(record, ",")
@@ -124,7 +124,7 @@ func (f *Filter) FilterByAmount(batch []string, amount int) []string {
 			continue
 		}
 
-		if value < float64(amount) {
+		if value < amount {
 			continue
 		}
 

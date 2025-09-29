@@ -18,7 +18,9 @@ type FilterWorker interface {
 func CreateFilterWorker(filterType string,
 	rabbitConf middleware.RabbitConfig,
 	yearConfig YearFilterConfig,
-	hourConfig HourFilterConfig) (*FilterWorker, error) {
+	hourConfig HourFilterConfig,
+	amountConfig AmountFilterConfig,
+) (*FilterWorker, error) {
 
 	var filterWorker FilterWorker
 	var err error
@@ -35,6 +37,10 @@ func CreateFilterWorker(filterType string,
 			return nil, err
 		}
 	case FILTER_TYPE_AMOUNT:
+		filterWorker, err = NewFilterByAmountWorker(rabbitConf, amountConfig)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("Unknown filter type: %s", filterType)
 	}

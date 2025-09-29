@@ -100,3 +100,22 @@ services:
           dockerfile: filters/Dockerfile
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
+
+    filter-amount1:
+        container_name: "filter-amount1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: amount
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 

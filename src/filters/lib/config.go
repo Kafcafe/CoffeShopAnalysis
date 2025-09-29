@@ -11,5 +11,5 @@ type HourFilterConfig struct {
 }
 
 type AmountFilterConfig struct {
-	Amount float64
+	MinAmount float64
 }

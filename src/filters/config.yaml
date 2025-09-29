@@ -5,6 +5,7 @@ filter:
   hour:
     fromHour: 6
     toHour: 23
-
+  amount:
+    minAmount: 75.0
 log:
   level: "INFO"

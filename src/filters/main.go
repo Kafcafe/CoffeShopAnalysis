@@ -60,6 +60,10 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetInt("filter.hour.toHour"),
 	)
 
+	logger.Infof("Config for filter by amount: minAmount: %f",
+		v.GetFloat64("filter.amount.minAmount"),
+	)
+
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
 		v.GetString("rabbitmq.host"),
 		v.GetInt("rabbitmq.port"),
@@ -102,9 +106,13 @@ func main() {
 		ToHour:   config.GetInt("filter.hour.toHour"),
 	}
 
+	amountConfig := filters.AmountFilterConfig{
+		MinAmount: config.GetFloat64("filter.amount.minAmount"),
+	}
+
 	filterType := config.GetString("filter.type")
 
-	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig)
+	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig, amountConfig)
 	if err != nil {
 		logger.Errorf("Failed creating new filter worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
