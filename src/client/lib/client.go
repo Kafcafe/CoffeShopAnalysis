@@ -161,12 +161,6 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 
 	log.Infof("Sent batch with information of file: %s", file)
 
-	err = c.protocol.receivedConfirmation()
-	if err != nil {
-		log.Error("Error receiving confirmation for batch from file %s: %v", file, err)
-		return err
-	}
-
 	return nil
 }
 

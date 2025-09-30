@@ -96,19 +96,19 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	return nil
 }
 
-func (p *Protocol) receivedConfirmation() error {
-	code := make([]byte, 1)
-	err := p.receiveAll(code)
-	if err != nil {
-		return err
-	}
+// func (p *Protocol) receivedConfirmation() error {
+// 	code := make([]byte, 1)
+// 	err := p.receiveAll(code)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	if code[0] != BatchRcvCode {
-		return fmt.Errorf("invalid confirmation code received")
-	}
+// 	if code[0] != BatchRcvCode {
+// 		return fmt.Errorf("invalid confirmation code received")
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (p *Protocol) finishBatch() error {
 	code := []byte{EndOfBatch}
@@ -138,19 +138,19 @@ func (p *Protocol) sendAll(data []byte) error {
 	return nil
 }
 
-func (p *Protocol) receiveAll(array []byte) error {
-	len := len(array)
-	received := 0
-	for received < int(len) {
-		n, err := p.conn.Read(array[received:])
-		if err != nil {
-			return err
-		}
-		received += n
-	}
+// func (p *Protocol) receiveAll(array []byte) error {
+// 	len := len(array)
+// 	received := 0
+// 	for received < int(len) {
+// 		n, err := p.conn.Read(array[received:])
+// 		if err != nil {
+// 			return err
+// 		}
+// 		received += n
+// 	}
 
-	return nil
-}
+// 	return nil
+// }
 
 func (p *Protocol) htonsUint32(val uint32) []byte {
 	bytes := make([]byte, 4)
