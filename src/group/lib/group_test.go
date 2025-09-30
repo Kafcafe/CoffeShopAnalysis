@@ -1,4 +1,4 @@
-package yearmonth
+package group
 
 import (
 	"testing"

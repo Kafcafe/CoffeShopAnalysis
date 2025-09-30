@@ -120,3 +120,26 @@ CLIENTS_TEMPLATE = """
           - ./src/client/config.yaml:/config.yaml
           - ./.data:/data
 """
+
+GROUP_TEMPLATE = """
+    group{id}:
+        container_name: "group{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: {group_type}
+          GROUP_ID: {id}
+          GROUP_COUNT: {group_count}
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+"""
