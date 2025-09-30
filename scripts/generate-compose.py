@@ -121,6 +121,7 @@ def main():
  - Filters by Year: {filter_by_year_nums}
  - Filters by Hour: {filter_by_hour_nums}
  - Filters by Amount: {filter_by_amount_nums}
+ - Group by Year: {group_by_year_month_nums}
         """)        
         sys.exit(SUCCESS_EXIT_CODE)
 

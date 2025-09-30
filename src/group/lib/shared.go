@@ -44,3 +44,24 @@ func answerMessage(ackType int, message amqp.Delivery) {
 		message.Nack(false, false)
 	}
 }
+
+func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string, filterId string) (*middleware.MessageMiddlewareQueue, error) {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+
+	// Declare and bind for Query 1
+	queueName := fmt.Sprintf("eof.group.%s.%s", filterType, filterId)
+	_, err = middlewareHandler.DeclareQueue(queueName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
+	}
+
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, fmt.Sprintf("eof.group.%s.*", filterType))
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
+}

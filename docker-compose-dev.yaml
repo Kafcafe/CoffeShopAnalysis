@@ -125,3 +125,24 @@ services:
           dockerfile: filters/Dockerfile
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
+
+    group-yearmonth1:
+        container_name: "group-yearmonth1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth1
+          GROUP_COUNT: 1
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 

@@ -1,4 +1,4 @@
-package group
+package main
 
 import (
 	logger "common/logger"

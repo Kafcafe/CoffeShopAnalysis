@@ -118,11 +118,120 @@ func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error 
 	return nil
 }
 
-func (f *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
+func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false)
+	msgBytes, err := eofMsg.ToBytes()
+	if err != nil {
+		g.log.Errorf("Failed to serialize message: %v", err)
+	}
+
+	g.exchangeHandlers.eofPublishing.Send(msgBytes)
+
+	totalEofs := g.groupByCount - 1
+
+	if totalEofs == 0 {
+		g.log.Infof("No EOF coordination needed for %s", originalMsg.DataType)
+	} else {
+		g.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
+	}
+
+	for i := 0; i < totalEofs; i++ {
+		g.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
+		<-g.eofIntercommunicationChan
+		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
+	}
+
+	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(originalMsgBytes)
+	if middleError != middleware.MessageMiddlewareSuccess {
+		g.log.Error("problem while sending message to resultsQ1Publishing")
+	}
+
+	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+}
+
+func (g *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
+	defer answerMessage(NACK_DISCARD, message)
+
+	msg, err := middleware.NewMessageFromBytes(message.Body)
+	if err != nil {
+		return err
+	}
+
+	if msg.IsEof {
+		go g.initiateEofCoordination(*msg, message.Body)
+		answerMessage(ACK, message)
+		return nil
+	}
+
+	if len(g.eofChan) > 0 {
+		<-g.eofChan
+	}
+
+	g.mutex.Lock()
+	g.currentMessageProcessing = *msg
+	g.currentMessageProcessing.Payload = []string{}
+	g.mutex.Unlock()
+
+	// IMPLEMENT GROUPBY LOGIC FOR COMPUTING PARTIAL RESULTS
+	// groupBy := NewGr()
+	// filteredBatch := filter.FilterByAmount(msg.Payload, f.conf.MinAmount)
+	// if len(filteredBatch) == 0 {
+	// 	f.log.Info("No transaction passed the filterMessageByAmount")
+	// 	answerMessage(ACK, message)
+	// 	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+	// 	return nil
+	// }
+
+	// SENDING SAME PAYLOAD BECAUSE WE ARE NOT GROUPING YET
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, msg.Payload, false)
+	responseBytes, err := response.ToBytes()
+	if err != nil {
+		return err
+	}
+
+	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(responseBytes)
+	if middleError != middleware.MessageMiddlewareSuccess {
+		return fmt.Errorf("problem while sending message to transactionItemsGroupedByYearmonthPublishing")
+	}
+	answerMessage(ACK, message)
+
+	g.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+
+	g.log.Info("Grouped message and sent groupByYearmonth batch")
 	return nil
 }
 
 func (f *GroupByYearmonthWorker) createExchangeHandlers() error {
+	transactionItemsYearFilteredSubscriptionRouteKey := "transactions.items"
+	transactionItemsYearFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionItemsYearFilteredSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for transactions.items: %v", err)
+	}
+
+	transactionItemsGroupedByYearmonthPublishingRouteKey := fmt.Sprintf("transactions.items.group%s", f.id)
+	transactionItemsGroupedByYearmonthPublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionItemsGroupedByYearmonthPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for results.q1: %v", err)
+	}
+
+	eofPublishingRouteKey := fmt.Sprintf("eof.group.yearmonth.%s", f.id)
+	eofPublishingHandler, err := createExchangeHandler(f.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for eof.group.yearmonth: %v", err)
+	}
+
+	eofSubscription, err := prepareEofQueue(f.rabbitConn, "yearmonth", f.id)
+	if err != nil {
+		return fmt.Errorf("Error preparing EOF queue for transactions: %v", err)
+	}
+
+	f.exchangeHandlers = YearmonthExchangeHandlers{
+		transactionItemsYearFilteredSubscription:     *transactionItemsYearFilteredSubscriptionHandler,
+		transactionItemsGroupedByYearmonthPublishing: *transactionItemsGroupedByYearmonthPublishingHandler,
+		eofPublishing:   *eofPublishingHandler,
+		eofSubscription: *eofSubscription,
+	}
+
 	return nil
 }
 
