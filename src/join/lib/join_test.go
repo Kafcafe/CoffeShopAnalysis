@@ -142,20 +142,20 @@ func TestJoinerIsNotNil(t *testing.T) {
 	require.NotNil(t, joiner, "Expected NewJoiner to return a non-nil Join instance")
 }
 
-func TestJoinItemNameByIdEmpty(t *testing.T) {
+func TestJoinByIndexEmpty(t *testing.T) {
 	joiner := join.NewJoiner()
-	joinedItems := joiner.JoinItemNameById([]string{}, SumQuantityAndProfitById)
-	require.Empty(t, joinedItems, "Expected JoinItemNameById to return an empty slice")
+	joinedItems := joiner.JoinByIndex([]string{}, Transactions, 0, 0, 1)
+	require.Empty(t, joinedItems, "Expected JoinByIndex to return an empty slice")
 }
 
-func TestJoinItemById(t *testing.T) {
+func TestJoinByIndex(t *testing.T) {
 	joiner := join.NewJoiner()
-	joinedItems := joiner.JoinItemNameById(Items, SumQuantityAndProfitById)
+	joinedItems := joiner.JoinByIndex(Items, SumQuantityAndProfitById, 1, 0, 1)
 	require.Equal(t, ExpectedJoinedItems, joinedItems, "Joined items do not match expected results")
 }
 
-func TestJoinTransactionsAndStores(t *testing.T) {
+func TestJoinTransactionsWithStores(t *testing.T) {
 	joiner := join.NewJoiner()
-	joinedStores := joiner.JoinItemNameById(Stores, Transactions)
-	require.Equal(t, TransactionsJoined, joinedStores, "Expected JoinStoreNameById to return an empty slice")
+	joinedItems := joiner.JoinByIndex(Stores, Transactions, 1, 0, 1)
+	require.Equal(t, TransactionsJoined, joinedItems, "Joined transactions with stores do not match expected results")
 }
