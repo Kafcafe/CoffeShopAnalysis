@@ -5,6 +5,7 @@ import (
 	"common/middleware"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -68,6 +69,19 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 		return err
 	}
 
+	stringPayload := msg.Payload
+
+	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+	err = clh.protocol.SendResults(1, stringPayload, msg.IsEof)
+
+	clh.log.Debug("Sent results to client")
+
+	if err != nil {
+		clh.log.Errorf("Error sending results to client: %v", err)
+		return err
+	}
+
 	if msg.IsEof {
 		clh.answerMessage(ACK, message)
 		clh.log.Info("Received EOF message for result")
@@ -86,7 +100,7 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 }
 
 func (clh *ClientHandler) launchResultsProcessing() {
-	clh.exchangeHandlers.resultsSubscription.StartConsuming(clh.processResults, clh.errChan)
+	clh.exchangeHandlers.resultsQ1Subscription.StartConsuming(clh.processResults, clh.errChan)
 
 	for err := range clh.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -99,7 +113,7 @@ func (clh *ClientHandler) launchResultsProcessing() {
 		}
 	}
 
-	clh.exchangeHandlers.resultsSubscription.Close()
+	clh.exchangeHandlers.resultsQ1Subscription.Close()
 }
 
 // Handle processes the client connection by receiving and handling data types and files.
@@ -110,7 +124,7 @@ func (clh *ClientHandler) Handle() error {
 	// Receive the number of data types to process
 	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
 	if err != nil {
-		return fmt.Errorf("Error receiving amount of dataTypes: %v", err)
+		return fmt.Errorf("error receiving amount of dataTypes: %v", err)
 	}
 
 	go clh.launchResultsProcessing()
@@ -136,7 +150,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 	dataType, err = clh.protocol.ReceiveFilesDataType()
 
 	if err != nil {
-		return "", 0, fmt.Errorf("Error receiving files dataType: %v", err)
+		return "", 0, fmt.Errorf("error receiving files dataType: %v", err)
 	}
 
 	clh.log.Infof("Received files dataType: %s", dataType)
@@ -145,12 +159,12 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 	clh.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
 
 	if err != nil {
-		return "", 0, fmt.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)
+		return "", 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
 	err = clh.processDataType(amountOfFiles, dataType)
 	if err != nil {
-		return "", 0, fmt.Errorf("Error processing files for dataType %s: %v", dataType, err)
+		return "", 0, fmt.Errorf("error processing files for dataType %s: %v", dataType, err)
 	}
 
 	return dataType, amountOfFiles, nil
@@ -169,7 +183,7 @@ func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) er
 
 		err := clh.processFile(dataType)
 		if err != nil {
-			return fmt.Errorf("Error processing file %d for dataType %s: %v", currFile, dataType, err)
+			return fmt.Errorf("error processing file %d for dataType %s: %v", currFile, dataType, err)
 		}
 
 		clh.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
@@ -178,7 +192,7 @@ func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) er
 	isEof := true
 	err := clh.dispatchBatchToMiddleware(dataType, []string{}, isEof)
 	if err != nil {
-		return fmt.Errorf("Error dispatching EOF to middleware: %v", err)
+		return fmt.Errorf("error dispatching EOF to middleware: %v", err)
 	}
 
 	clh.log.Infof("Finished processing all %d files for dataType %s", amountOfFiles, dataType)
@@ -232,7 +246,7 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		batch, isLast, err := clh.protocol.ReceiveBatch()
 
 		if err != nil {
-			return fmt.Errorf("Error receiving file batch for dataType %s: %v", dataType, err)
+			return fmt.Errorf("error receiving file batch for dataType %s: %v", dataType, err)
 		}
 
 		// If this is the last batch, stop receiving
@@ -247,14 +261,15 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		isEof := false
 		err = clh.dispatchBatchToMiddleware(dataType, batch, isEof)
 		if err != nil {
-			return fmt.Errorf("Error dispatching batch to middleware: %v", err)
-		}
-
-		err = clh.protocol.ConfirmBatchReceived()
-		if err != nil {
-			return fmt.Errorf("Error confirming batch %d for dataType %s: %v", batchCounter, dataType, err)
+			return fmt.Errorf("error dispatching batch to middleware: %v", err)
 		}
 	}
+	return nil
+}
+
+func (clh *ClientHandler) SendResult() error {
+	clh.log.Info("Sending result to client - Not implemented")
+
 	return nil
 }
 
@@ -268,6 +283,6 @@ func (clh *ClientHandler) Shutdown() error {
 	}
 
 	clh.exchangeHandlers.transactionsPublishing.Close()
-	clh.exchangeHandlers.resultsSubscription.Close()
+	clh.exchangeHandlers.resultsQ1Subscription.Close()
 	return nil
 }
