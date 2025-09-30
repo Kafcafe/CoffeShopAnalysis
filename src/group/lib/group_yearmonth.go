@@ -10,14 +10,14 @@ import (
 	"syscall"
 
 	"github.com/op/go-logging"
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type YearmonthExchangeHandlers struct {
-	// transactionsSubscribing                 middleware.MessageMiddlewareExchange
-	// transactionsYearFilteredPublishing      middleware.MessageMiddlewareExchange
-	// transactionsItemsYearFilteredPublishing middleware.MessageMiddlewareExchange
-	eofPublishing   middleware.MessageMiddlewareExchange
-	eofSubscription middleware.MessageMiddlewareQueue
+	transactionItemsYearFilteredSubscription     middleware.MessageMiddlewareExchange
+	transactionItemsGroupedByYearmonthPublishing middleware.MessageMiddlewareExchange
+	eofPublishing                                middleware.MessageMiddlewareExchange
+	eofSubscription                              middleware.MessageMiddlewareQueue
 }
 
 type GroupByYearmonthWorker struct {
@@ -64,6 +64,109 @@ func NewGroupByYearmonthWorker(rabbitConf middleware.RabbitConfig, groupById str
 	}, nil
 }
 
-func (g *GroupByYearmonthWorker) Run() error {
+// handleSignal listens for SIGTERM signal and triggers shutdown.
+func (g *GroupByYearmonthWorker) handleSignal() {
+	<-g.sigChan
+	g.log.Info("Handling signal")
+	g.Shutdown()
+}
+
+// HERE WE NEED TO ADD THE LOGIC FOR THE PARTIAL RESULTS GROUPING!
+func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error {
+	defer answerMessage(NACK_DISCARD, message)
+
+	msg, err := middleware.NewEofMessageFromBytes(message.Body)
+	if err != nil {
+		return err
+	}
+	g.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, g.id)
+
+	didSomebodyElseAcked := msg.Origin == g.id && msg.IsAck && msg.ImmediateSource != g.id
+	if didSomebodyElseAcked {
+		g.eofIntercommunicationChan <- ACTIVITY
+		return nil
+	}
+
+	isAckMine := msg.ImmediateSource == g.id
+	isAckForNotForMe := msg.IsAck && msg.Origin != g.id
+	if isAckMine || isAckForNotForMe {
+		answerMessage(ACK, message)
+		return nil
+	}
+
+	g.log.Warning("Lock")
+	g.mutex.Lock()
+	currentMessageProcessing := g.currentMessageProcessing
+	g.mutex.Unlock()
+	g.log.Warning("Unlock")
+
+	if currentMessageProcessing.IsFromSameStream(msg) {
+		g.log.Warningf("BEFORE INBOUND %s", msg.DataType)
+		<-g.eofChan
+		g.log.Warningf("AFTER INBOUND %s", msg.DataType)
+	}
+
+	msg.ImmediateSource = g.id
+	msg.IsAck = true
+	msgBytes, err := msg.ToBytes()
+	if err != nil {
+		return err
+	}
+
+	answerMessage(ACK, message)
+	g.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
+}
+
+func (f *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
+	return nil
+}
+
+func (f *GroupByYearmonthWorker) createExchangeHandlers() error {
+	return nil
+}
+
+func (g *GroupByYearmonthWorker) Run() error {
+	defer g.Shutdown()
+	go g.handleSignal()
+
+	err := g.createExchangeHandlers()
+	if err != nil {
+		return fmt.Errorf("failed to create exchange handlers: %v", err)
+	}
+
+	g.exchangeHandlers.transactionItemsYearFilteredSubscription.StartConsuming(g.groupByYearmonth, g.errChan)
+	g.exchangeHandlers.eofSubscription.StartConsuming(g.processInboundEof, g.errChan)
+
+	for err := range g.errChan {
+		if err != middleware.MessageMiddlewareSuccess {
+			g.log.Errorf("Error found while grouping by Yearmonth message of type: %v", err)
+		}
+
+		if !g.isRunning {
+			g.log.Info("Inside error loop: breaking")
+			break
+		}
+	}
+
+	g.exchangeHandlers.eofSubscription.StopConsuming()
+	g.exchangeHandlers.eofSubscription.Close()
+	g.exchangeHandlers.eofPublishing.Close()
+	g.rabbitConn.Close()
+
+	g.log.Info("Finished grouping")
+	return nil
+}
+
+// Shutdown gracefully stops the acceptor, closing the listener and current client.
+func (g *GroupByYearmonthWorker) Shutdown() {
+	g.isRunning = false
+	g.errChan <- middleware.MessageMiddlewareSuccess
+
+	g.exchangeHandlers.eofSubscription.StopConsuming()
+	g.exchangeHandlers.eofSubscription.Close()
+	g.exchangeHandlers.eofPublishing.Close()
+	g.rabbitConn.Close()
+
+	g.log.Info("Shutdown complete")
 }
