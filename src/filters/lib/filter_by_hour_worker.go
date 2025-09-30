@@ -145,16 +145,6 @@ func (f *FilterByHourWorker) createExchangeHandlers() error {
 	return nil
 }
 
-func (f *FilterByHourWorker) answerMessage(ackType int, message amqp.Delivery) {
-	switch ackType {
-	case ACK:
-	case NACK_REQUEUE:
-		message.Nack(false, true)
-	case NACK_DISCARD:
-		message.Nack(false, false)
-	}
-}
-
 func (f *FilterByHourWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
 	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, f.id, f.id, false)
 	msgBytes, err := eofMsg.ToBytes()
@@ -187,7 +177,7 @@ func (f *FilterByHourWorker) initiateEofCoordination(originalMsg middleware.Mess
 }
 
 func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
-	defer f.answerMessage(NACK_DISCARD, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
@@ -196,7 +186,7 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 
 	if msg.IsEof {
 		go f.initiateEofCoordination(*msg, message.Body)
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -213,7 +203,7 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 	filteredBatch := filter.FilterByHour(msg.Payload, f.conf.FromHour, f.conf.ToHour)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByHour")
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return nil
 	}
@@ -228,7 +218,7 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 	if middleError != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("problem while sending message to transactionsYearAndHourFilteredPublishing")
 	}
-	f.answerMessage(ACK, message)
+	answerMessage(ACK, message)
 
 	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
@@ -237,7 +227,7 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 }
 
 func (f *FilterByHourWorker) processInboundEof(message amqp.Delivery) error {
-	defer f.answerMessage(NACK_DISCARD, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewEofMessageFromBytes(message.Body)
 	if err != nil {
@@ -254,7 +244,7 @@ func (f *FilterByHourWorker) processInboundEof(message amqp.Delivery) error {
 	isAckMine := msg.ImmediateSource == f.id
 	isAckForNotForMe := msg.IsAck && msg.Origin != f.id
 	if isAckMine || isAckForNotForMe {
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -277,7 +267,7 @@ func (f *FilterByHourWorker) processInboundEof(message amqp.Delivery) error {
 		return err
 	}
 
-	f.answerMessage(ACK, message)
+	answerMessage(ACK, message)
 	f.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }

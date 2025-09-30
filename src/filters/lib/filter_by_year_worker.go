@@ -114,16 +114,6 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 	return nil
 }
 
-func (f *FilterByYearWorker) answerMessage(ackType int, message amqp.Delivery) {
-	switch ackType {
-	case ACK:
-	case NACK_REQUEUE:
-		message.Nack(false, true)
-	case NACK_DISCARD:
-		message.Nack(false, false)
-	}
-}
-
 func (f *FilterByYearWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
 	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, f.id, f.id, false)
 	msgBytes, err := eofMsg.ToBytes()
@@ -161,7 +151,7 @@ func (f *FilterByYearWorker) initiateEofCoordination(originalMsg middleware.Mess
 }
 
 func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
-	defer f.answerMessage(NACK_DISCARD, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
@@ -170,7 +160,7 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 
 	if msg.IsEof {
 		go f.initiateEofCoordination(*msg, message.Body)
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -187,7 +177,7 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 	filteredBatch := filter.FilterByYear(msg.Payload, f.conf.FromYear, f.conf.ToYear)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByYear for")
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return nil
 	}
@@ -202,10 +192,10 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 	switch msg.DataType {
 	case "transactions":
 		f.exchangeHandlers.transactionsYearFilteredPublishing.Send(responseBytes)
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 	case "transaction_items":
 		f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(responseBytes)
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 	default:
 		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return fmt.Errorf("received unprocessabble message in filterMessageByYear of type %s", msg.DataType)
@@ -218,7 +208,7 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 }
 
 func (f *FilterByYearWorker) processInboundEof(message amqp.Delivery) error {
-	defer f.answerMessage(NACK_DISCARD, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewEofMessageFromBytes(message.Body)
 	if err != nil {
@@ -235,7 +225,7 @@ func (f *FilterByYearWorker) processInboundEof(message amqp.Delivery) error {
 	isAckMine := msg.ImmediateSource == f.id
 	isAckForNotForMe := msg.IsAck && msg.Origin != f.id
 	if isAckMine || isAckForNotForMe {
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -258,7 +248,7 @@ func (f *FilterByYearWorker) processInboundEof(message amqp.Delivery) error {
 		return err
 	}
 
-	f.answerMessage(ACK, message)
+	answerMessage(ACK, message)
 	f.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }

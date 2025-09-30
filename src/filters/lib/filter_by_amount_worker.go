@@ -110,16 +110,6 @@ func (f *FilterByAmountWorker) createExchangeHandlers() error {
 	return nil
 }
 
-func (f *FilterByAmountWorker) answerMessage(ackType int, message amqp.Delivery) {
-	switch ackType {
-	case ACK:
-	case NACK_REQUEUE:
-		message.Nack(false, true)
-	case NACK_DISCARD:
-		message.Nack(false, false)
-	}
-}
-
 func (f *FilterByAmountWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
 	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, f.id, f.id, false)
 	msgBytes, err := eofMsg.ToBytes()
@@ -152,7 +142,7 @@ func (f *FilterByAmountWorker) initiateEofCoordination(originalMsg middleware.Me
 }
 
 func (f *FilterByAmountWorker) filterMessageByAmount(message amqp.Delivery) error {
-	defer f.answerMessage(NACK_DISCARD, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
@@ -161,7 +151,7 @@ func (f *FilterByAmountWorker) filterMessageByAmount(message amqp.Delivery) erro
 
 	if msg.IsEof {
 		go f.initiateEofCoordination(*msg, message.Body)
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -178,7 +168,7 @@ func (f *FilterByAmountWorker) filterMessageByAmount(message amqp.Delivery) erro
 	filteredBatch := filter.FilterByAmount(msg.Payload, f.conf.MinAmount)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByAmount")
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return nil
 	}
@@ -193,7 +183,7 @@ func (f *FilterByAmountWorker) filterMessageByAmount(message amqp.Delivery) erro
 	if middleError != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("problem while sending message to resultsQ1Publishing")
 	}
-	f.answerMessage(ACK, message)
+	answerMessage(ACK, message)
 
 	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
@@ -202,7 +192,7 @@ func (f *FilterByAmountWorker) filterMessageByAmount(message amqp.Delivery) erro
 }
 
 func (f *FilterByAmountWorker) processInboundEof(message amqp.Delivery) error {
-	defer f.answerMessage(NACK_DISCARD, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewEofMessageFromBytes(message.Body)
 	if err != nil {
@@ -219,7 +209,7 @@ func (f *FilterByAmountWorker) processInboundEof(message amqp.Delivery) error {
 	isAckMine := msg.ImmediateSource == f.id
 	isAckForNotForMe := msg.IsAck && msg.Origin != f.id
 	if isAckMine || isAckForNotForMe {
-		f.answerMessage(ACK, message)
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -242,7 +232,7 @@ func (f *FilterByAmountWorker) processInboundEof(message amqp.Delivery) error {
 		return err
 	}
 
-	f.answerMessage(ACK, message)
+	answerMessage(ACK, message)
 	f.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }
