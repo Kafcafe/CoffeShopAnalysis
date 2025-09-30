@@ -318,12 +318,12 @@ func (f *FilterByHourWorker) Run() error {
 func (f *FilterByHourWorker) Shutdown() {
 	f.isRunning = false
 	f.errChan <- middleware.MessageMiddlewareSuccess
-	f.rabbitConn.Close()
 
 	f.exchangeHandlers.transactionsYearFilteredSubscription.Close()
 	f.exchangeHandlers.eofSubscription.StopConsuming()
 	f.exchangeHandlers.eofSubscription.Close()
 	f.exchangeHandlers.eofPublishing.Close()
+	f.rabbitConn.Close()
 
 	f.log.Info("Shutdown complete")
 }

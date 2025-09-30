@@ -68,6 +68,12 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 		return err
 	}
 
+	if msg.IsEof {
+		clh.answerMessage(ACK, message)
+		clh.log.Info("Received EOF message for result")
+		return nil
+	}
+
 	clh.log.Debugf("Received result message: %v", msg.Payload)
 
 	if nums%1000 == 0 || nums > 11000 {
