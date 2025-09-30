@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -13,18 +14,26 @@ import (
 )
 
 type FilterByHourWorker struct {
-	log              *logging.Logger
-	rabbitConn       *middleware.RabbitConnection
-	sigChan          chan os.Signal
-	isRunning        bool
-	conf             HourFilterConfig
-	exchangeHandlers HourExchangeHandlers
-	errChan          chan middleware.MessageMiddlewareError
+	log                       *logging.Logger
+	rabbitConn                *middleware.RabbitConnection
+	sigChan                   chan os.Signal
+	isRunning                 bool
+	conf                      HourFilterConfig
+	exchangeHandlers          HourExchangeHandlers
+	errChan                   chan middleware.MessageMiddlewareError
+	id                        string
+	filtersCount              int
+	currentMessageProcessing  middleware.Message
+	mutex                     sync.Mutex
+	eofChan                   chan int
+	eofIntercommunicationChan chan int
 }
 
 type HourExchangeHandlers struct {
 	transactionsYearFilteredSubscription      middleware.MessageMiddlewareExchange
 	transactionsYearAndHourFilteredPublishing middleware.MessageMiddlewareExchange
+	eofPublishing                             middleware.MessageMiddlewareExchange
+	eofSubscription                           middleware.MessageMiddlewareQueue
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -50,12 +59,17 @@ func NewFilterByHourWorker(rabbitConf middleware.RabbitConfig, filtersConfig Hou
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	return &FilterByHourWorker{
-		log:        log,
-		rabbitConn: rabbitConn,
-		sigChan:    sigChan,
-		isRunning:  true,
-		conf:       filtersConfig,
-		errChan:    make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		log:                       log,
+		rabbitConn:                rabbitConn,
+		sigChan:                   sigChan,
+		isRunning:                 true,
+		conf:                      filtersConfig,
+		errChan:                   make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		id:                        filterId,
+		filtersCount:              filterCount,
+		mutex:                     sync.Mutex{},
+		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
 	}, nil
 }
 
@@ -68,7 +82,7 @@ func (f *FilterByHourWorker) createExchangeHandlersForPostFiltering() (*middlewa
 	transactionsYearAndHourFilteredPublishingRouteKey := "transactions.year-hour-filtered.all"
 	transactionsYearAndHourFilteredPublishingHandler, err := middlewareHandler.CreateTopicExchangeStandalone(transactionsYearAndHourFilteredPublishingRouteKey)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating exchange handler for ransactions.year-hour-filtered.*: %v", err)
+		return nil, fmt.Errorf("Error creating exchange handler for ransactions.year-hour-filtered.all: %v", err)
 	}
 
 	// Declare and bind for Query 1
@@ -110,9 +124,22 @@ func (f *FilterByHourWorker) createExchangeHandlers() error {
 		return err
 	}
 
+	eofPublishingRouteKey := fmt.Sprintf("eof.filters.hour.%s", f.id)
+	eofPublishingHandler, err := createExchangeHandler(f.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for eof.filters.hour: %v", err)
+	}
+
+	eofSubscription, err := prepareEofQueue(f.rabbitConn, "hour", f.id)
+	if err != nil {
+		return fmt.Errorf("Error preparing EOF queue for transactions: %v", err)
+	}
+
 	f.exchangeHandlers = HourExchangeHandlers{
 		transactionsYearFilteredSubscription:      *transactionsYearFilteredSubscriptionHandler,
 		transactionsYearAndHourFilteredPublishing: *transactionsYearAndHourFilteredPublishingHandler,
+		eofPublishing:   *eofPublishingHandler,
+		eofSubscription: *eofSubscription,
 	}
 
 	return nil
@@ -128,6 +155,37 @@ func (f *FilterByHourWorker) answerMessage(ackType int, message amqp.Delivery) {
 	}
 }
 
+func (f *FilterByHourWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, f.id, f.id, false)
+	msgBytes, err := eofMsg.ToBytes()
+	if err != nil {
+		f.log.Errorf("Failed to serialize message: %v", err)
+	}
+
+	f.exchangeHandlers.eofPublishing.Send(msgBytes)
+
+	totalEofs := f.filtersCount - 1
+
+	if totalEofs == 0 {
+		f.log.Infof("No EOF coordination needed for %s", originalMsg.DataType)
+	} else {
+		f.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
+	}
+
+	for i := 0; i < totalEofs; i++ {
+		f.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
+		<-f.eofIntercommunicationChan
+		f.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
+	}
+
+	middleError := f.exchangeHandlers.transactionsYearAndHourFilteredPublishing.Send(originalMsgBytes)
+	if middleError != middleware.MessageMiddlewareSuccess {
+		f.log.Error("problem while sending message to transactionsYearAndHourFilteredPublishing")
+	}
+
+	f.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+}
+
 func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 	defer f.answerMessage(NACK_DISCARD, message)
 
@@ -136,11 +194,27 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 		return err
 	}
 
+	if msg.IsEof {
+		go f.initiateEofCoordination(*msg, message.Body)
+		f.answerMessage(ACK, message)
+		return nil
+	}
+
+	if len(f.eofChan) > 0 {
+		<-f.eofChan
+	}
+
+	f.mutex.Lock()
+	f.currentMessageProcessing = *msg
+	f.currentMessageProcessing.Payload = []string{}
+	f.mutex.Unlock()
+
 	filter := NewFilter()
 	filteredBatch := filter.FilterByHour(msg.Payload, f.conf.FromHour, f.conf.ToHour)
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessageByHour")
 		f.answerMessage(ACK, message)
+		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return nil
 	}
 
@@ -156,7 +230,55 @@ func (f *FilterByHourWorker) filterMessageByHour(message amqp.Delivery) error {
 	}
 	f.answerMessage(ACK, message)
 
+	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+
 	f.log.Info("Filtered message and sent filterMessageByHour batch")
+	return nil
+}
+
+func (f *FilterByHourWorker) processInboundEof(message amqp.Delivery) error {
+	defer f.answerMessage(NACK_DISCARD, message)
+
+	msg, err := middleware.NewEofMessageFromBytes(message.Body)
+	if err != nil {
+		return err
+	}
+	f.log.Warningf("processInboundEof %s filter%s", msg.DataType, f.id)
+
+	didSomebodyElseAcked := msg.Origin == f.id && msg.IsAck && msg.ImmediateSource != f.id
+	if didSomebodyElseAcked {
+		f.eofIntercommunicationChan <- ACTIVITY
+		return nil
+	}
+
+	isAckMine := msg.ImmediateSource == f.id
+	isAckForNotForMe := msg.IsAck && msg.Origin != f.id
+	if isAckMine || isAckForNotForMe {
+		f.answerMessage(ACK, message)
+		return nil
+	}
+
+	f.log.Warning("Lock")
+	f.mutex.Lock()
+	currentMessageProcessing := f.currentMessageProcessing
+	f.mutex.Unlock()
+	f.log.Warning("Unlock")
+
+	if currentMessageProcessing.IsFromSameStream(msg) {
+		f.log.Warningf("BEFORE INBOUND %s", msg.DataType)
+		<-f.eofChan
+		f.log.Warningf("AFTER INBOUND %s", msg.DataType)
+	}
+
+	msg.ImmediateSource = f.id
+	msg.IsAck = true
+	msgBytes, err := msg.ToBytes()
+	if err != nil {
+		return err
+	}
+
+	f.answerMessage(ACK, message)
+	f.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }
 
@@ -170,6 +292,7 @@ func (f *FilterByHourWorker) Run() error {
 	}
 
 	f.exchangeHandlers.transactionsYearFilteredSubscription.StartConsuming(f.filterMessageByHour, f.errChan)
+	f.exchangeHandlers.eofSubscription.StartConsuming(f.processInboundEof, f.errChan)
 
 	for err := range f.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -183,6 +306,9 @@ func (f *FilterByHourWorker) Run() error {
 	}
 
 	f.exchangeHandlers.transactionsYearFilteredSubscription.Close()
+	f.exchangeHandlers.eofSubscription.StopConsuming()
+	f.exchangeHandlers.eofSubscription.Close()
+	f.exchangeHandlers.eofPublishing.Close()
 
 	f.log.Info("Finished filtering")
 	return nil
@@ -193,6 +319,11 @@ func (f *FilterByHourWorker) Shutdown() {
 	f.isRunning = false
 	f.errChan <- middleware.MessageMiddlewareSuccess
 	f.rabbitConn.Close()
+
+	f.exchangeHandlers.transactionsYearFilteredSubscription.Close()
+	f.exchangeHandlers.eofSubscription.StopConsuming()
+	f.exchangeHandlers.eofSubscription.Close()
+	f.exchangeHandlers.eofPublishing.Close()
 
 	f.log.Info("Shutdown complete")
 }

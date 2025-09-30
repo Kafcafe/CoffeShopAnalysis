@@ -58,6 +58,8 @@ func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 	}
 }
 
+var nums int = 0
+
 func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
@@ -67,6 +69,11 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	}
 
 	clh.log.Debugf("Received result message: %v", msg.Payload)
+
+	if nums%1000 == 0 || nums > 11000 {
+		clh.log.Infof("nums: %d", nums)
+	}
+	nums += len(msg.Payload)
 
 	clh.answerMessage(ACK, message)
 	return nil

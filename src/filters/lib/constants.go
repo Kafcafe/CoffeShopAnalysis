@@ -12,6 +12,10 @@ const (
 	ACK          = 0
 	NACK_REQUEUE = 1
 	NACK_DISCARD = 2
+
+	THERE_IS_PREVIOUS_MESSAGE = 0
+	ACTIVITY                  = 0
+	OPT_IS_EOF_ACK            = "ACK"
 )
 
 func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
@@ -69,20 +73,20 @@ func prepareQuery1OutputQueues(rabbitConn *middleware.RabbitConnection) error {
 	return nil
 }
 
-func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterId string) (*middleware.MessageMiddlewareQueue, error) {
+func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string, filterId string) (*middleware.MessageMiddlewareQueue, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
 	}
 
 	// Declare and bind for Query 1
-	queueName := fmt.Sprintf("eof.filters.year.%s", filterId)
+	queueName := fmt.Sprintf("eof.filters.%s.%s", filterType, filterId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
 	}
 
-	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, "eof.filters.year.*")
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, fmt.Sprintf("eof.filters.%s.*", filterType))
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
 	}

@@ -29,12 +29,6 @@ type FilterByYearWorker struct {
 	eofIntercommunicationChan chan int
 }
 
-const (
-	THERE_IS_PREVIOUS_MESSAGE = 0
-	ACTIVITY                  = 0
-	OPT_IS_EOF_ACK            = "ACK"
-)
-
 type YearExchangeHandlers struct {
 	transactionsSubscribing                 middleware.MessageMiddlewareExchange
 	transactionsYearFilteredPublishing      middleware.MessageMiddlewareExchange
@@ -99,27 +93,16 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.items: %v", err)
 	}
 
-	// middlewareHandler, err := middleware.NewMiddlewareHandler(f.rabbitConn)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create middleware handler: %w", err)
-	// }
-
 	eofPublishingRouteKey := fmt.Sprintf("eof.filters.year.%s", f.id)
 	eofPublishingHandler, err := createExchangeHandler(f.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
 	}
 
-	eofSubscription, err := prepareEofQueue(f.rabbitConn, f.id)
+	eofSubscription, err := prepareEofQueue(f.rabbitConn, "year", f.id)
 	if err != nil {
 		return fmt.Errorf("Error preparing EOF queue for transactions: %v", err)
 	}
-
-	// eofSubscriptionRouteKey := "eof.filters.year.all"
-	// eofSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, eofSubscriptionRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
-	// if err != nil {
-	// 	return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
-	// }
 
 	f.exchangeHandlers = YearExchangeHandlers{
 		transactionsSubscribing:                 *transactionsSubscribingHandler,
@@ -230,7 +213,7 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 
 	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
-	f.log.Debugf("Filtered message and sent filterMessageByYear batch")
+	f.log.Infof("Filtered message and sent filterMessageByYear batch")
 	return nil
 }
 
