@@ -39,7 +39,8 @@ type YearExchangeHandlers struct {
 	transactionsSubscribing                 middleware.MessageMiddlewareExchange
 	transactionsYearFilteredPublishing      middleware.MessageMiddlewareExchange
 	transactionsItemsYearFilteredPublishing middleware.MessageMiddlewareExchange
-	eof                                     middleware.MessageMiddlewareExchange
+	eofPublishing                           middleware.MessageMiddlewareExchange
+	eofSubscription                         middleware.MessageMiddlewareExchange
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -98,8 +99,21 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.items: %v", err)
 	}
 
-	eofRouteKey := "eof.filters.year"
-	eofHandler, err := createExchangeHandler(f.rabbitConn, eofRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	// middlewareHandler, err := middleware.NewMiddlewareHandler(f.rabbitConn)
+	// if err != nil {
+	// 	return fmt.Errorf("failed to create middleware handler: %w", err)
+	// }
+
+	eofPublishingRouteKey := fmt.Sprintf("eof.filters.year.%s", f.id)
+	eofPublishingHandler, err := createExchangeHandler(f.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
+	}
+
+	prepareEofQueue(f.rabbitConn, f.id)
+
+	eofSubscriptionRouteKey := "eof.filters.year.all"
+	eofSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, eofSubscriptionRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
 	}
@@ -108,7 +122,8 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 		transactionsSubscribing:                 *transactionsSubscribingHandler,
 		transactionsYearFilteredPublishing:      *transactionsYearFilteredPublishingHandler,
 		transactionsItemsYearFilteredPublishing: *transactionsItemsYearFilteredPublishingHandler,
-		eof:                                     *eofHandler,
+		eofPublishing:                           *eofPublishingHandler,
+		eofSubscription:                         *eofSubscriptionHandler,
 	}
 	return nil
 }
@@ -130,7 +145,7 @@ func (f *FilterByYearWorker) initiateEofCoordination(originalMsg middleware.Mess
 		f.log.Errorf("Failed to serialize message: %v", err)
 	}
 
-	f.exchangeHandlers.eof.Send(msgBytes)
+	f.exchangeHandlers.eofPublishing.Send(msgBytes)
 
 	totalEofs := f.filtersCount - 1
 
@@ -258,7 +273,7 @@ func (f *FilterByYearWorker) processInboundEof(message amqp.Delivery) error {
 	}
 
 	f.answerMessage(ACK, message)
-	f.exchangeHandlers.eof.Send(msgBytes)
+	f.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }
 
@@ -272,7 +287,7 @@ func (f *FilterByYearWorker) Run() error {
 	}
 
 	f.exchangeHandlers.transactionsSubscribing.StartConsuming(f.filterMessageByYear, f.errChan)
-	f.exchangeHandlers.eof.StartConsuming(f.processInboundEof, f.errChan)
+	f.exchangeHandlers.eofSubscription.StartConsuming(f.processInboundEof, f.errChan)
 
 	for err := range f.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -286,8 +301,9 @@ func (f *FilterByYearWorker) Run() error {
 	}
 
 	f.exchangeHandlers.transactionsSubscribing.Close()
-	f.exchangeHandlers.eof.StopConsuming()
-	f.exchangeHandlers.eof.Close()
+	f.exchangeHandlers.eofSubscription.StopConsuming()
+	f.exchangeHandlers.eofSubscription.Close()
+	f.exchangeHandlers.eofPublishing.Close()
 
 	f.log.Info("Finished filtering")
 	return nil
@@ -300,8 +316,9 @@ func (f *FilterByYearWorker) Shutdown() {
 	f.rabbitConn.Close()
 
 	f.exchangeHandlers.transactionsSubscribing.Close()
-	f.exchangeHandlers.eof.StopConsuming()
-	f.exchangeHandlers.eof.Close()
+	f.exchangeHandlers.eofSubscription.StopConsuming()
+	f.exchangeHandlers.eofSubscription.Close()
+	f.exchangeHandlers.eofPublishing.Close()
 
 	f.log.Info("Shutdown complete")
 }
