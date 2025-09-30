@@ -51,7 +51,7 @@ services:
         container_name: "client1"
         environment:
           CLIENT_ID: "1"
-          FILETYPES: "transactions,transaction_items,stores,menu,users"
+          FILETYPES: "transaction_items"
         depends_on:
           - client-handler
         networks:
@@ -76,14 +76,16 @@ services:
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
           FILTER_TYPE: year
+          FILTER_ID: -year1
+          FILTER_COUNT: 2
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
 
-    filter-hour1:
-        container_name: "filter-hour1"
+    filter-year2:
+        container_name: "filter-year2"
         depends_on:
           rabbitmq:
             condition: service_healthy
@@ -94,26 +96,9 @@ services:
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
-          FILTER_TYPE: hour
-        build:
-          context: ./src/
-          dockerfile: filters/Dockerfile
-        volumes:
-          - ./src/filters/config.yaml:/config.yaml 
-
-    filter-amount1:
-        container_name: "filter-amount1"
-        depends_on:
-          rabbitmq:
-            condition: service_healthy
-        networks:
-          - analysis_net
-        environment:
-          RABBITMQ_HOST: rabbitmq
-          RABBITMQ_PORT: 5672
-          RABBITMQ_USER: user
-          RABBITMQ_PASS: user
-          FILTER_TYPE: amount
+          FILTER_TYPE: year
+          FILTER_ID: -year2
+          FILTER_COUNT: 2
         build:
           context: ./src/
           dockerfile: filters/Dockerfile

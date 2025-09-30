@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -13,19 +14,32 @@ import (
 )
 
 type FilterByYearWorker struct {
-	log              *logging.Logger
-	rabbitConn       *middleware.RabbitConnection
-	sigChan          chan os.Signal
-	isRunning        bool
-	conf             YearFilterConfig
-	exchangeHandlers YearExchangeHandlers
-	errChan          chan middleware.MessageMiddlewareError
+	log                       *logging.Logger
+	rabbitConn                *middleware.RabbitConnection
+	sigChan                   chan os.Signal
+	isRunning                 bool
+	conf                      YearFilterConfig
+	exchangeHandlers          YearExchangeHandlers
+	errChan                   chan middleware.MessageMiddlewareError
+	id                        string
+	filtersCount              int
+	currentMessageProcessing  middleware.Message
+	mutex                     sync.Mutex
+	eofChan                   chan int
+	eofIntercommunicationChan chan int
 }
+
+const (
+	THERE_IS_PREVIOUS_MESSAGE = 0
+	ACTIVITY                  = 0
+	OPT_IS_EOF_ACK            = "ACK"
+)
 
 type YearExchangeHandlers struct {
 	transactionsSubscribing                 middleware.MessageMiddlewareExchange
 	transactionsYearFilteredPublishing      middleware.MessageMiddlewareExchange
 	transactionsItemsYearFilteredPublishing middleware.MessageMiddlewareExchange
+	eof                                     middleware.MessageMiddlewareExchange
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -35,7 +49,7 @@ func (f *FilterByYearWorker) handleSignal() {
 	f.Shutdown()
 }
 
-func NewFilterByYearWorker(rabbitConf middleware.RabbitConfig, filtersConfig YearFilterConfig) (*FilterByYearWorker, error) {
+func NewFilterByYearWorker(rabbitConf middleware.RabbitConfig, filtersConfig YearFilterConfig, filterId string, filterCount int) (*FilterByYearWorker, error) {
 	log := logger.GetLoggerWithPrefix("[FILTER-Y]")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
@@ -51,12 +65,17 @@ func NewFilterByYearWorker(rabbitConf middleware.RabbitConfig, filtersConfig Yea
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	return &FilterByYearWorker{
-		log:        log,
-		rabbitConn: rabbitConn,
-		sigChan:    sigChan,
-		isRunning:  true,
-		conf:       filtersConfig,
-		errChan:    make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		log:                       log,
+		rabbitConn:                rabbitConn,
+		sigChan:                   sigChan,
+		isRunning:                 true,
+		conf:                      filtersConfig,
+		errChan:                   make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		id:                        filterId,
+		filtersCount:              filterCount,
+		mutex:                     sync.Mutex{},
+		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
 	}, nil
 }
 
@@ -79,10 +98,17 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.items: %v", err)
 	}
 
+	eofRouteKey := "eof.filters.year"
+	eofHandler, err := createExchangeHandler(f.rabbitConn, eofRouteKey, middleware.EXCHANGE_TYPE_FANOUT)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
+	}
+
 	f.exchangeHandlers = YearExchangeHandlers{
 		transactionsSubscribing:                 *transactionsSubscribingHandler,
 		transactionsYearFilteredPublishing:      *transactionsYearFilteredPublishingHandler,
 		transactionsItemsYearFilteredPublishing: *transactionsItemsYearFilteredPublishingHandler,
+		eof:                                     *eofHandler,
 	}
 	return nil
 }
@@ -97,6 +123,42 @@ func (f *FilterByYearWorker) answerMessage(ackType int, message amqp.Delivery) {
 	}
 }
 
+func (f *FilterByYearWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, f.id, f.id, false)
+	msgBytes, err := eofMsg.ToBytes()
+	if err != nil {
+		f.log.Errorf("Failed to serialize message: %v", err)
+	}
+
+	f.exchangeHandlers.eof.Send(msgBytes)
+
+	totalEofs := f.filtersCount - 1
+
+	if totalEofs == 0 {
+		f.log.Infof("No EOF coordination needed for %s", originalMsg.DataType)
+	} else {
+		f.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
+	}
+
+	for i := 0; i < totalEofs; i++ {
+		f.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
+		<-f.eofIntercommunicationChan
+		f.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
+	}
+
+	switch originalMsg.DataType {
+	case "transactions":
+		f.exchangeHandlers.transactionsYearFilteredPublishing.Send(originalMsgBytes)
+	case "transaction_items":
+		f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(originalMsgBytes)
+	default:
+		f.log.Errorf("Unknown dataType '%s' on initiateEofCoordination", originalMsg.DataType)
+		return
+	}
+
+	f.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+}
+
 func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 	defer f.answerMessage(NACK_DISCARD, message)
 
@@ -105,15 +167,32 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 		return err
 	}
 
-	filter := NewFilter()
-	filteredBatch := filter.FilterByYear(msg.Payload, f.conf.FromYear, f.conf.ToYear)
-	if len(filteredBatch) == 0 {
-		f.log.Info("No transaction passed the filterMessageByYear")
+	if msg.IsEof {
+		go f.initiateEofCoordination(*msg, message.Body)
 		f.answerMessage(ACK, message)
 		return nil
 	}
 
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch)
+	if len(f.eofChan) > 0 {
+		<-f.eofChan
+	}
+
+	f.mutex.Lock()
+	f.currentMessageProcessing = *msg
+	f.currentMessageProcessing.Payload = []string{}
+	f.mutex.Unlock()
+
+	filter := NewFilter()
+	filteredBatch := filter.FilterByYear(msg.Payload, f.conf.FromYear, f.conf.ToYear)
+	if len(filteredBatch) == 0 {
+		f.log.Info("No transaction passed the filterMessageByYear for")
+		f.answerMessage(ACK, message)
+		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+		return nil
+	}
+
+	isEof := false
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch, isEof)
 	responseBytes, err := response.ToBytes()
 	if err != nil {
 		return err
@@ -127,10 +206,59 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 		f.exchangeHandlers.transactionsItemsYearFilteredPublishing.Send(responseBytes)
 		f.answerMessage(ACK, message)
 	default:
+		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return fmt.Errorf("received unprocessabble message in filterMessageByYear of type %s", msg.DataType)
 	}
 
+	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+
 	f.log.Info("Filtered message and sent filterMessageByYear batch")
+	return nil
+}
+
+func (f *FilterByYearWorker) processInboundEof(message amqp.Delivery) error {
+	defer f.answerMessage(NACK_DISCARD, message)
+
+	msg, err := middleware.NewEofMessageFromBytes(message.Body)
+	if err != nil {
+		return err
+	}
+	f.log.Warningf("processInboundEof %s filter%s", msg.DataType, f.id)
+
+	didSomebodyElseAcked := msg.Origin == f.id && msg.IsAck && msg.ImmediateSource != f.id
+	if didSomebodyElseAcked {
+		f.eofIntercommunicationChan <- ACTIVITY
+		return nil
+	}
+
+	isAckMine := msg.ImmediateSource == f.id
+	isAckForNotForMe := msg.IsAck && msg.Origin != f.id
+	if isAckMine || isAckForNotForMe {
+		f.answerMessage(ACK, message)
+		return nil
+	}
+
+	f.log.Warning("Lock")
+	f.mutex.Lock()
+	currentMessageProcessing := f.currentMessageProcessing
+	f.mutex.Unlock()
+	f.log.Warning("Unlock")
+
+	if currentMessageProcessing.IsFromSameStream(msg) {
+		f.log.Warningf("BEFORE INBOUND %s", msg.DataType)
+		<-f.eofChan
+		f.log.Warningf("AFTER INBOUND %s", msg.DataType)
+	}
+
+	msg.ImmediateSource = f.id
+	msg.IsAck = true
+	msgBytes, err := msg.ToBytes()
+	if err != nil {
+		return err
+	}
+
+	f.answerMessage(ACK, message)
+	f.exchangeHandlers.eof.Send(msgBytes)
 	return nil
 }
 
@@ -144,6 +272,7 @@ func (f *FilterByYearWorker) Run() error {
 	}
 
 	f.exchangeHandlers.transactionsSubscribing.StartConsuming(f.filterMessageByYear, f.errChan)
+	f.exchangeHandlers.eof.StartConsuming(f.processInboundEof, f.errChan)
 
 	for err := range f.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -157,6 +286,8 @@ func (f *FilterByYearWorker) Run() error {
 	}
 
 	f.exchangeHandlers.transactionsSubscribing.Close()
+	f.exchangeHandlers.eof.StopConsuming()
+	f.exchangeHandlers.eof.Close()
 
 	f.log.Info("Finished filtering")
 	return nil
@@ -167,6 +298,10 @@ func (f *FilterByYearWorker) Shutdown() {
 	f.isRunning = false
 	f.errChan <- middleware.MessageMiddlewareSuccess
 	f.rabbitConn.Close()
+
+	f.exchangeHandlers.transactionsSubscribing.Close()
+	f.exchangeHandlers.eof.StopConsuming()
+	f.exchangeHandlers.eof.Close()
 
 	f.log.Info("Shutdown complete")
 }

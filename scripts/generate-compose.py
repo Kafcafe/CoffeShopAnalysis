@@ -47,15 +47,15 @@ def generate_compose(file_destination: str, client_nums: int, filter_by_year_num
 
     for i in range(filter_by_year_nums):
         filter_type = FILTER_BY_YEAR_TYPE
-        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type)
+        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type, filter_count=filter_by_year_nums)
 
     for i in range(filter_by_hour_nums):
         filter_type = FILTER_BY_HOUR_TYPE
-        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type)
+        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type, filter_count=filter_by_hour_nums)
 
     for i in range(filter_by_amount_nums):
         filter_type = FILTER_BY_AMOUNT_TYPE
-        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type)
+        compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type, filter_count=filter_by_amount_nums)
 
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:

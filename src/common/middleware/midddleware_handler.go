@@ -9,8 +9,10 @@ import (
 const (
 	EXCHANGE_TYPE_TOPIC       = "topic"
 	EXCHANGE_TYPE_DIRECT      = "direct"
+	EXCHANGE_TYPE_FANOUT      = "fanout"
 	EXCHANGE_NAME_TOPIC_TYPE  = "coffee-analysis-topic"
 	EXCHANGE_NAME_DIRECT_TYPE = "coffee-analysis-direct"
+	EXCHANGE_NAME_FANOUT_TYPE = "coffee-analysis-fanout"
 
 	EXCHANGE_DURABILITY = false
 	QUEUE_DURABILITY    = false
@@ -99,6 +101,10 @@ func (mh *MiddlewareHandler) CreateDirectExchange(routeKey string) (*MessageMidd
 
 func (mh *MiddlewareHandler) CreateTopicExchange(routeKey string) (*MessageMiddlewareExchange, error) {
 	return mh.createExchange(EXCHANGE_NAME_TOPIC_TYPE, EXCHANGE_TYPE_TOPIC, routeKey)
+}
+
+func (mh *MiddlewareHandler) CreateFanoutExchange(routeKey string) (*MessageMiddlewareExchange, error) {
+	return mh.createExchange(EXCHANGE_NAME_FANOUT_TYPE, EXCHANGE_TYPE_FANOUT, routeKey)
 }
 
 func (mh *MiddlewareHandler) CreateTopicExchangeStandalone(routeKey string) (*MessageMiddlewareExchange, error) {

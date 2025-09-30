@@ -161,12 +161,18 @@ func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) er
 		clh.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
 	}
 
+	isEof := true
+	err := clh.dispatchBatchToMiddleware(dataType, []string{}, isEof)
+	if err != nil {
+		return fmt.Errorf("Error dispatching EOF to middleware: %v", err)
+	}
+
 	clh.log.Infof("Finished processing all %d files for dataType %s", amountOfFiles, dataType)
 	return nil
 }
 
-func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string) error {
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, batch)
+func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string, isEof bool) error {
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, batch, isEof)
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err
@@ -224,7 +230,11 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		batchCounter++
 		clh.log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
 
-		clh.dispatchBatchToMiddleware(dataType, batch)
+		isEof := false
+		err = clh.dispatchBatchToMiddleware(dataType, batch, isEof)
+		if err != nil {
+			return fmt.Errorf("Error dispatching batch to middleware: %v", err)
+		}
 
 		err = clh.protocol.ConfirmBatchReceived()
 		if err != nil {

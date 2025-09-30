@@ -20,6 +20,8 @@ func CreateFilterWorker(filterType string,
 	yearConfig YearFilterConfig,
 	hourConfig HourFilterConfig,
 	amountConfig AmountFilterConfig,
+	filterId string,
+	filterCount int,
 ) (*FilterWorker, error) {
 
 	var filterWorker FilterWorker
@@ -27,20 +29,20 @@ func CreateFilterWorker(filterType string,
 
 	switch filterType {
 	case FILTER_TYPE_YEAR:
-		filterWorker, err = NewFilterByYearWorker(rabbitConf, yearConfig)
+		filterWorker, err = NewFilterByYearWorker(rabbitConf, yearConfig, filterId, filterCount)
 		if err != nil {
 			return nil, err
 		}
-	case FILTER_TYPE_HOUR:
-		filterWorker, err = NewFilterByHourWorker(rabbitConf, hourConfig)
-		if err != nil {
-			return nil, err
-		}
-	case FILTER_TYPE_AMOUNT:
-		filterWorker, err = NewFilterByAmountWorker(rabbitConf, amountConfig)
-		if err != nil {
-			return nil, err
-		}
+	// case FILTER_TYPE_HOUR:
+	// 	filterWorker, err = NewFilterByHourWorker(rabbitConf, hourConfig, filterId, filterCount)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
+	// case FILTER_TYPE_AMOUNT:
+	// 	filterWorker, err = NewFilterByAmountWorker(rabbitConf, amountConfig, filterId, filterCount)
+	// 	if err != nil {
+	// 		return nil, err
+	// 	}
 	default:
 		return nil, fmt.Errorf("Unknown filter type: %s", filterType)
 	}

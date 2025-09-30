@@ -91,6 +91,8 @@ FILTER_TEMPLATE = """
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
           FILTER_TYPE: {filter_type}
+          FILTER_ID: {id}
+          FILTER_COUNT: {filter_count}
         build:
           context: ./src/
           dockerfile: filters/Dockerfile

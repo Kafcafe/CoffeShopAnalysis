@@ -23,6 +23,9 @@ func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey str
 	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
 		return middlewareHandler.CreateDirectExchange(routeKey)
 	}
+	if exchangeType == middleware.EXCHANGE_TYPE_FANOUT {
+		return middlewareHandler.CreateFanoutExchange(routeKey)
+	}
 	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 

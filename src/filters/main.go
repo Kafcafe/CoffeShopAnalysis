@@ -50,6 +50,10 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
+	logger.Infof("Filter startup with: id: %s | filterCount : %d",
+		v.GetString("filter.id"), v.GetInt("filter.count"),
+	)
+
 	logger.Infof("Config for filter by year: fromYear: %d | toYear: %d",
 		v.GetInt("filter.year.fromYear"),
 		v.GetInt("filter.year.toYear"),
@@ -110,9 +114,12 @@ func main() {
 		MinAmount: config.GetFloat64("filter.amount.minAmount"),
 	}
 
+	filterId := config.GetString("filter.id")
+	filterCount := config.GetInt("filter.count")
+
 	filterType := config.GetString("filter.type")
 
-	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig, amountConfig)
+	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig, amountConfig, filterId, filterCount)
 	if err != nil {
 		logger.Errorf("Failed creating new filter worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
