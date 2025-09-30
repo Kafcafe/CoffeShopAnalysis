@@ -99,7 +99,7 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 	}
 
 	eofRouteKey := "eof.filters.year"
-	eofHandler, err := createExchangeHandler(f.rabbitConn, eofRouteKey, middleware.EXCHANGE_TYPE_FANOUT)
+	eofHandler, err := createExchangeHandler(f.rabbitConn, eofRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
 	}
