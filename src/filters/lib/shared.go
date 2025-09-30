@@ -3,6 +3,8 @@ package filters
 import (
 	"common/middleware"
 	"fmt"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 const (
@@ -92,4 +94,14 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 	}
 
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
+}
+
+func answerMessage(ackType int, message amqp.Delivery) {
+	switch ackType {
+	case ACK:
+	case NACK_REQUEUE:
+		message.Nack(false, true)
+	case NACK_DISCARD:
+		message.Nack(false, false)
+	}
 }
