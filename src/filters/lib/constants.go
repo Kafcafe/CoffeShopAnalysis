@@ -69,23 +69,23 @@ func prepareQuery1OutputQueues(rabbitConn *middleware.RabbitConnection) error {
 	return nil
 }
 
-func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterId string) error {
+func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterId string) (*middleware.MessageMiddlewareQueue, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
-		return fmt.Errorf("failed to create middleware handler: %w", err)
+		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
 	}
 
 	// Declare and bind for Query 1
 	queueName := fmt.Sprintf("eof.filters.year.%s", filterId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {
-		return fmt.Errorf("failed to declare queue %s: %v", queueName, err)
+		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
 	}
 
-	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, "eof.filters.year.all")
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, "eof.filters.year.*")
 	if err != nil {
-		return fmt.Errorf("failed to bind queue to exchange: %v", err)
+		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
 	}
 
-	return nil
+	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
 }

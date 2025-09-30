@@ -33,16 +33,16 @@ func CreateFilterWorker(filterType string,
 		if err != nil {
 			return nil, err
 		}
-	// case FILTER_TYPE_HOUR:
-	// 	filterWorker, err = NewFilterByHourWorker(rabbitConf, hourConfig, filterId, filterCount)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
-	// case FILTER_TYPE_AMOUNT:
-	// 	filterWorker, err = NewFilterByAmountWorker(rabbitConf, amountConfig, filterId, filterCount)
-	// 	if err != nil {
-	// 		return nil, err
-	// 	}
+	case FILTER_TYPE_HOUR:
+		filterWorker, err = NewFilterByHourWorker(rabbitConf, hourConfig, filterId, filterCount)
+		if err != nil {
+			return nil, err
+		}
+	case FILTER_TYPE_AMOUNT:
+		filterWorker, err = NewFilterByAmountWorker(rabbitConf, amountConfig, filterId, filterCount)
+		if err != nil {
+			return nil, err
+		}
 	default:
 		return nil, fmt.Errorf("Unknown filter type: %s", filterType)
 	}

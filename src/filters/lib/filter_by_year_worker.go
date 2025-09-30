@@ -40,7 +40,7 @@ type YearExchangeHandlers struct {
 	transactionsYearFilteredPublishing      middleware.MessageMiddlewareExchange
 	transactionsItemsYearFilteredPublishing middleware.MessageMiddlewareExchange
 	eofPublishing                           middleware.MessageMiddlewareExchange
-	eofSubscription                         middleware.MessageMiddlewareExchange
+	eofSubscription                         middleware.MessageMiddlewareQueue
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -110,20 +110,23 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
 	}
 
-	prepareEofQueue(f.rabbitConn, f.id)
-
-	eofSubscriptionRouteKey := "eof.filters.year.all"
-	eofSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, eofSubscriptionRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	eofSubscription, err := prepareEofQueue(f.rabbitConn, f.id)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
+		return fmt.Errorf("Error preparing EOF queue for transactions: %v", err)
 	}
+
+	// eofSubscriptionRouteKey := "eof.filters.year.all"
+	// eofSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, eofSubscriptionRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	// if err != nil {
+	// 	return fmt.Errorf("Error creating exchange handler for eof.filters.year: %v", err)
+	// }
 
 	f.exchangeHandlers = YearExchangeHandlers{
 		transactionsSubscribing:                 *transactionsSubscribingHandler,
 		transactionsYearFilteredPublishing:      *transactionsYearFilteredPublishingHandler,
 		transactionsItemsYearFilteredPublishing: *transactionsItemsYearFilteredPublishingHandler,
 		eofPublishing:                           *eofPublishingHandler,
-		eofSubscription:                         *eofSubscriptionHandler,
+		eofSubscription:                         *eofSubscription,
 	}
 	return nil
 }
