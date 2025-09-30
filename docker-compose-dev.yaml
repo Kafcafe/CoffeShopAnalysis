@@ -51,7 +51,7 @@ services:
         container_name: "client1"
         environment:
           CLIENT_ID: "1"
-          FILETYPES: "transactions,transaction_items,stores,menu,users"
+          FILETYPES: "transaction_items"
         depends_on:
           - client-handler
         networks:
@@ -61,7 +61,7 @@ services:
           dockerfile: Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
-          - ./../data/kaggle_datos_reducidos_suelto/:/data
+          - ./.data:/data
 
     filter-year1:
         container_name: "filter-year1"

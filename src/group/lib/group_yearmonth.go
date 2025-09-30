@@ -33,6 +33,7 @@ type GroupByYearmonthWorker struct {
 	mutex                     sync.Mutex
 	eofChan                   chan int
 	eofIntercommunicationChan chan int
+	groupedPerClient          GroupedPerClient
 }
 
 func NewGroupByYearmonthWorker(rabbitConf middleware.RabbitConfig, groupById string, groupByCount int) (*GroupByYearmonthWorker, error) {
@@ -61,6 +62,7 @@ func NewGroupByYearmonthWorker(rabbitConf middleware.RabbitConfig, groupById str
 		mutex:                     sync.Mutex{},
 		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
 		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		groupedPerClient:          NewGroupedPerClient(),
 	}, nil
 }
 
@@ -135,16 +137,33 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 		g.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
 	}
 
+	g.log.Infof("Consolidating partial results for %s", originalMsg.DataType)
+
 	for i := 0; i < totalEofs; i++ {
 		g.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
 		<-g.eofIntercommunicationChan
 		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(originalMsgBytes)
-	if middleError != middleware.MessageMiddlewareSuccess {
-		g.log.Error("problem while sending message to resultsQ1Publishing")
+	allGroupedByClient := g.groupedPerClient.Get(originalMsg.ClientId).ToMapString()
+
+	for key, records := range allGroupedByClient {
+		singleYearRecords := map[string][]string{key: records}
+		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearRecords, false)
+		responseBytes, err := response.ToBytes()
+		if err != nil {
+			g.log.Errorf("%v", err)
+		}
+
+		g.log.Infof("Sent consolidated results for year-month: %s", key)
+
+		middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(responseBytes)
+		if middleError != middleware.MessageMiddlewareSuccess {
+			g.log.Errorf("problem while sending message to transactionItemsGroupedByYearmonthPublishing")
+		}
 	}
+	g.groupedPerClient.Delete(originalMsg.ClientId)
+	g.log.Infof("Final results grouped and consolidated")
 
 	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
 }
@@ -172,27 +191,7 @@ func (g *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
 	g.currentMessageProcessing.Payload = []string{}
 	g.mutex.Unlock()
 
-	// IMPLEMENT GROUPBY LOGIC FOR COMPUTING PARTIAL RESULTS
-	// groupBy := NewGr()
-	// filteredBatch := filter.FilterByAmount(msg.Payload, f.conf.MinAmount)
-	// if len(filteredBatch) == 0 {
-	// 	f.log.Info("No transaction passed the filterMessageByAmount")
-	// 	answerMessage(ACK, message)
-	// 	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
-	// 	return nil
-	// }
-
-	// SENDING SAME PAYLOAD BECAUSE WE ARE NOT GROUPING YET
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, msg.Payload, false)
-	responseBytes, err := response.ToBytes()
-	if err != nil {
-		return err
-	}
-
-	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(responseBytes)
-	if middleError != middleware.MessageMiddlewareSuccess {
-		return fmt.Errorf("problem while sending message to transactionItemsGroupedByYearmonthPublishing")
-	}
+	g.groupedPerClient.Add(msg.ClientId, msg.Payload)
 	answerMessage(ACK, message)
 
 	g.eofChan <- THERE_IS_PREVIOUS_MESSAGE

@@ -83,3 +83,38 @@ func (m *EofMessage) ToBytes() ([]byte, error) {
 
 	return msgBytes, nil
 }
+
+type MessageGrouped struct {
+	DataType string
+	ClientId string
+	Payload  map[string][]string
+	IsEof    bool
+}
+
+func NewMessageGrouped(dataType, clientId string, payload map[string][]string, isEof bool) *MessageGrouped {
+	return &MessageGrouped{
+		DataType: dataType,
+		ClientId: clientId,
+		Payload:  payload,
+		IsEof:    isEof,
+	}
+}
+
+func NewMessageGroupedFromBytes(msgBytes []byte) (*MessageGrouped, error) {
+	var msg MessageGrouped
+	err := json.Unmarshal(msgBytes, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed message deserialization: %w", err)
+	}
+
+	return &msg, nil
+}
+
+func (m *MessageGrouped) ToBytes() ([]byte, error) {
+	msgBytes, err := json.Marshal(m)
+	if err != nil {
+		return []byte{}, fmt.Errorf("problem while marshalling message of dataType %s: %w", m.DataType, err)
+	}
+
+	return msgBytes, nil
+}
