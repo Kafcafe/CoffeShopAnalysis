@@ -230,7 +230,7 @@ func (f *FilterByYearWorker) filterMessageByYear(message amqp.Delivery) error {
 
 	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
-	f.log.Info("Filtered message and sent filterMessageByYear batch")
+	f.log.Debugf("Filtered message and sent filterMessageByYear batch")
 	return nil
 }
 

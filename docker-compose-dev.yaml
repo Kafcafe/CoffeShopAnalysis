@@ -77,28 +77,7 @@ services:
           RABBITMQ_PASS: user
           FILTER_TYPE: year
           FILTER_ID: -year1
-          FILTER_COUNT: 2
-        build:
-          context: ./src/
-          dockerfile: filters/Dockerfile
-        volumes:
-          - ./src/filters/config.yaml:/config.yaml 
-
-    filter-year2:
-        container_name: "filter-year2"
-        depends_on:
-          rabbitmq:
-            condition: service_healthy
-        networks:
-          - analysis_net
-        environment:
-          RABBITMQ_HOST: rabbitmq
-          RABBITMQ_PORT: 5672
-          RABBITMQ_USER: user
-          RABBITMQ_PASS: user
-          FILTER_TYPE: year
-          FILTER_ID: -year2
-          FILTER_COUNT: 2
+          FILTER_COUNT: 1
         build:
           context: ./src/
           dockerfile: filters/Dockerfile

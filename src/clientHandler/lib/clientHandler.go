@@ -66,7 +66,8 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 		return err
 	}
 
-	clh.log.Infof("Received result message: %v", msg.Payload)
+	clh.log.Debugf("Received result message: %v", msg.Payload)
+
 	clh.answerMessage(ACK, message)
 	return nil
 }
@@ -196,7 +197,7 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		return err
 	}
 
-	clh.log.Infof("Successfully sent batch of %s", dataType)
+	clh.log.Debugf("Successfully sent batch of %s", dataType)
 
 	return nil
 }
@@ -214,7 +215,7 @@ func (clh *ClientHandler) processFile(dataType string) error {
 
 	// Loop to receive batches until the file is complete
 	for receivingFile {
-		clh.log.Infof("Receiving batch %d for dataType %s", batchCounter, dataType)
+		clh.log.Debugf("Receiving batch %d for dataType %s", batchCounter, dataType)
 		batch, isLast, err := clh.protocol.ReceiveBatch()
 
 		if err != nil {
@@ -228,7 +229,7 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		}
 
 		batchCounter++
-		clh.log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
+		clh.log.Debugf("Received batch %d for dataType %s", batchCounter, dataType)
 
 		isEof := false
 		err = clh.dispatchBatchToMiddleware(dataType, batch, isEof)
