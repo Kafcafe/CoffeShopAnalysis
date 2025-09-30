@@ -5,25 +5,25 @@ import "strings"
 type YearMonth string
 type Record = string
 
-type Group map[YearMonth][]Record
+type YearMonthGroup map[YearMonth][]Record
 
-func New() Group {
-	return make(Group)
+func NewYearMonthGroup() YearMonthGroup {
+	return make(YearMonthGroup)
 }
 
-func (g Group) AddRecords(records []Record) {
+func (g *YearMonthGroup) AddRecords(records []Record) {
 	for _, record := range records {
 		g.Add(record)
 	}
 }
 
-func (g Group) Get(yearMonth YearMonth) []Record {
-	return g[yearMonth]
+func (g *YearMonthGroup) Get(yearMonth YearMonth) []Record {
+	return (*g)[yearMonth]
 }
 
-func (g Group) Add(record Record) {
+func (g *YearMonthGroup) Add(record Record) {
 	ym := ExtractYearMonth(record)
-	g[ym] = append(g[ym], record)
+	(*g)[ym] = append((*g)[ym], record)
 }
 
 func ExtractYearMonth(record Record) YearMonth {

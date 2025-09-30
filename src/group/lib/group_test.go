@@ -14,7 +14,7 @@ func TestExtractYearMonth(t *testing.T) {
 }
 
 func TestGroup_AddAndGet(t *testing.T) {
-	g := New()
+	g := NewYearMonthGroup()
 	record1 := "6,3,28.5,2023-07-01 07:00:00"
 	record2 := "5,3,27.0,2023-07-01 07:00:02"
 	ym := YearMonth("2023-07")
@@ -34,7 +34,7 @@ func TestFromRecords(t *testing.T) {
 		"5,3,27.0,2023-07-01 07:00:02",
 		"7,3,27.0,2023-08-01 07:00:04",
 	}
-	g := New()
+	g := NewYearMonthGroup()
 	g.AddRecords(records)
 
 	if len(g) != 2 {
