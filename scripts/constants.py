@@ -57,7 +57,7 @@ services:
 # Coordinates client activities and manages the distributed processing workflow
 # Waits for RabbitMQ to be healthy before starting
 CLIENT_HANDLER_TEMPLATE = """
-    client_handler:
+    client-handler:
         container_name: "client-handler"
         depends_on:
           rabbitmq:
@@ -91,6 +91,8 @@ FILTER_TEMPLATE = """
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
           FILTER_TYPE: {filter_type}
+          FILTER_ID: {id}
+          FILTER_COUNT: {filter_count}
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
@@ -108,7 +110,7 @@ CLIENTS_TEMPLATE = """
           CLIENT_ID: "{id}"
           FILETYPES: "transactions,transaction_items,stores,menu,users"
         depends_on:
-          - client_handler
+          - client-handler
         networks:
           - analysis_net
         build:

@@ -82,13 +82,16 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 	return acceptor, nil
 }
 
-func (a *Acceptor) createExchangeHandler(routeKey string) (*middleware.MessageMiddlewareExchange, error) {
+func (a *Acceptor) createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(a.rabbitConn)
 	if err != nil {
-		return nil, fmt.Errorf("fialed to create middleware handler: %w", err)
+		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
 	}
 
-	return middlewareHandler.CreateDirectExchange(routeKey)
+	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
+		return middlewareHandler.CreateDirectExchange(routeKey)
+	}
+	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
 type ExchangeHandlers struct {
@@ -104,21 +107,28 @@ type ExchangeHandlers struct {
 	// birthdaysByUserIdPublishing   Exchange
 
 	// Results
-	//resultQuery1Subscription Exchange
+	resultsSubscription middleware.MessageMiddlewareExchange
 	// resultQuery2Subscription Exchange
 	// resultQuery3Subscription Exchange
 	// resultQuery4Subscription Exchange
 }
 
 func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
-	transactionsRouteKey := fmt.Sprintf("transactions")
-	transactionsPublishingHandler, err := a.createExchangeHandler(transactionsRouteKey)
+	transactionsRouteKey := "transactions"
+	transactionsPublishingHandler, err := a.createExchangeHandler(a.rabbitConn, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return nil, fmt.Errorf("Error creating exchange handler for transactions: %v", err)
+	}
+
+	resultsSubscriptionRouteKey := "results.q1"
+	resultsSubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
 
 	return &ExchangeHandlers{
 		transactionsPublishing: *transactionsPublishingHandler,
+		resultsSubscription:    *resultsSubscriptionHandler,
 	}, nil
 }
 

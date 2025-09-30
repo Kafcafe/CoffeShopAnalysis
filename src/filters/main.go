@@ -16,10 +16,6 @@ const (
 	SUCCESS_EXIT_CODE                 = 0
 	STARTUP_ERROR_EXIT_CODE           = 1
 	ERROR_DURING_PROCESSING_EXIT_CODE = 2
-
-	FILTER_TYPE_YEAR   = "year"
-	FILTER_TYPE_HOUR   = "hour"
-	FILTER_TYPE_AMOUNT = "amount"
 )
 
 // InitConfig initializes the application configuration using Viper.
@@ -54,6 +50,10 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
+	logger.Infof("Filter startup with: id: %s | filterCount : %d",
+		v.GetString("filter.id"), v.GetInt("filter.count"),
+	)
+
 	logger.Infof("Config for filter by year: fromYear: %d | toYear: %d",
 		v.GetInt("filter.year.fromYear"),
 		v.GetInt("filter.year.toYear"),
@@ -62,6 +62,10 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 	logger.Infof("Config for filter by hour: fromYear: fromHour: %d | toHour: %d",
 		v.GetInt("filter.hour.fromHour"),
 		v.GetInt("filter.hour.toHour"),
+	)
+
+	logger.Infof("Config for filter by amount: minAmount: %f",
+		v.GetFloat64("filter.amount.minAmount"),
 	)
 
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
@@ -106,37 +110,25 @@ func main() {
 		ToHour:   config.GetInt("filter.hour.toHour"),
 	}
 
+	amountConfig := filters.AmountFilterConfig{
+		MinAmount: config.GetFloat64("filter.amount.minAmount"),
+	}
+
+	filterId := config.GetString("filter.id")
+	filterCount := config.GetInt("filter.count")
+
 	filterType := config.GetString("filter.type")
 
-	switch filterType {
-	case FILTER_TYPE_YEAR:
-		filterWorker, err := filters.NewFilterByYearWorker(rabbitConf, yearConfig)
-		if err != nil {
-			logger.Errorf("Failed creating new filter worker: %s", err)
-			os.Exit(STARTUP_ERROR_EXIT_CODE)
-		}
-
-		err = filterWorker.Run()
-		if err != nil {
-			logger.Errorf("Failed creating new filter worker: %s", err)
-			os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
-		}
-	case FILTER_TYPE_HOUR:
-		filterWorker, err := filters.NewFilterByHourWorker(rabbitConf, hourConfig)
-		if err != nil {
-			logger.Errorf("Failed creating new filter worker: %s", err)
-			os.Exit(STARTUP_ERROR_EXIT_CODE)
-		}
-
-		err = filterWorker.Run()
-		if err != nil {
-			logger.Errorf("Failed creating new filter worker: %s", err)
-			os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
-		}
-	case FILTER_TYPE_AMOUNT:
-	default:
-		logger.Errorf("Unknown filter type: %s", filterType)
+	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig, amountConfig, filterId, filterCount)
+	if err != nil {
+		logger.Errorf("Failed creating new filter worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
+	}
+
+	err = (*filterWorker).Run()
+	if err != nil {
+		logger.Errorf("Failed creating new filter worker: %s", err)
+		os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
 	}
 
 	os.Exit(SUCCESS_EXIT_CODE)

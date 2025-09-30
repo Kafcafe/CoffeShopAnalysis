@@ -3,11 +3,19 @@ package clientHandler
 import (
 	logger "common/logger"
 	"common/middleware"
-	"encoding/json"
 	"fmt"
 	"net"
 
 	"github.com/op/go-logging"
+	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+const (
+	ERROR_CHANNEL_BUFFER_SIZE = 20
+
+	ACK          = 0
+	NACK_REQUEUE = 1
+	NACK_DISCARD = 2
 )
 
 type ClientHandler struct {
@@ -15,6 +23,8 @@ type ClientHandler struct {
 	log              *logging.Logger
 	ClientId         ClientUuid
 	exchangeHandlers ExchangeHandlers
+	errChan          chan middleware.MessageMiddlewareError
+	isRunning        bool
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -33,7 +43,63 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		log:              logger.GetLoggerWithPrefix(loggerPrefix),
 		ClientId:         clientId,
 		exchangeHandlers: exchangeHandlers,
+		errChan:          make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		isRunning:        true,
 	}
+}
+
+func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
+	switch ackType {
+	case ACK:
+	case NACK_REQUEUE:
+		message.Nack(false, true)
+	case NACK_DISCARD:
+		message.Nack(false, false)
+	}
+}
+
+var nums int = 0
+
+func (clh *ClientHandler) processResults(message amqp.Delivery) error {
+	defer clh.answerMessage(NACK_DISCARD, message)
+
+	msg, err := middleware.NewMessageFromBytes(message.Body)
+	if err != nil {
+		return err
+	}
+
+	if msg.IsEof {
+		clh.answerMessage(ACK, message)
+		clh.log.Info("Received EOF message for result")
+		return nil
+	}
+
+	clh.log.Debugf("Received result message: %v", msg.Payload)
+
+	if nums%1000 == 0 || nums > 11000 {
+		clh.log.Infof("nums: %d", nums)
+	}
+	nums += len(msg.Payload)
+
+	clh.answerMessage(ACK, message)
+	return nil
+}
+
+func (clh *ClientHandler) launchResultsProcessing() {
+	clh.exchangeHandlers.resultsSubscription.StartConsuming(clh.processResults, clh.errChan)
+
+	for err := range clh.errChan {
+		if err != middleware.MessageMiddlewareSuccess {
+			clh.log.Errorf("Error found while filtering message of type: %v", err)
+		}
+
+		if !clh.isRunning {
+			clh.log.Info("Inside error loop: breaking")
+			break
+		}
+	}
+
+	clh.exchangeHandlers.resultsSubscription.Close()
 }
 
 // Handle processes the client connection by receiving and handling data types and files.
@@ -46,6 +112,8 @@ func (clh *ClientHandler) Handle() error {
 	if err != nil {
 		return fmt.Errorf("Error receiving amount of dataTypes: %v", err)
 	}
+
+	go clh.launchResultsProcessing()
 
 	// Loop over each data type
 	for range amountOfdataTypes {
@@ -80,7 +148,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 		return "", 0, fmt.Errorf("Error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
-	err = clh.processdataType(amountOfFiles, dataType)
+	err = clh.processDataType(amountOfFiles, dataType)
 	if err != nil {
 		return "", 0, fmt.Errorf("Error processing files for dataType %s: %v", dataType, err)
 	}
@@ -95,7 +163,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 //	dataType: the type of data
 //
 // Returns an error if processing fails.
-func (clh *ClientHandler) processdataType(amountOfFiles int, dataType string) error {
+func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) error {
 	for currFile := 0; currFile < amountOfFiles; currFile++ {
 		clh.log.Infof("Processing file %d for dataType %s", currFile, dataType)
 
@@ -107,20 +175,21 @@ func (clh *ClientHandler) processdataType(amountOfFiles int, dataType string) er
 		clh.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
 	}
 
+	isEof := true
+	err := clh.dispatchBatchToMiddleware(dataType, []string{}, isEof)
+	if err != nil {
+		return fmt.Errorf("Error dispatching EOF to middleware: %v", err)
+	}
+
 	clh.log.Infof("Finished processing all %d files for dataType %s", amountOfFiles, dataType)
 	return nil
 }
 
-func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string) error {
-	payload, err := json.Marshal(batch)
+func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string, isEof bool) error {
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, batch, isEof)
+	msgBytes, err := msg.ToBytes()
 	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
-	}
-
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, payload)
-	msgBytes, err := json.Marshal(msg)
-	if err != nil {
-		return fmt.Errorf("problem while marshalling batch of dataType %s: %w", dataType, err)
+		return err
 	}
 
 	res := middleware.MessageMiddlewareSuccess
@@ -141,7 +210,7 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		return err
 	}
 
-	clh.log.Infof("Successfully sent batch of %s", dataType)
+	clh.log.Debugf("Successfully sent batch of %s", dataType)
 
 	return nil
 }
@@ -159,7 +228,7 @@ func (clh *ClientHandler) processFile(dataType string) error {
 
 	// Loop to receive batches until the file is complete
 	for receivingFile {
-		clh.log.Infof("Receiving batch %d for dataType %s", batchCounter, dataType)
+		clh.log.Debugf("Receiving batch %d for dataType %s", batchCounter, dataType)
 		batch, isLast, err := clh.protocol.ReceiveBatch()
 
 		if err != nil {
@@ -173,9 +242,13 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		}
 
 		batchCounter++
-		clh.log.Infof("Received batch %d for dataType %s", batchCounter, dataType)
+		clh.log.Debugf("Received batch %d for dataType %s", batchCounter, dataType)
 
-		clh.dispatchBatchToMiddleware(dataType, batch)
+		isEof := false
+		err = clh.dispatchBatchToMiddleware(dataType, batch, isEof)
+		if err != nil {
+			return fmt.Errorf("Error dispatching batch to middleware: %v", err)
+		}
 
 		err = clh.protocol.ConfirmBatchReceived()
 		if err != nil {
@@ -188,9 +261,13 @@ func (clh *ClientHandler) processFile(dataType string) error {
 // Shutdown closes the protocol connection.
 // Returns an error if closing fails.
 func (clh *ClientHandler) Shutdown() error {
+	clh.isRunning = false
+
 	if clh.protocol != nil {
 		clh.protocol.Shutdown()
 	}
+
 	clh.exchangeHandlers.transactionsPublishing.Close()
+	clh.exchangeHandlers.resultsSubscription.Close()
 	return nil
 }
