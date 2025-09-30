@@ -137,7 +137,7 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 // Returns an error if accepting fails.
 func (a *Acceptor) Run() error {
 	a.log.Info("Running and ready to accept connections")
-	defer a.Shutdown()
+	// defer a.Shutdown()
 	go a.handleSignal()
 
 	for a.isRunning {
@@ -167,7 +167,7 @@ func (a *Acceptor) Run() error {
 		}
 
 		a.log.Info("Closing client connection, conection finished successfully")
-		a.currClient.Shutdown()
+		// a.currClient.Shutdown()
 	}
 
 	return nil

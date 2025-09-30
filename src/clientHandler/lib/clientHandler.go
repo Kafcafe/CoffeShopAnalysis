@@ -5,6 +5,7 @@ import (
 	"common/middleware"
 	"fmt"
 	"net"
+	"strings"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -65,6 +66,19 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
+		return err
+	}
+
+	stringPayload := msg.Payload
+
+	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+	err = clh.protocol.SendResults(1, stringPayload, msg.IsEof)
+
+	clh.log.Debug("Sent results to client")
+
+	if err != nil {
+		clh.log.Errorf("Error sending results to client: %v", err)
 		return err
 	}
 

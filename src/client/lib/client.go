@@ -11,12 +11,14 @@ import (
 )
 
 type Client struct {
-	config    *ClientConfig
-	protocol  *Protocol
-	isRunning bool
-	sigChan   chan os.Signal
-	currBg    *BatchGenerator
-	Id        string
+	config       *ClientConfig
+	protocol     *Protocol
+	isRunning    bool
+	sigChan      chan os.Signal
+	currBg       *BatchGenerator
+	Id           string
+	results      map[int][]string
+	finishedChan chan bool
 }
 
 var log = logging.MustGetLogger("log")
@@ -32,11 +34,13 @@ func NewClient(config *ClientConfig) *Client {
 	}
 
 	client := &Client{
-		config:    config,
-		protocol:  protocol,
-		isRunning: true,
-		sigChan:   make(chan os.Signal, 1),
-		currBg:    nil,
+		config:       config,
+		protocol:     protocol,
+		isRunning:    true,
+		sigChan:      make(chan os.Signal, 1),
+		currBg:       nil,
+		results:      make(map[int][]string),
+		finishedChan: make(chan bool, 1),
 	}
 
 	signal.Notify(client.sigChan, syscall.SIGTERM)
@@ -60,6 +64,7 @@ func (c *Client) Run() ClientExecutionError {
 	log.Info(listfiles)
 	defer c.Shutdown()
 	go c.handleSignals()
+	go c.ProcessResults()
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 
@@ -87,6 +92,8 @@ func (c *Client) Run() ClientExecutionError {
 			return err
 		}
 	}
+
+	<-c.finishedChan
 
 	return nil
 }
@@ -162,6 +169,34 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 	log.Infof("Sent batch with information of file: %s", file)
 
 	return nil
+}
+
+func (c *Client) ProcessResults() error {
+	for c.isRunning {
+		query, lines, finish, err := c.protocol.rcvResults()
+
+		if err != nil {
+			log.Error("Error receiving results: %v", err)
+		}
+
+		if finish {
+			log.Debug("Finished receiving results for query %d", query)
+			c.LogFinishQuery(int(query))
+			c.finishedChan <- true
+			return nil
+		}
+
+		log.Debugf("[CLIENT] | action: received results for query %d | results: %s | of len: %d", query, strings.Join(lines, ", "), len(lines))
+
+		c.results[int(query)] = append(c.results[int(query)], lines...)
+		log.Debug(c.results)
+	}
+	return nil
+}
+
+func (c *Client) LogFinishQuery(query int) {
+	log.Infof("Finished receiving results for query %d", query)
+	log.Info("Results:", c.results[query])
 }
 
 func (c *Client) Shutdown() {

@@ -7,9 +7,14 @@ import (
 )
 
 const (
-	BatchRcvCode = 0x01
-	EndOfBatch   = 0x02
-	MoreBatches  = 0x03
+	BatchRcvCode  = 0x01
+	EndOfBatch    = 0x02
+	MoreBatches   = 0x03
+	FinishedQuery = 0x04
+	NotFinished   = 0x05
+
+	SIZEOF_UINT32 = 4
+	SIZEOF_UINT8  = 1
 )
 
 type Protocol struct {
@@ -96,6 +101,65 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	return nil
 }
 
+func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, err error) {
+	log.Debug("[CLIENT-P] Receiving results...")
+	QNumber := make([]byte, SIZEOF_UINT32)
+	if err := p.receiveAll(QNumber); err != nil {
+		log.Error("Error receiving QNumber: %v", err)
+		return 0, nil, true, err
+	}
+
+	qNumber := p.ntohsUint32(QNumber)
+	log.Debug("Received QNumber: ", qNumber)
+
+	finishQuery := make([]byte, SIZEOF_UINT8)
+
+	if err := p.receiveAll(finishQuery); err != nil {
+		log.Error("Error sending FinishedQuery code: %v", err)
+		return 0, nil, true, err
+	}
+
+	if finishQuery[0] == FinishedQuery {
+		log.Debug("[CLIENT-P] | action: receive query end | query:", qNumber)
+		return qNumber, nil, true, nil
+	}
+
+	totalLines := make([]byte, 4)
+
+	if err := p.receiveAll(totalLines); err != nil {
+		log.Error("Error receiving totalLines: %v", err)
+		return 0, nil, true, err
+	}
+
+	totalLinesBytes := int(p.ntohsUint32(totalLines))
+	log.Debug("[CLIENT-P] Received totalLines: ", totalLinesBytes)
+
+	lines = make([]string, totalLinesBytes)
+
+	for i := 0; i < totalLinesBytes; i++ {
+		lineLen := make([]byte, SIZEOF_UINT32)
+		if err := p.receiveAll(lineLen); err != nil {
+			log.Error("Error receiving line length: %v", err)
+			return 0, nil, true, err
+		}
+
+		lineLenBytes := int(p.ntohsUint32(lineLen))
+		log.Debug("Received line length: ", lineLenBytes)
+
+		lineData := make([]byte, lineLenBytes)
+		if err := p.receiveAll(lineData); err != nil {
+			log.Error("Error receiving line data: %v", err)
+			return 0, nil, true, err
+		}
+		lines[i] = string(lineData)
+		log.Debug("Received line data: ", string(lineData))
+	}
+
+	log.Debug("Finished receiving all lines for query ", qNumber)
+
+	return qNumber, lines, false, nil
+}
+
 // func (p *Protocol) receivedConfirmation() error {
 // 	code := make([]byte, 1)
 // 	err := p.receiveAll(code)
@@ -138,19 +202,19 @@ func (p *Protocol) sendAll(data []byte) error {
 	return nil
 }
 
-// func (p *Protocol) receiveAll(array []byte) error {
-// 	len := len(array)
-// 	received := 0
-// 	for received < int(len) {
-// 		n, err := p.conn.Read(array[received:])
-// 		if err != nil {
-// 			return err
-// 		}
-// 		received += n
-// 	}
+func (p *Protocol) receiveAll(array []byte) error {
+	len := len(array)
+	received := 0
+	for received < int(len) {
+		n, err := p.conn.Read(array[received:])
+		if err != nil {
+			return err
+		}
+		received += n
+	}
 
-// 	return nil
-// }
+	return nil
+}
 
 func (p *Protocol) htonsUint32(val uint32) []byte {
 	bytes := make([]byte, 4)
