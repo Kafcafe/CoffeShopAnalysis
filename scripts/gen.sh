@@ -15,7 +15,7 @@
 #   2 - Unexpected error
 
 # Call the Python script with all provided arguments
-python3 ./scripts/generate-compose.py $1 $2 $3 $4 $5 $6 $7
+python3 ./scripts/generate-compose.py $1 $2 $3 $4 $5 $6 $7 $8
 
 # Capture the exit code from the Python script
 exit_code=$?
