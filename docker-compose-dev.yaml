@@ -61,7 +61,7 @@ services:
           dockerfile: Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
-          - ./../data/kaggle_datos_reducidos_suelto/:/data
+          - ./../data/kaggle_datos_reducidos_suelto:/data
 
     filter-year1:
         container_name: "filter-year1"
@@ -161,7 +161,49 @@ services:
           RABBITMQ_PASS: user
           GROUP_TYPE: semester
           GROUP_ID: -semester1
-          GROUP_COUNT: 1
+          GROUP_COUNT: 3
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-semester2:
+        container_name: "group-semester2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: semester
+          GROUP_ID: -semester2
+          GROUP_COUNT: 3
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-semester3:
+        container_name: "group-semester3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: semester
+          GROUP_ID: -semester3
+          GROUP_COUNT: 3
         build:
           context: ./src/
           dockerfile: group/Dockerfile
