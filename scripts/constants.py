@@ -143,3 +143,26 @@ GROUP_TEMPLATE = """
         volumes:
           - ./src/group/config.yaml:/config.yaml 
 """
+
+JOIN_TEMPLATE = """
+    join{id}:
+        container_name: "join{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: {join_type}
+          JOIN_ID: {id}
+          JOIN_COUNT: {join_count}
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
+"""
