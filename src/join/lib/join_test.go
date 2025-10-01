@@ -137,6 +137,47 @@ var TransactionsJoined = []string{
 	"zzzz6666-edbf-456c-bbd5-31aa56dc96c9,G Coffee @ Bandar Seri Mulia,1,,,120.1,0.0,14.0,2025-07-01 07:02:21",
 }
 
+var Users = []string{
+	"1,1970-04-22",
+	"2,1991-12-08",
+	"3,1971-03-15",
+	"4,1975-11-08",
+	"5,2005-05-10",
+	"6,1966-12-30",
+	"7,1979-03-03",
+	"8,2006-06-16",
+	"9,1984-08-15",
+}
+
+var JoinUsers = []string{
+	"G Coffee @ Kampung Changkat,5,,2006-06-16,38.0,0.0,38.0,2023-07-01 07:00:00",
+	"G Coffee @ Damansara Saujana,1,,1979-03-03,33.0,0.0,33.0,2023-07-01 07:00:02",
+	"G Coffee @ USJ 89q,5,,1984-08-15,27.0,0.0,27.0,2023-07-01 07:00:04",
+	"G Coffee @ Seksyen 21,2,,1966-12-30,45.5,0.0,45.5,2023-07-01 07:00:21",
+	"G Coffee @ Bandar Seri Mulia,1,,1966-12-30,14.0,0.0,14.0,2024-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,1,,1979-03-03,14.0,0.0,14.0,2024-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,1,,2006-06-16,14.0,0.0,14.0,2024-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,5,,2006-06-16,27.0,0.0,27.0,2023-07-01 07:00:33",
+	"G Coffee @ Bandar Seri Mulia,3,,2006-06-16,45.0,0.0,45.0,2023-07-01 07:00:44",
+	"G Coffee @ USJ 57W,1,,2005-05-10,77.0,0.0,77.0,2023-07-01 07:00:57",
+	"G Coffee @ Seksyen 21,5,,2005-05-10,47.0,0.0,47.0,2023-07-01 07:01:01",
+	"G Coffee @ Seksyen 21,5,,1966-12-30,27.0,0.0,27.0,2023-07-01 07:01:20",
+	"G Coffee @ Kondominium Putra,2,,1979-03-03,43.0,0.0,43.0,2023-07-01 07:01:22",
+	"G Coffee @ Bandar Seri Mulia,1,,1975-11-08,42.0,0.0,42.0,2023-07-01 07:01:23",
+	"G Coffee @ Seksyen 21,3,,1970-04-22,54.5,0.0,54.5,2023-07-01 07:01:34",
+	"G Coffee @ Alam Tun Hussein Onn,1,,1971-03-15,54.0,0.0,54.0,2023-07-01 07:01:37",
+	"G Coffee @ Damansara Saujana,2,,1971-03-15,69.5,0.0,69.5,2023-07-01 07:01:42",
+	"G Coffee @ Kampung Changkat,1,,2005-05-10,43.0,0.0,43.0,2023-07-01 07:01:43",
+	"G Coffee @ Alam Tun Hussein Onn,1,,1966-12-30,36.0,0.0,36.0,2023-07-01 07:01:52",
+	"G Coffee @ USJ 57W,1,,1966-12-30,30.0,0.0,30.0,2023-07-01 07:01:54",
+	"G Coffee @ Kondominium Putra,2,,1984-08-15,19.0,0.0,19.0,2023-07-01 07:02:15",
+	"G Coffee @ Bandar Seri Mulia,1,,1971-03-15,14.0,0.0,14.0,2025-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,1,,1971-03-15,14.0,0.0,14.0,2025-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,1,,1971-03-15,14.0,0.0,14.0,2025-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,1,,1979-03-03,14.0,0.0,14.0,2025-07-01 07:02:21",
+	"G Coffee @ Bandar Seri Mulia,1,,2005-05-10,120.1,0.0,14.0,2025-07-01 07:02:21",
+}
+
 func TestJoinerIsNotNil(t *testing.T) {
 	joiner := join.NewJoiner()
 	require.NotNil(t, joiner, "Expected NewJoiner to return a non-nil Join instance")
@@ -159,3 +200,15 @@ func TestJoinTransactionsWithStores(t *testing.T) {
 	joinedItems := joiner.JoinByIndex(Stores, Transactions, 1, 0, 1)
 	require.Equal(t, TransactionsJoined, joinedItems, "Joined transactions with stores do not match expected results")
 }
+
+func TestJoinTransactionsWithClients(t *testing.T) {
+	joiner := join.NewJoiner()
+	joinedItems := joiner.JoinByIndex(Stores, Transactions, 1, 0, 1)
+	require.Equal(t, TransactionsJoined, joinedItems, "Joined transactions with stores do not match expected results")
+}
+
+// func TestJoinWithUsers(t *testing.T) {
+// 	joiner := join.NewJoiner()
+// 	joinByIndex := joiner.JoinByIndex(Users, TransactionsJoined, 1, 0, 1)
+// 	require.Equal(t, joinByIndex, JoinUsers, "Joined users with transactions do not match expected results")
+// }
