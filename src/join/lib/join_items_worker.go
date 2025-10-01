@@ -33,7 +33,7 @@ type JoinerItemsWorker struct {
 
 type JoinExchangeHandlers struct {
 	groupYearMonthSubscribing middleware.MessageMiddlewareExchange
-	menuItemsSubscribing      middleware.MessageMiddlewareExchange
+	menuItemsSubscribing      middleware.MessageMiddlewareQueue
 	resultsQ2Publishing       middleware.MessageMiddlewareExchange
 	eofPublishing             middleware.MessageMiddlewareExchange
 	eofSubscription           middleware.MessageMiddlewareQueue
@@ -84,8 +84,7 @@ func (j *JoinerItemsWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
 
-	menuItemsSubscribingRouteKey := "transactions.items.menu.items"
-	menuItemsSubscribingSubscribingHandler, err := createExchangeHandler(j.rabbitConn, menuItemsSubscribingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	menuItemsSubscribingSubscribingHandler, err := prepareMenuItemsQueue(j.rabbitConn, "items", j.id)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
