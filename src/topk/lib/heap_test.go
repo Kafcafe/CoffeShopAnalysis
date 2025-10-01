@@ -73,3 +73,23 @@ func TestHeapWithStructs(t *testing.T) {
 	require.EqualValues(t, 3, h.Size())
 	require.EqualValues(t, Persona{"Alice", 30}, h.Top())
 }
+
+func TestVolumeTestHeap(t *testing.T) {
+	h := heap.NewHeap(func(a, b int) int { return a - b })
+	n := 1000000
+	for i := 0; i < n; i++ {
+		h.Push(i)
+		require.EqualValues(t, i, h.Top())
+		require.EqualValues(t, i+1, h.Size())
+	}
+
+	for i := n - 1; i >= 0; i-- {
+		require.EqualValues(t, i, h.Top())
+		require.EqualValues(t, i, h.Pop())
+		require.EqualValues(t, i, h.Size())
+	}
+	require.EqualValues(t, true, h.IsEmpty())
+	require.EqualValues(t, 0, h.Size())
+	require.Panics(t, func() { h.Top() })
+	require.Panics(t, func() { h.Pop() })
+}

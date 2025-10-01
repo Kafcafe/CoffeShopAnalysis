@@ -88,15 +88,15 @@ func (h *heap[T]) swapAndDownHeap(greater, currentPos int) {
 }
 
 func (h *heap[T]) redimensionIfNeeded() {
-	if h.amount == cap(h.data) {
-		newData := make([]T, h.amount, cap(h.data)*ScalingFactor)
+	if h.amount == cap(h.data) || len(h.data) == h.amount {
+		newData := make([]T, cap(h.data)*ScalingFactor)
 		copy(newData, h.data)
 		h.data = newData
 		return
 	}
 
 	if h.amount > InitialSize && h.amount*4 <= cap(h.data) {
-		newData := make([]T, h.amount, cap(h.data)/ScalingFactor)
+		newData := make([]T, cap(h.data)/ScalingFactor)
 		copy(newData, h.data)
 		h.data = newData
 		return
