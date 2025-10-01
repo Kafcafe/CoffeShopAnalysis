@@ -236,10 +236,10 @@ func (f *GroupByYearmonthWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.items: %v", err)
 	}
 
-	transactionItemsGroupedByYearmonthPublishingRouteKey := fmt.Sprintf("transactions.items.group%s", f.id)
+	transactionItemsGroupedByYearmonthPublishingRouteKey := fmt.Sprintf("transactions.items.group.yearmonth")
 	transactionItemsGroupedByYearmonthPublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionItemsGroupedByYearmonthPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for results.q1: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.items.group.yearmonth: %v", err)
 	}
 
 	eofPublishingRouteKey := fmt.Sprintf("eof.group.yearmonth.%s", f.id)
