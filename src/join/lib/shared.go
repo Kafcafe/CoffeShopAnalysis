@@ -82,13 +82,13 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, joinerType string,
 	}
 
 	// Declare and bind for Query 2
-	queueName := fmt.Sprintf("eof.joiners.%s.%s", joinerType, joinerId)
+	queueName := fmt.Sprintf("eof.join.%s.%s", joinerType, joinerId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
 	}
 
-	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, fmt.Sprintf("eof.joiners.%s.*", joinerType))
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, fmt.Sprintf("eof.join.%s.*", joinerType))
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
 	}
