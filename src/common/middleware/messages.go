@@ -111,6 +111,15 @@ func NewMessageGrouped(dataType, clientId string, payload map[string][]string, i
 	}
 }
 
+func (m *MessageGrouped) ToEmptyMessage() *Message {
+	return &Message{
+		DataType: m.DataType,
+		ClientId: m.ClientId,
+		Payload:  []string{},
+		IsEof:    m.IsEof,
+	}
+}
+
 func NewMessageGroupedFromBytes(msgBytes []byte) (*MessageGrouped, error) {
 	var msg MessageGrouped
 	err := json.Unmarshal(msgBytes, &msg)
