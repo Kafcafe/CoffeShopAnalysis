@@ -170,14 +170,17 @@ func (j *JoinerItemsWorker) joinWithMenuItems(message amqp.Delivery) error {
 	j.mutex.Unlock()
 
 	j.log.Debugf("Received payload: %v", msg.Payload)
-	joinedItems := make([]string, 0)
+	flattenedItems := make([]string, 0)
 	for yearMonth, items := range msg.Payload {
 		for _, item := range items {
-			joinedItems = append(joinedItems, fmt.Sprintf("%s,%s", yearMonth, item))
+			flattenedItems = append(flattenedItems, fmt.Sprintf("%s,%s", yearMonth, item))
 		}
 	}
 
-	j.log.Infof("Joining %v", joinedItems)
+	joiner := NewJoiner()
+	joinedItems := joiner.JoinByIndex(j.menuItems, flattenedItems, 1, 0, 1)
+
+	j.log.Infof("Joined items %v", joinedItems)
 
 	isEof := false
 	response := middleware.NewMessage(msg.DataType, msg.ClientId, joinedItems, isEof)
