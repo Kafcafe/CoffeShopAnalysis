@@ -187,6 +187,7 @@ func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) er
 		}
 
 		clh.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
+		clh.log.Infof("nums: %d", nums)
 	}
 
 	isEof := true
@@ -199,8 +200,25 @@ func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) er
 	return nil
 }
 
+func (clh *ClientHandler) cleanBatch(dataType string, batch []string) (cleanBatch []string, err error) {
+	switch dataType {
+	case "transactions":
+		return cleanTransactions(batch)
+	case "transaction_items":
+		return cleanTransactionItems(batch)
+	default:
+		clh.log.Infof("Dispatch for %s dataType not available", dataType)
+		return []string{}, nil
+	}
+}
+
 func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []string, isEof bool) error {
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, batch, isEof)
+	cleanBatch, err := clh.cleanBatch(dataType, batch)
+	if err != nil {
+		return err
+	}
+
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof)
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err

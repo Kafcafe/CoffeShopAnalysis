@@ -131,6 +131,7 @@ raw-test raw-test-v:
 	@echo "🧪 Running tests for filters/lib"
 	@echo ""; \
 	cd src/filters/lib && go test $$verbosity -coverpkg=filters/lib
+	@echo "";
 .PHONY: raw-test raw-test-v
 
 # ==============================================================================
