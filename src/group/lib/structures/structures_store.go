@@ -27,12 +27,17 @@ func (g *StoreGroup) AddBatch(records []Record) {
 func (g *StoreGroup) Add(record Record) error {
 	parsedRecord, err := parseRecordForSemester(record)
 	if err != nil {
+
 		return err
 	}
 
 	_, exists := (*g)[parsedRecord.StoreID]
 	if !exists {
 		(*g)[parsedRecord.StoreID] = make(map[UserID]UserCount)
+	}
+
+	if parsedRecord.UserID == "" {
+		return nil
 	}
 
 	newCount := UserCount(1)

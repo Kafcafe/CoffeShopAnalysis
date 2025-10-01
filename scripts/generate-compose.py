@@ -85,6 +85,7 @@ def generate_compose(file_destination: str,
         group_type = GROUP_BY_STORE
         compose += constants.GROUP_TEMPLATE.format(id=f"-{group_type}{i+1}", group_type=group_type, group_count=group_by_store_nums)
 
+
     for i in range(join_items_nums):
         join_type = JOIN_ITEMS_TYPE
         compose += constants.JOIN_TEMPLATE.format(id=f"-{join_type}{i+1}", join_type=join_type, join_count=join_items_nums)

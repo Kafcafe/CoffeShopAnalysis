@@ -148,6 +148,8 @@ func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Mess
 
 	g.mutex.Lock()
 	clientSemesterGroup := g.groupedPerClient.Get(originalMsg.ClientId)
+	g.log.Infof("%s", g.groupedPerClient)
+
 	g.groupedPerClient.Delete(originalMsg.ClientId)
 	g.mutex.Unlock()
 
@@ -219,7 +221,7 @@ func (g *GroupByStoreWorker) groupByStore(message amqp.Delivery) error {
 
 func (f *GroupByStoreWorker) createExchangeHandlers() error {
 	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.transactions"
-	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions: %v", err)
 	}
