@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"sync"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -26,6 +27,7 @@ type ClientHandler struct {
 	exchangeHandlers ExchangeHandlers
 	errChan          chan middleware.MessageMiddlewareError
 	isRunning        bool
+	mtx              sync.Mutex
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -46,6 +48,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		exchangeHandlers: exchangeHandlers,
 		errChan:          make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 		isRunning:        true,
+		mtx:              sync.Mutex{},
 	}
 }
 
@@ -73,7 +76,10 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 
 	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+
+	clh.mtx.Lock()
 	err = clh.protocol.SendResults(1, stringPayload, msg.IsEof)
+	clh.mtx.Unlock()
 
 	clh.log.Debug("Sent results to client")
 

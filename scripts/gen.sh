@@ -7,6 +7,7 @@
 # the exit codes to provide clear feedback to the user.
 #
 # Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month>
+#                 <num_group_by_semester>
 #
 # Exit codes from Python script:
 #   0 - Success
@@ -24,8 +25,8 @@ if [ $exit_code -eq 0 ]; then
     echo " ✅ docker compose file generated successfully"
 elif [ $exit_code -eq 1 ]; then
     echo " ❌ Error: Please provide valid arguments"
-    echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_join_items>"
+    echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_join_items>"
 else
     echo " ❌ Unexpected error occurred with exit code $exit_code"
-    echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_join_items>"
+    echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_join_items>"
 fi
