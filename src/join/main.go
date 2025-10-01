@@ -50,8 +50,8 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("GroupBy startup with: type %s | id: %s | groupByCount : %d",
-		v.GetString("group.type"), v.GetString("group.id"), v.GetInt("group.count"),
+	logger.Infof("Join startup with: type %s | id: %s | JoinCount : %d",
+		v.GetString("join.type"), v.GetString("join.id"), v.GetInt("join.count"),
 	)
 
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
@@ -86,9 +86,9 @@ func main() {
 		config.GetInt("rabbitmq.port"),
 	)
 
-	joinerId := config.GetString("joiner.id")
-	joinerCount := config.GetInt("joiner.count")
-	joinerType := config.GetString("joiner.type")
+	joinerId := config.GetString("join.id")
+	joinerCount := config.GetInt("join.count")
+	joinerType := config.GetString("join.type")
 
 	joinItemsWorker, err := join.CreateJoinItemsWorker(joinerType, rabbitConf, joinerId, joinerCount)
 	if err != nil {

@@ -96,15 +96,15 @@ func (j *JoinerItemsWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for results.q2: %v", err)
 	}
 
-	eofPublishingRouteKey := fmt.Sprintf("eof.joiner.items.%s", j.id)
+	eofPublishingRouteKey := fmt.Sprintf("eof.join.items.%s", j.id)
 	eofPublishingHandler, err := createExchangeHandler(j.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for eof.joiner.items: %v", err)
+		return fmt.Errorf("Error creating exchange handler for eof.join.items: %v", err)
 	}
 
 	eofSubscription, err := prepareEofQueue(j.rabbitConn, "items", j.id)
 	if err != nil {
-		return fmt.Errorf("Error preparing EOF queue for eof.joiner.items: %v", err)
+		return fmt.Errorf("Error preparing EOF queue for eof.join.items: %v", err)
 	}
 
 	j.exchangeHandlers = JoinExchangeHandlers{
@@ -170,27 +170,18 @@ func (j *JoinerItemsWorker) joinWithMenuItems(message amqp.Delivery) error {
 	j.currentMessageProcessing = *msg.ToEmptyMessage()
 	j.mutex.Unlock()
 
-	// filter := NewFilter()
-	// filteredBatch := filter.FilterByYear(msg.Payload, j.conf.FromYear, j.conf.ToYear)
-	// if len(filteredBatch) == 0 {
-	// 	j.log.Info("No transaction passed the filterMessageByYear for")
-	// 	answerMessage(ACK, message)
-	// 	j.eofChan <- THERE_IS_PREVIOUS_MESSAGE
-	// 	return nil
-	// }
-
-	// msg.Payload -> ym: [item1, item2, ...]
-	items := make([]string, 0)
+	j.log.Debugf("Received payload: %v", msg.Payload)
+	joinedItems := make([]string, 0)
 	for yearMonth, items := range msg.Payload {
 		for _, item := range items {
-			items = append(items, fmt.Sprintf("%s,%s\n", yearMonth, item))
+			joinedItems = append(joinedItems, fmt.Sprintf("%s,%s", yearMonth, item))
 		}
 	}
-	// returns "yearMonth,item,quantity,profit"
-	j.log.Infof("False Joining %d items for %s", len(items), msg.ClientId)
+
+	j.log.Infof("Joining %v", joinedItems)
 
 	isEof := false
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, items, isEof)
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, joinedItems, isEof)
 	responseBytes, err := response.ToBytes()
 	if err != nil {
 		return err
@@ -200,7 +191,7 @@ func (j *JoinerItemsWorker) joinWithMenuItems(message amqp.Delivery) error {
 	answerMessage(ACK, message)
 	j.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
-	j.log.Infof("Filtered message and sent filterMessageByYear batch")
+	j.log.Infof("Joined message and sent to results Q2")
 	return nil
 }
 
@@ -211,7 +202,7 @@ func (j *JoinerItemsWorker) processInboundEof(message amqp.Delivery) error {
 	if err != nil {
 		return err
 	}
-	j.log.Warningf("processInboundEof %s filter%s", msg.DataType, j.id)
+	j.log.Warningf("processInboundEof %s join%s", msg.DataType, j.id)
 
 	didSomebodyElseAcked := msg.Origin == j.id && msg.IsAck && msg.ImmediateSource != j.id
 	if didSomebodyElseAcked {
@@ -257,11 +248,18 @@ func (j *JoinerItemsWorker) storeMenuItems(message amqp.Delivery) error {
 	if err != nil {
 		return err
 	}
-	j.menuItems = msg.Payload
-	close(j.hasMenuItems)
 
-	// desbloquear si alguien me esta esperando (channel?)
-	j.log.Infof("Stored %d menu items", len(msg.Payload))
+	if msg.IsEof {
+		j.log.Info("Received EOF for menu items. Ready to Join.")
+		answerMessage(ACK, message)
+		j.hasMenuItems <- ACTIVITY
+		j.exchangeHandlers.menuItemsSubscribing.StopConsuming()
+		return nil
+	}
+
+	j.menuItems = msg.Payload
+
+	j.log.Infof("Stored %d menu items: %v", len(msg.Payload), msg.Payload)
 	answerMessage(ACK, message)
 	return nil
 }
@@ -278,14 +276,12 @@ func (j *JoinerItemsWorker) Run() error {
 	j.log.Info("Waiting to receive menu items...")
 	j.exchangeHandlers.menuItemsSubscribing.StartConsuming(j.storeMenuItems, j.errChan)
 	<-j.hasMenuItems
-	j.log.Info("Received menu items. Ready to Join.")
-	j.exchangeHandlers.menuItemsSubscribing.Close()
 	j.exchangeHandlers.groupYearMonthSubscribing.StartConsuming(j.joinWithMenuItems, j.errChan)
 	j.exchangeHandlers.eofSubscription.StartConsuming(j.processInboundEof, j.errChan)
 
 	for err := range j.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
-			j.log.Errorf("Error found while filtering message of type: %v", err)
+			j.log.Errorf("Error found while joining message of type: %v", err)
 		}
 
 		if !j.isRunning {
@@ -299,7 +295,7 @@ func (j *JoinerItemsWorker) Run() error {
 	j.exchangeHandlers.eofSubscription.Close()
 	j.exchangeHandlers.eofPublishing.Close()
 
-	j.log.Info("Finished filtering")
+	j.log.Info("Finished joining!")
 	return nil
 }
 
