@@ -189,6 +189,11 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 	}
 	g.log.Infof("Final results grouped and consolidated")
 
+	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(originalMsgBytes)
+	if middleError != middleware.MessageMiddlewareSuccess {
+		g.log.Errorf("problem while propagating EOF")
+	}
+
 	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
 }
 
