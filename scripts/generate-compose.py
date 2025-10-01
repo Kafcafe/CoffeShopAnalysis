@@ -23,6 +23,8 @@ GROUP_BY_YEAR_MONTH: str = "yearmonth"
 GROUP_BY_SEMESTER: str = "semester"
 GROUP_BY_STORE: str = "store"
 
+JOIN_ITEMS_TYPE: str = "items"
+
 def generate_compose(file_destination: str,
                      client_nums: int,
                      filter_by_year_nums: int,
@@ -30,7 +32,8 @@ def generate_compose(file_destination: str,
                      filter_by_amount_nums: int,
                      group_by_year_month_nums: int,
                      group_by_semester_nums: int,
-                     group_by_store_nums: int):
+                     group_by_store_nums: int,
+                     join_items_nums: int):
     """
     Generate a Docker Compose file with the specified number of clients.
 
@@ -82,6 +85,10 @@ def generate_compose(file_destination: str,
         group_type = GROUP_BY_STORE
         compose += constants.GROUP_TEMPLATE.format(id=f"-{group_type}{i+1}", group_type=group_type, group_count=group_by_store_nums)
 
+    for i in range(join_items_nums):
+        join_type = JOIN_ITEMS_TYPE
+        compose += constants.JOIN_TEMPLATE.format(id=f"-{join_type}{i+1}", join_type=join_type, join_count=join_items_nums)
+
 
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
@@ -106,8 +113,8 @@ def main():
     """
     try:
         # Validate command line arguments
-        if len(sys.argv) != 9:
-            print("Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_group_by_store>")
+        if len(sys.argv) != 10:
+            print("Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_group_by_store> <num_join_items>")
             sys.exit(1)
 
         # Debug: show received arguments
@@ -122,6 +129,7 @@ def main():
         group_by_year_month_nums: int = int(sys.argv[6])
         group_by_semester_nums: int = int(sys.argv[7])
         group_by_store_nums: int = int(sys.argv[8])
+        join_items_nums: int = int(sys.argv[9])
 
         # Generate the compose file
         generate_compose(file_destination,
@@ -131,7 +139,8 @@ def main():
                          filter_by_amount_nums,
                          group_by_year_month_nums,
                          group_by_semester_nums,
-                         group_by_store_nums)
+                         group_by_store_nums,
+                         join_items_nums)
         
         print(f"""
  Compose file '{file_destination}' generated with:
@@ -142,6 +151,7 @@ def main():
  - Group by Year: {group_by_year_month_nums}
  - Group by Semester: {group_by_semester_nums}
  - Group by Store: {group_by_store_nums}
+ - Join Items: {join_items_nums}
         """)        
         sys.exit(SUCCESS_EXIT_CODE)
 

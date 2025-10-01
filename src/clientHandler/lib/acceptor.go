@@ -97,6 +97,7 @@ func (a *Acceptor) createExchangeHandler(rabbitConn *middleware.RabbitConnection
 type ExchangeHandlers struct {
 	// General
 	transactionsPublishing middleware.MessageMiddlewareExchange
+	menuItemsPublishing    middleware.MessageMiddlewareExchange
 	//transactionItemsPublishing Exchange
 
 	// Side table Query 2
@@ -126,9 +127,16 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
+	menuItemsPublishingRouteKey := "transactions.items.menu.items"
+	menuItemsPublishingHandler, err := a.createExchangeHandler(a.rabbitConn, menuItemsPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return nil, fmt.Errorf("error creating exchange handler for menu_items: %v", err)
+	}
+
 	return &ExchangeHandlers{
 		transactionsPublishing: *transactionsPublishingHandler,
 		resultsQ1Subscription:  *resultsSubscriptionHandler,
+		menuItemsPublishing:    *menuItemsPublishingHandler,
 	}, nil
 }
 
