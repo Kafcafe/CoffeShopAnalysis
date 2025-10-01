@@ -111,16 +111,14 @@ func (f *Filter) FilterByAmount(batch []string, amount float64) []string {
 	result := make([]string, 0)
 	for _, record := range batch {
 		splited := strings.Split(record, ",")
-		if len(splited) < 6 {
-			continue
-		}
+		lenSplitted := len(splited)
 
-		if splited[5] == "" {
+		if splited[lenSplitted-2] == "" {
 			continue
 		}
 
 		var value float64
-		if _, err := fmt.Sscanf(splited[5], "%f", &value); err != nil {
+		if _, err := fmt.Sscanf(splited[lenSplitted-2], "%f", &value); err != nil {
 			continue
 		}
 
