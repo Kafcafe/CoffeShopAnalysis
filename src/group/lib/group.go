@@ -69,43 +69,44 @@ func (g *YearMonthGroup) Add(record Record) error {
 	return nil
 }
 
-//map[YearMonth]map[ItemID]Item
-
-// {
-// 	"2025-01": {
-// 		"itemId1": {
-// 			5, "$10"
-// 		},
-// 		"itemId2": {
-// 			5, "$10"
-// 		}
-// 	},
-// 	"2025-02": {
-// 		"itemId1": {
-// 			5, "$10"
-// 		},
-// 		"itemId2": {
-// 			5, "$10"
-// 		}
-// 	}
-// }
-
-// {
-// 	"2025-01": [
-// 		"itemId1", 5, "$10"
-// 		"itemId2": 5, "$10"
-// 	],
-// 	"2025-02": {
-// 		"itemId1": {
-// 			"total": 5,
-// 			"profit": "$10",
-// 		},
-// 		"itemId2": {
-// 			5, "$10"
-// 		}
-// 	}
-// }
-
+// FROM:
+//
+//	{
+//		"2025-01": {
+//			"itemId1": {
+//				5, "$10"
+//			},
+//			"itemId2": {
+//				5, "$10"
+//			}
+//		},
+//		"2025-02": {
+//			"itemId1": {
+//				5, "$10"
+//			},
+//			"itemId2": {
+//				5, "$10"
+//			}
+//		}
+//	}
+//
+// TO:
+//
+//	{
+//		"2025-01": [
+//			"itemId1", 5, "$10"
+//			"itemId2": 5, "$10"
+//		],
+//		"2025-02": {
+//			"itemId1": {
+//				"total": 5,
+//				"profit": "$10",
+//			},
+//			"itemId2": {
+//				5, "$10"
+//			}
+//		}
+//	}
 func (g YearMonthGroup) ToMapString() map[string][]string {
 	out := make(map[string][]string, len(g))
 

@@ -16,8 +16,6 @@ const (
 	NACK_DISCARD = 2
 
 	THERE_IS_PREVIOUS_MESSAGE = 0
-	ACTIVITY                  = 0
-	// OPT_IS_EOF_ACK            = "ACK"
 )
 
 func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
