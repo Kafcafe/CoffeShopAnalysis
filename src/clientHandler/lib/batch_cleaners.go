@@ -70,6 +70,70 @@ func cleanTransactionItems(transactionItems []string) ([]string, error) {
 	return cleaned, nil
 }
 
+// cleanMenuItems cleans multiple menu item lines.
+//
+// Input format:
+//
+//	item_id,item_name,category,price,is_seasonal,available_from,available_to
+//
+//	[]string{
+//	    "8,Espresso,Beverages,10.0,false,2024-01-01,2024-12-31",
+//	    "12,Cappuccino,Food,5.0,true,2024-06-01,2024-08-31",
+//	}
+//
+// Output format:
+//
+//	item_id,item_name
+//
+//	[]string{
+//	    "8,Espresso",
+//	    "12,Cappuccino",
+//	}
+func cleanMenuItems(menuItems []string) ([]string, error) {
+	var cleaned []string
+
+	for _, line := range menuItems {
+		result, err := cleanMenuItem(line)
+		if err != nil {
+			return nil, err
+		}
+		cleaned = append(cleaned, result)
+	}
+
+	return cleaned, nil
+}
+
+// cleanMenuItem cleans a single menu item line.
+//
+// Input format (CSV):
+//
+//	item_id,item_name,category,price,is_seasonal,available_from,available_to
+//
+// Example:
+//
+//	8,Espresso,Beverages,10.0,false,2024-01-01,2024-12-31
+//
+// Output format (CSV):
+//
+//	item_id,item_name
+//
+// Example:
+//
+//	8,Espresso
+func cleanMenuItem(menuItem string) (string, error) {
+	parts := strings.Split(menuItem, ",")
+	if len(parts) < 2 {
+		return "", fmt.Errorf("invalid line: %s", menuItem)
+	}
+
+	selected := []string{
+		parts[0], // item_id
+		parts[1], // item_name
+	}
+
+	return strings.Join(selected, ","), nil
+}
+
 // cleanTransaction cleans a single transaction line.
 //
 // Input format (CSV):
