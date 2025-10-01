@@ -1,4 +1,4 @@
-package group
+package structures
 
 import (
 	"fmt"
@@ -16,11 +16,6 @@ type Item struct {
 }
 
 type ItemID string
-
-type YearMonthSum struct {
-	yearMonth YearMonth
-	items     map[ItemID]Item
-}
 
 type GroupedPerClient map[ClientId]YearMonthGroup
 
@@ -44,7 +39,7 @@ func sumItems(item1, item2 Item) Item {
 }
 
 func (g *YearMonthGroup) Add(record Record) error {
-	parsedRecord, err := parseRecord(record)
+	parsedRecord, err := parseRecordForYearMonth(record)
 	if err != nil {
 		return err
 	}
