@@ -1,15 +1,25 @@
-package group
+package structures
 
 import (
+	"fmt"
 	"strconv"
 	"strings"
 )
 
-type ParsedRecord struct {
+type ParsedTransactionItemRecord struct {
 	yearMonth YearMonth
 	ItemID    ItemID
 	Quantity  int
 	Profit    float64
+}
+
+type UserID string
+
+type ParsedTransactionRecord struct {
+	StoreID     StoreID
+	UserID      UserID
+	FinalAmount float64
+	Semester    Semester
 }
 
 func ExtractYearMonth(record Record) YearMonth {
@@ -24,7 +34,7 @@ func ExtractYearMonth(record Record) YearMonth {
 	return YearMonth(yearMonth)
 }
 
-func parseRecord(record Record) (*ParsedRecord, error) {
+func parseRecordForYearMonth(record Record) (*ParsedTransactionItemRecord, error) {
 	// Assuming the record format is:
 	// item_id,quantity,subtotal
 	// item_id,quantity,subtotal,date
@@ -44,12 +54,59 @@ func parseRecord(record Record) (*ParsedRecord, error) {
 
 	ym := ExtractYearMonth(record)
 
-	return &ParsedRecord{
+	return &ParsedTransactionItemRecord{
 		yearMonth: ym,
 		ItemID:    ItemID(itemID),
 		Quantity:  quantity,
 		Profit:    profit,
 	}, nil
+}
+
+func parseRecordForSemester(record Record) (*ParsedTransactionRecord, error) {
+	// Assuming the record format is:
+	// item_id,quantity,subtotal
+	// item_id,quantity,subtotal,date
+	// Example:
+	// "6,3,28.5
+	fields := strings.Split(record, ",")
+	storeID := fields[1]
+	userID := fields[2]
+
+	finalAmount, err := toFloat(fields[3])
+	if err != nil {
+		return nil, err
+	}
+
+	semester, err := ExtractSemester(record)
+	if err != nil {
+		return nil, err
+	}
+	return &ParsedTransactionRecord{
+		StoreID:     StoreID(storeID),
+		UserID:      UserID(userID),
+		FinalAmount: finalAmount,
+		Semester:    *semester,
+	}, nil
+}
+
+func ExtractSemester(record Record) (*Semester, error) {
+	yearMonth := string(ExtractYearMonth(record))
+	yearMonthSplit := strings.Split(yearMonth, "-")
+
+	year := yearMonthSplit[0]
+	month, err := toInt(yearMonthSplit[1])
+	if err != nil {
+		return nil, err
+	}
+
+	var semester string
+	if month <= 6 {
+		semester = fmt.Sprintf("%s-%s", year, FIRST_HALF_H1)
+	} else {
+		semester = fmt.Sprintf("%s-%s", year, SECOND_HALF_H2)
+	}
+
+	return (*Semester)(&semester), nil
 }
 
 func toInt(s string) (int, error) {
