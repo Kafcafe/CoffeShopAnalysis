@@ -7,6 +7,7 @@ import (
 
 const (
 	GROUP_TYPE_YEARMONTH = "yearmonth"
+	GROUP_TYPE_SEMESTER  = "semester"
 )
 
 type GroupByWorker interface {
@@ -25,6 +26,11 @@ func CreateGroupByWorker(groupType string,
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:
 		groupByWorker, err = NewGroupByYearmonthWorker(rabbitConf, groupId, groupCount)
+		if err != nil {
+			return nil, err
+		}
+	case GROUP_TYPE_SEMESTER:
+		groupByWorker, err = NewGroupBySemesterWorker(rabbitConf, groupId, groupCount)
 		if err != nil {
 			return nil, err
 		}
