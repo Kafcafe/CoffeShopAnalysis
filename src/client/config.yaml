@@ -1,7 +1,7 @@
 server:
   address: "server:12345"
 log:
-  level: "INFO"
+  level: "DEBUG"
 batch:
   maxAmount: 100
 datapath:

@@ -107,7 +107,7 @@ type ExchangeHandlers struct {
 	// birthdaysByUserIdPublishing   Exchange
 
 	// Results
-	resultsSubscription middleware.MessageMiddlewareExchange
+	resultsQ1Subscription middleware.MessageMiddlewareExchange
 	// resultQuery2Subscription Exchange
 	// resultQuery3Subscription Exchange
 	// resultQuery4Subscription Exchange
@@ -117,18 +117,18 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 	transactionsRouteKey := "transactions"
 	transactionsPublishingHandler, err := a.createExchangeHandler(a.rabbitConn, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating exchange handler for transactions: %v", err)
+		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	resultsSubscriptionRouteKey := "results.q1"
 	resultsSubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
-		return nil, fmt.Errorf("Error creating exchange handler for transactions: %v", err)
+		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	return &ExchangeHandlers{
 		transactionsPublishing: *transactionsPublishingHandler,
-		resultsSubscription:    *resultsSubscriptionHandler,
+		resultsQ1Subscription:  *resultsSubscriptionHandler,
 	}, nil
 }
 
@@ -137,7 +137,7 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 // Returns an error if accepting fails.
 func (a *Acceptor) Run() error {
 	a.log.Info("Running and ready to accept connections")
-	defer a.Shutdown()
+	// defer a.Shutdown()
 	go a.handleSignal()
 
 	for a.isRunning {
@@ -167,7 +167,7 @@ func (a *Acceptor) Run() error {
 		}
 
 		a.log.Info("Closing client connection, conection finished successfully")
-		a.currClient.Shutdown()
+		// a.currClient.Shutdown()
 	}
 
 	return nil
