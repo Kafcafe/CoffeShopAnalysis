@@ -40,12 +40,16 @@ func (m *Message) ToBytes() ([]byte, error) {
 	return msgBytes, nil
 }
 
-func (m *Message) IsFromSameStream(other *EofMessage) bool {
-	if other == nil {
-		return false
-	}
-	return m.DataType == other.DataType && m.ClientId == other.ClientId
+func (m *Message) IsFromSameStream(otherDataType string, otherClientId string) bool {
+	return m.DataType == otherDataType && m.ClientId == otherClientId
 }
+
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 
 type EofMessage struct {
 	DataType        string
@@ -76,6 +80,95 @@ func NewEofMessageFromBytes(msgBytes []byte) (*EofMessage, error) {
 }
 
 func (m *EofMessage) ToBytes() ([]byte, error) {
+	msgBytes, err := json.Marshal(m)
+	if err != nil {
+		return []byte{}, fmt.Errorf("problem while marshalling message of dataType %s: %w", m.DataType, err)
+	}
+
+	return msgBytes, nil
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+
+type MessageGrouped struct {
+	DataType string
+	ClientId string
+	Payload  map[string][]string
+	IsEof    bool
+}
+
+func NewMessageGrouped(dataType, clientId string, payload map[string][]string, isEof bool) *MessageGrouped {
+	return &MessageGrouped{
+		DataType: dataType,
+		ClientId: clientId,
+		Payload:  payload,
+		IsEof:    isEof,
+	}
+}
+
+func NewMessageGroupedFromBytes(msgBytes []byte) (*MessageGrouped, error) {
+	var msg MessageGrouped
+	err := json.Unmarshal(msgBytes, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed message deserialization: %w", err)
+	}
+
+	return &msg, nil
+}
+
+func (m *MessageGrouped) ToBytes() ([]byte, error) {
+	msgBytes, err := json.Marshal(m)
+	if err != nil {
+		return []byte{}, fmt.Errorf("problem while marshalling message of dataType %s: %w", m.DataType, err)
+	}
+
+	return msgBytes, nil
+}
+
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
+
+type EofMessageGrouped struct {
+	DataType        string
+	ClientId        string
+	ImmediateSource string
+	Origin          string
+	IsAck           bool
+	Payload         map[string][]string
+}
+
+func NewEofMessageGrouped(dataType, clientId, immediateSource, origin string, isAck bool, payload map[string][]string) *EofMessageGrouped {
+	return &EofMessageGrouped{
+		DataType:        dataType,
+		ClientId:        clientId,
+		ImmediateSource: immediateSource,
+		Origin:          origin,
+		IsAck:           isAck,
+		Payload:         payload,
+	}
+}
+
+func NewEofMessageGroupedFromBytes(msgBytes []byte) (*EofMessageGrouped, error) {
+	var msg EofMessageGrouped
+	err := json.Unmarshal(msgBytes, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed message deserialization: %w", err)
+	}
+
+	return &msg, nil
+}
+
+func (m *EofMessageGrouped) ToBytes() ([]byte, error) {
 	msgBytes, err := json.Marshal(m)
 	if err != nil {
 		return []byte{}, fmt.Errorf("problem while marshalling message of dataType %s: %w", m.DataType, err)

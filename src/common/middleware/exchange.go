@@ -71,6 +71,7 @@ func (m *MessageMiddlewareExchange) Send(message []byte) (middlewareError Messag
 	)
 
 	if err != nil {
+		middleware_logger.Errorf("error in sending: %v", err)
 		return MessageMiddlewareMessageError
 	}
 	return MessageMiddlewareSuccess

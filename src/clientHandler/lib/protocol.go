@@ -14,9 +14,11 @@ type Protocol struct {
 }
 
 const (
-	BatchRcvCode = 0x01
-	EndOfBatch   = 0x02
-	MoreBatches  = 0x03
+	BatchRcvCode  = 0x01
+	EndOfBatch    = 0x02
+	MoreBatches   = 0x03
+	FinishedQuery = 0x04
+	NotFinished   = 0x05
 
 	SIZEOF_UINT32 = 4
 	SIZEOF_UINT8  = 1
@@ -134,6 +136,11 @@ func (p *Protocol) ReceiveBatch() (lines []string, isEndOfBatch bool, err error)
 	p.log.Debugf("rcv batch with %d lines", dataLen)
 
 	lines, err = p.receiveLines(dataLen)
+
+	if err != nil {
+		return []string{}, false, err
+	}
+
 	return lines, false, nil
 }
 
@@ -159,6 +166,68 @@ func (p *Protocol) RcvAmountOfFiles() (int, error) {
 
 	amount := p.ntohsUint32(lenBytes)
 	return int(amount), nil
+}
+
+func (p *Protocol) SendResults(query uint32, results []string, isEof bool) error {
+	QNumber := p.htonsUint32(query)
+	if err := p.sendAll(QNumber); err != nil {
+		return err
+	}
+
+	if isEof {
+		finishQuery := []byte{FinishedQuery}
+		if err := p.sendAll(finishQuery); err != nil {
+			return err
+		}
+
+		p.log.Infof("action: sending end of query %d", query)
+		return nil
+	} else {
+		finishQuery := []byte{NotFinished}
+		if err := p.sendAll(finishQuery); err != nil {
+			return err
+		}
+	}
+
+	totalLines := p.htonsUint32(uint32(len(results)))
+	if err := p.sendAll(totalLines); err != nil {
+		return err
+	}
+
+	for _, line := range results {
+		lineLenBytes := p.htonsUint32(uint32(len(line)))
+		p.log.Debugf("action: sending lenght line | len: %d | query: %d ", len(line), query)
+		if err := p.sendAll(lineLenBytes); err != nil {
+			return err
+		}
+		p.log.Debugf("action: sending line | query : %d", query)
+		if err := p.sendAll([]byte(line)); err != nil {
+			return err
+		}
+		p.log.Debugf("action: sent line | query: %d | line: %v ", query, line)
+	}
+
+	p.log.Debugf("Sent all lines for query ", query)
+
+	return nil
+
+}
+
+func (p *Protocol) sendLines(lines []string) error {
+	for _, line := range lines {
+		lineLenBytes := p.htonsUint32(uint32(len(line)))
+		p.log.Debug("[PROTOCOL] Sending line length ", lineLenBytes)
+		if err := p.sendAll(lineLenBytes); err != nil {
+			return err
+		}
+
+		p.log.Debug(" Sending line data")
+		if err := p.sendAll([]byte(line)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }
 
 // sendAll sends all data over the connection, handling partial writes.
