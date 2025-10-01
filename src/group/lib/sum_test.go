@@ -1,4 +1,4 @@
-package quantityandprofit
+package group
 
 import "testing"
 

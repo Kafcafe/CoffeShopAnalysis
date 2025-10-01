@@ -32,7 +32,7 @@ type GroupByYearmonthWorker struct {
 	currentMessageProcessing  middleware.Message
 	mutex                     sync.Mutex
 	eofChan                   chan int
-	eofIntercommunicationChan chan int
+	eofIntercommunicationChan chan YearMonthGroup
 	groupedPerClient          GroupedPerClient
 }
 
@@ -61,7 +61,7 @@ func NewGroupByYearmonthWorker(rabbitConf middleware.RabbitConfig, groupById str
 		groupByCount:              groupByCount,
 		mutex:                     sync.Mutex{},
 		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
-		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		eofIntercommunicationChan: make(chan YearMonthGroup, SINGLE_ITEM_BUFFER_LEN),
 		groupedPerClient:          NewGroupedPerClient(),
 	}, nil
 }
@@ -77,7 +77,7 @@ func (g *GroupByYearmonthWorker) handleSignal() {
 func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewEofMessageFromBytes(message.Body)
+	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
@@ -85,7 +85,9 @@ func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error 
 
 	didSomebodyElseAcked := msg.Origin == g.id && msg.IsAck && msg.ImmediateSource != g.id
 	if didSomebodyElseAcked {
-		g.eofIntercommunicationChan <- ACTIVITY
+		partialGrouping := NewYearMonthGroupFromMapString(msg.Payload)
+		g.log.Infof("%v", partialGrouping)
+		g.eofIntercommunicationChan <- partialGrouping
 		return nil
 	}
 
@@ -102,7 +104,7 @@ func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error 
 	g.mutex.Unlock()
 	g.log.Warning("Unlock")
 
-	if currentMessageProcessing.IsFromSameStream(msg) {
+	if currentMessageProcessing.IsFromSameStream(msg.DataType, msg.ClientId) {
 		g.log.Warningf("BEFORE INBOUND %s", msg.DataType)
 		<-g.eofChan
 		g.log.Warningf("AFTER INBOUND %s", msg.DataType)
@@ -110,6 +112,11 @@ func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error 
 
 	msg.ImmediateSource = g.id
 	msg.IsAck = true
+
+	g.mutex.Lock()
+	msg.Payload = g.groupedPerClient.Get(msg.ClientId).ToMapString()
+	g.mutex.Unlock()
+
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err
@@ -120,8 +127,17 @@ func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error 
 	return nil
 }
 
+func printBytesSize(b []byte) {
+	sizeBytes := len(b)
+	sizeMB := float64(sizeBytes) / (1024 * 1024)
+
+	fmt.Printf("[]byte size:\n")
+	fmt.Printf("  Bytes: %d\n", sizeBytes)
+	fmt.Printf("  MB:    %.6f\n", sizeMB)
+}
+
 func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
-	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false)
+	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false, nil)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
 		g.log.Errorf("Failed to serialize message: %v", err)
@@ -139,17 +155,26 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 
 	g.log.Infof("Consolidating partial results for %s", originalMsg.DataType)
 
+	g.mutex.Lock()
+	clientYearMonth := g.groupedPerClient.Get(originalMsg.ClientId)
+	g.groupedPerClient.Delete(originalMsg.ClientId)
+	g.mutex.Unlock()
+
 	for i := 0; i < totalEofs; i++ {
 		g.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
-		<-g.eofIntercommunicationChan
+		partialGrouping := <-g.eofIntercommunicationChan
+		g.log.Infof("%v", partialGrouping)
+		g.log.Infof("%v", clientYearMonth)
+		clientYearMonth.Merge(partialGrouping)
+		g.log.Infof("%v", clientYearMonth)
 		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	allGroupedByClient := g.groupedPerClient.Get(originalMsg.ClientId).ToMapString()
+	allGroupedByClient := clientYearMonth.ToMapString()
 
 	for key, records := range allGroupedByClient {
-		singleYearRecords := map[string][]string{key: records}
-		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearRecords, false)
+		singleYearMonthRecords := map[string][]string{key: records}
+		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false)
 		responseBytes, err := response.ToBytes()
 		if err != nil {
 			g.log.Errorf("%v", err)
@@ -162,7 +187,6 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 			g.log.Errorf("problem while sending message to transactionItemsGroupedByYearmonthPublishing")
 		}
 	}
-	g.groupedPerClient.Delete(originalMsg.ClientId)
 	g.log.Infof("Final results grouped and consolidated")
 
 	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
@@ -189,9 +213,9 @@ func (g *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
 	g.mutex.Lock()
 	g.currentMessageProcessing = *msg
 	g.currentMessageProcessing.Payload = []string{}
-	g.mutex.Unlock()
 
 	g.groupedPerClient.Add(msg.ClientId, msg.Payload)
+	g.mutex.Unlock()
 	answerMessage(ACK, message)
 
 	g.eofChan <- THERE_IS_PREVIOUS_MESSAGE

@@ -235,7 +235,7 @@ func (f *FilterByYearWorker) processInboundEof(message amqp.Delivery) error {
 	f.mutex.Unlock()
 	f.log.Warning("Unlock")
 
-	if currentMessageProcessing.IsFromSameStream(msg) {
+	if currentMessageProcessing.IsFromSameStream(msg.DataType, msg.ClientId) {
 		f.log.Warningf("BEFORE INBOUND %s", msg.DataType)
 		<-f.eofChan
 		f.log.Warningf("AFTER INBOUND %s", msg.DataType)

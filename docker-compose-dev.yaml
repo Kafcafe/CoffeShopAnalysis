@@ -51,7 +51,7 @@ services:
         container_name: "client1"
         environment:
           CLIENT_ID: "1"
-          FILETYPES: "transaction_items"
+          FILETYPES: "transactions,transaction_items,stores,menu,users"
         depends_on:
           - client-handler
         networks:
@@ -203,7 +203,91 @@ services:
           RABBITMQ_PASS: user
           GROUP_TYPE: yearmonth
           GROUP_ID: -yearmonth1
-          GROUP_COUNT: 1
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth2:
+        container_name: "group-yearmonth2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth2
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth3:
+        container_name: "group-yearmonth3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth3
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth4:
+        container_name: "group-yearmonth4"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth4
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth5:
+        container_name: "group-yearmonth5"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth5
+          GROUP_COUNT: 5
         build:
           context: ./src/
           dockerfile: group/Dockerfile

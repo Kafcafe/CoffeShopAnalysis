@@ -1,4 +1,4 @@
-package quantityandprofit
+package group
 
 import (
 	"strconv"
@@ -6,21 +6,33 @@ import (
 )
 
 type ParsedRecord struct {
-	ItemID   ItemID
-	Quantity int
-	Profit   float64
+	yearMonth YearMonth
+	ItemID    ItemID
+	Quantity  int
+	Profit    float64
+}
+
+func ExtractYearMonth(record Record) YearMonth {
+	// Assuming the date is in the format "YYYY-MM-DD HH:MM:SS"
+	// Assumming item_id,quantity,subtotal,date
+	// Example: "6,3,28.5,2023-07-01 07:00:00"
+	fields := strings.Split(record, ",")
+	dateField := fields[len(fields)-1]
+	dateField = strings.TrimSpace(dateField)
+	// Extract "YYYY-MM"
+	yearMonth := dateField[:7]
+	return YearMonth(yearMonth)
 }
 
 func parseRecord(record Record) (*ParsedRecord, error) {
 	// Assuming the record format is:
 	// item_id,quantity,subtotal
+	// item_id,quantity,subtotal,date
 	// Example:
 	// "6,3,28.5
 	fields := strings.Split(record, ",")
-	itemID, err := toInt(fields[0])
-	if err != nil {
-		return nil, err
-	}
+	itemID := fields[0]
+
 	quantity, err := toInt(fields[1])
 	if err != nil {
 		return nil, err
@@ -30,10 +42,13 @@ func parseRecord(record Record) (*ParsedRecord, error) {
 		return nil, err
 	}
 
+	ym := ExtractYearMonth(record)
+
 	return &ParsedRecord{
-		ItemID:   ItemID(itemID),
-		Quantity: quantity,
-		Profit:   profit,
+		yearMonth: ym,
+		ItemID:    ItemID(itemID),
+		Quantity:  quantity,
+		Profit:    profit,
 	}, nil
 }
 

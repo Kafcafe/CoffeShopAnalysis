@@ -1,31 +1,33 @@
 package group
 
 import (
-	"runtime"
+	"fmt"
+	"strconv"
 	"strings"
 )
 
 type YearMonth string
 type Record = string
+type ClientId = string
 
-type YearMonthGroup map[YearMonth][]Record
+type Item struct {
+	TotalQuantity int
+	TotalProfit   float64
+}
+
+type ItemID string
+
+type YearMonthSum struct {
+	yearMonth YearMonth
+	items     map[ItemID]Item
+}
+
+type GroupedPerClient map[ClientId]YearMonthGroup
+
+type YearMonthGroup map[YearMonth]map[ItemID]Item
 
 func NewYearMonthGroup() YearMonthGroup {
 	return make(YearMonthGroup)
-}
-
-func (g *YearMonthGroup) AddRecords(records []Record) {
-	for _, record := range records {
-		g.Add(record)
-	}
-}
-
-func (g *YearMonthGroup) Get(yearMonth YearMonth) []Record {
-	return (*g)[yearMonth]
-}
-
-func (g *YearMonthGroup) GetAll() map[YearMonth][]Record {
-	return (*g)
 }
 
 func (g *YearMonthGroup) AddBatch(records []Record) {
@@ -34,32 +36,142 @@ func (g *YearMonthGroup) AddBatch(records []Record) {
 	}
 }
 
-func (g *YearMonthGroup) Add(record Record) {
-	ym := ExtractYearMonth(record)
-	(*g)[ym] = append((*g)[ym], record)
+func sumItems(item1, item2 Item) Item {
+	return Item{
+		TotalQuantity: item1.TotalQuantity + item2.TotalQuantity,
+		TotalProfit:   item1.TotalProfit + item2.TotalProfit,
+	}
 }
 
-func ExtractYearMonth(record Record) YearMonth {
-	// Assuming the date is in the format "YYYY-MM-DD HH:MM:SS"
-	// Assumming item_id,quantity,subtotal,date
-	// Example: "6,3,28.5,2023-07-01 07:00:00"
-	fields := strings.Split(record, ",")
-	dateField := fields[len(fields)-1]
-	dateField = strings.TrimSpace(dateField)
-	// Extract "YYYY-MM"
-	yearMonth := dateField[:7]
-	return YearMonth(yearMonth)
+func (g *YearMonthGroup) Add(record Record) error {
+	parsedRecord, err := parseRecord(record)
+	if err != nil {
+		return err
+	}
+
+	_, exists := (*g)[parsedRecord.yearMonth]
+	if !exists {
+		(*g)[parsedRecord.yearMonth] = make(map[ItemID]Item)
+	}
+
+	item := Item{
+		TotalQuantity: parsedRecord.Quantity,
+		TotalProfit:   parsedRecord.Profit,
+	}
+
+	existingItem, exists := (*g)[parsedRecord.yearMonth][parsedRecord.ItemID]
+	if exists {
+		(*g)[parsedRecord.yearMonth][parsedRecord.ItemID] = sumItems(existingItem, item)
+	} else {
+		(*g)[parsedRecord.yearMonth][parsedRecord.ItemID] = item
+	}
+
+	return nil
 }
+
+//map[YearMonth]map[ItemID]Item
+
+// {
+// 	"2025-01": {
+// 		"itemId1": {
+// 			5, "$10"
+// 		},
+// 		"itemId2": {
+// 			5, "$10"
+// 		}
+// 	},
+// 	"2025-02": {
+// 		"itemId1": {
+// 			5, "$10"
+// 		},
+// 		"itemId2": {
+// 			5, "$10"
+// 		}
+// 	}
+// }
+
+// {
+// 	"2025-01": [
+// 		"itemId1", 5, "$10"
+// 		"itemId2": 5, "$10"
+// 	],
+// 	"2025-02": {
+// 		"itemId1": {
+// 			"total": 5,
+// 			"profit": "$10",
+// 		},
+// 		"itemId2": {
+// 			5, "$10"
+// 		}
+// 	}
+// }
 
 func (g YearMonthGroup) ToMapString() map[string][]string {
 	out := make(map[string][]string, len(g))
-	for ym, records := range g {
-		out[string(ym)] = append([]string{}, records...) // copy slice
+
+	for ym, yearMonthItems := range g {
+		itemsPerYearMonth := []string{}
+
+		for itemId, item := range yearMonthItems {
+			itemString := fmt.Sprintf("%s,%d,%f", itemId, item.TotalQuantity, item.TotalProfit)
+			itemsPerYearMonth = append(itemsPerYearMonth, itemString)
+		}
+
+		out[string(ym)] = itemsPerYearMonth
 	}
+
 	return out
 }
 
-type GroupedPerClient map[ /* clientId */ string]YearMonthGroup
+func NewYearMonthGroupFromMapString(m map[string][]string) YearMonthGroup {
+	g := make(YearMonthGroup)
+
+	for ymStr, itemStrs := range m {
+		ym := YearMonth(ymStr)
+		g[ym] = make(map[ItemID]Item)
+
+		for _, itemStr := range itemStrs {
+			parts := strings.Split(itemStr, ",")
+			if len(parts) != 3 {
+				continue
+			}
+
+			itemId := ItemID(parts[0])
+			quantity, err := strconv.Atoi(parts[1])
+			if err != nil {
+				continue
+			}
+
+			profit, err := strconv.ParseFloat(parts[2], 64)
+			if err != nil {
+				continue
+			}
+
+			g[ym][itemId] = Item{TotalQuantity: quantity, TotalProfit: profit}
+		}
+	}
+	return g
+}
+
+// Merge merges the items from another YearMonthGroup into this one.
+func (g *YearMonthGroup) Merge(other YearMonthGroup) {
+	for ym, items := range other {
+
+		if _, exists := (*g)[ym]; !exists {
+			(*g)[ym] = make(map[ItemID]Item)
+		}
+
+		for itemId, item := range items {
+			existing, exists := (*g)[ym][itemId]
+
+			if exists {
+				(*g)[ym][itemId] = sumItems(existing, item)
+			} else {
+				(*g)[ym][itemId] = item
+			}
+		}
+	}
+}
 
 func NewGroupedPerClient() GroupedPerClient {
 	return make(GroupedPerClient)
@@ -89,5 +201,4 @@ func (g *GroupedPerClient) Get(clientId string) YearMonthGroup {
 
 func (g *GroupedPerClient) Delete(clientId string) {
 	delete(*g, clientId)
-	runtime.GC()
 }

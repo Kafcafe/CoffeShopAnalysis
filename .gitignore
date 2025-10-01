@@ -44,3 +44,4 @@ src/common/example
 # Pycache
 scripts/__pycache__
 scripts/*.pyc
+results
