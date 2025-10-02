@@ -1,4 +1,4 @@
-package group
+package structures
 
 import (
 	"fmt"
@@ -16,11 +16,6 @@ type Item struct {
 }
 
 type ItemID string
-
-type YearMonthSum struct {
-	yearMonth YearMonth
-	items     map[ItemID]Item
-}
 
 type GroupedPerClient map[ClientId]YearMonthGroup
 
@@ -44,7 +39,7 @@ func sumItems(item1, item2 Item) Item {
 }
 
 func (g *YearMonthGroup) Add(record Record) error {
-	parsedRecord, err := parseRecord(record)
+	parsedRecord, err := parseRecordForYearMonth(record)
 	if err != nil {
 		return err
 	}
@@ -69,43 +64,44 @@ func (g *YearMonthGroup) Add(record Record) error {
 	return nil
 }
 
-//map[YearMonth]map[ItemID]Item
-
-// {
-// 	"2025-01": {
-// 		"itemId1": {
-// 			5, "$10"
-// 		},
-// 		"itemId2": {
-// 			5, "$10"
-// 		}
-// 	},
-// 	"2025-02": {
-// 		"itemId1": {
-// 			5, "$10"
-// 		},
-// 		"itemId2": {
-// 			5, "$10"
-// 		}
-// 	}
-// }
-
-// {
-// 	"2025-01": [
-// 		"itemId1", 5, "$10"
-// 		"itemId2": 5, "$10"
-// 	],
-// 	"2025-02": {
-// 		"itemId1": {
-// 			"total": 5,
-// 			"profit": "$10",
-// 		},
-// 		"itemId2": {
-// 			5, "$10"
-// 		}
-// 	}
-// }
-
+// FROM:
+//
+//	{
+//		"2025-01": {
+//			"itemId1": {
+//				5, "$10"
+//			},
+//			"itemId2": {
+//				5, "$10"
+//			}
+//		},
+//		"2025-02": {
+//			"itemId1": {
+//				5, "$10"
+//			},
+//			"itemId2": {
+//				5, "$10"
+//			}
+//		}
+//	}
+//
+// TO:
+//
+//	{
+//		"2025-01": [
+//			"itemId1", 5, "$10"
+//			"itemId2": 5, "$10"
+//		],
+//		"2025-02": {
+//			"itemId1": {
+//				"total": 5,
+//				"profit": "$10",
+//			},
+//			"itemId2": {
+//				5, "$10"
+//			}
+//		}
+//	}
 func (g YearMonthGroup) ToMapString() map[string][]string {
 	out := make(map[string][]string, len(g))
 
@@ -172,6 +168,55 @@ func (g *YearMonthGroup) Merge(other YearMonthGroup) {
 		}
 	}
 }
+func (g YearMonthGroup) GetTopProfit() YearMonthGroup {
+	result := NewYearMonthGroup()
+	for ym, items := range g {
+		if len(items) == 0 {
+			continue
+		}
+		var maxProfit float64 = -1e9
+		var bestItemID ItemID
+		var bestItem Item
+		for itemID, item := range items {
+			if item.TotalProfit > maxProfit {
+				maxProfit = item.TotalProfit
+				bestItemID = itemID
+				bestItem = item
+			}
+		}
+		if maxProfit > -1e9 {
+			bestItem.TotalQuantity = 0
+			result[ym] = make(map[ItemID]Item)
+			result[ym][bestItemID] = bestItem
+		}
+	}
+	return result
+}
+
+func (g YearMonthGroup) GetBestSeller() YearMonthGroup {
+	result := NewYearMonthGroup()
+	for ym, items := range g {
+		if len(items) == 0 {
+			continue
+		}
+		var maxQuantity int = -1
+		var bestItemID ItemID
+		var bestItem Item
+		for itemID, item := range items {
+			if item.TotalQuantity > maxQuantity {
+				maxQuantity = item.TotalQuantity
+				bestItemID = itemID
+				bestItem = item
+			}
+		}
+		if maxQuantity > -1 {
+			bestItem.TotalProfit = 0
+			result[ym] = make(map[ItemID]Item)
+			result[ym][bestItemID] = bestItem
+		}
+	}
+	return result
+}
 
 func NewGroupedPerClient() GroupedPerClient {
 	return make(GroupedPerClient)
@@ -201,4 +246,20 @@ func (g *GroupedPerClient) Get(clientId string) YearMonthGroup {
 
 func (g *GroupedPerClient) Delete(clientId string) {
 	delete(*g, clientId)
+}
+
+func (g *GroupedPerClient) GetTopProfit(clientId string) YearMonthGroup {
+	if group, ok := (*g)[clientId]; ok {
+		return group.GetTopProfit()
+	}
+	// return an empty group (safe to use immediately)
+	return NewYearMonthGroup()
+}
+
+func (g *GroupedPerClient) GetBestSeller(clientId string) YearMonthGroup {
+	if group, ok := (*g)[clientId]; ok {
+		return group.GetBestSeller()
+	}
+	// return an empty group (safe to use immediately)
+	return NewYearMonthGroup()
 }

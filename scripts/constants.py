@@ -108,7 +108,7 @@ CLIENTS_TEMPLATE = """
         container_name: "client{id}"
         environment:
           CLIENT_ID: "{id}"
-          FILETYPES: "transactions,transaction_items,stores,menu,users"
+          FILETYPES: "transactions,transaction_items,store,menu,users"
         depends_on:
           - client-handler
         networks:
@@ -118,6 +118,7 @@ CLIENTS_TEMPLATE = """
           dockerfile: Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
+          - ./src/client/results:/results
           - ./.data:/data
 """
 
@@ -142,4 +143,49 @@ GROUP_TEMPLATE = """
           dockerfile: group/Dockerfile
         volumes:
           - ./src/group/config.yaml:/config.yaml 
+"""
+
+JOIN_TEMPLATE = """
+    join{id}:
+        container_name: "join{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: {join_type}
+          JOIN_ID: {id}
+          JOIN_COUNT: {join_count}
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
+"""
+
+
+TOP_K_TEMPLATE = """
+    topk{id}:
+        container_name: "topk{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          TOPK_COUNT: {top_count}
+        build:
+          context: ./src/
+          dockerfile: topk/Dockerfile
+        volumes:
+          - ./src/topk/config.yaml:/config.yaml
 """

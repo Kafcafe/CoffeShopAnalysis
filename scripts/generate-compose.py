@@ -20,13 +20,24 @@ FILTER_BY_HOUR_TYPE: str = "hour"
 FILTER_BY_AMOUNT_TYPE: str = "amount"
 
 GROUP_BY_YEAR_MONTH: str = "yearmonth"
+GROUP_BY_SEMESTER: str = "semester"
+GROUP_BY_STORE: str = "store"
+
+JOIN_ITEMS_TYPE: str = "items"
+JOIN_STORE_TYPE: str = "store"
+JOIN_USERS_TYPE: str = "users"
 
 def generate_compose(file_destination: str,
                      client_nums: int,
                      filter_by_year_nums: int,
                      filter_by_hour_nums: int,
                      filter_by_amount_nums: int,
-                     group_by_year_month_nums: int):
+                     group_by_year_month_nums: int,
+                     group_by_semester_nums: int,
+                     group_by_store_nums: int,
+                     join_items_nums: int,
+                     join_store_nums: int, 
+                     topk_nums: int):
     """
     Generate a Docker Compose file with the specified number of clients.
 
@@ -52,6 +63,7 @@ def generate_compose(file_destination: str,
         # Format the client template with unique ID (starting from 1)
         compose += constants.CLIENTS_TEMPLATE.format(id=i+1)
 
+
     for i in range(filter_by_year_nums):
         filter_type = FILTER_BY_YEAR_TYPE
         compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type, filter_count=filter_by_year_nums)
@@ -64,9 +76,32 @@ def generate_compose(file_destination: str,
         filter_type = FILTER_BY_AMOUNT_TYPE
         compose += constants.FILTER_TEMPLATE.format(id=f"-{filter_type}{i+1}", filter_type=filter_type, filter_count=filter_by_amount_nums)
 
+
     for i in range(group_by_year_month_nums):
         group_type = GROUP_BY_YEAR_MONTH
         compose += constants.GROUP_TEMPLATE.format(id=f"-{group_type}{i+1}", group_type=group_type, group_count=group_by_year_month_nums)
+
+    for i in range(group_by_semester_nums):
+        group_type = GROUP_BY_SEMESTER
+        compose += constants.GROUP_TEMPLATE.format(id=f"-{group_type}{i+1}", group_type=group_type, group_count=group_by_semester_nums)
+
+    for i in range(group_by_store_nums):
+        group_type = GROUP_BY_STORE
+        compose += constants.GROUP_TEMPLATE.format(id=f"-{group_type}{i+1}", group_type=group_type, group_count=group_by_store_nums)
+
+
+    for i in range(join_items_nums):
+        join_type = JOIN_ITEMS_TYPE
+        compose += constants.JOIN_TEMPLATE.format(id=f"-{join_type}{i+1}", join_type=join_type, join_count=join_items_nums)
+
+    for i in range(join_store_nums):
+        compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_STORE_TYPE}{i+1}", join_type=JOIN_STORE_TYPE, join_count=join_store_nums)
+
+    # Always 1 node currentyl
+    compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_USERS_TYPE}", join_type=JOIN_USERS_TYPE, join_count=1)
+
+    for i in range(topk_nums):
+        compose += constants.TOP_K_TEMPLATE.format(id=f"{i+1}", top_count=topk_nums)
 
 
     # Write the complete compose file to disk
@@ -92,8 +127,9 @@ def main():
     """
     try:
         # Validate command line arguments
-        if len(sys.argv) != 7:
-            print("Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month>")
+        if len(sys.argv) != 12:
+            print("Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_group_by_store> <num_join_items> <num_join_store> <num_topk>")
+            print(f"\nYour input of length { len(sys.argv)}: {sys.argv}")
             sys.exit(1)
 
         # Debug: show received arguments
@@ -106,15 +142,24 @@ def main():
         filter_by_hour_nums: int = int(sys.argv[4])
         filter_by_amount_nums: int = int(sys.argv[5])
         group_by_year_month_nums: int = int(sys.argv[6])
-
+        group_by_semester_nums: int = int(sys.argv[7])
+        group_by_store_nums: int = int(sys.argv[8])
+        join_items_nums: int = int(sys.argv[9])
+        join_store_nums: int = int(sys.argv[10])
+        topk_nums: int = int(sys.argv[11])
         # Generate the compose file
         generate_compose(file_destination,
                          client_nums,
                          filter_by_year_nums,
                          filter_by_hour_nums,
                          filter_by_amount_nums,
-                         group_by_year_month_nums)
-        
+                         group_by_year_month_nums,
+                         group_by_semester_nums,
+                         group_by_store_nums,
+                         join_items_nums,
+                         join_store_nums, 
+                         topk_nums)
+
         print(f"""
  Compose file '{file_destination}' generated with:
  - Clients: {client_nums}
@@ -122,7 +167,14 @@ def main():
  - Filters by Hour: {filter_by_hour_nums}
  - Filters by Amount: {filter_by_amount_nums}
  - Group by Year: {group_by_year_month_nums}
-        """)        
+ - Group by Semester: {group_by_semester_nums}
+ - Group by Store: {group_by_store_nums}
+ - Join Items: {join_items_nums}        
+ - Join Store: {join_store_nums}
+ - Join Users: 1
+ - Top K: {topk_nums}
+        """)
+
         sys.exit(SUCCESS_EXIT_CODE)
 
     except ValueError as err:

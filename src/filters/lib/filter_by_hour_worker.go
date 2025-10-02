@@ -113,8 +113,8 @@ func (f *FilterByHourWorker) createExchangeHandlersForPostFiltering() (*middlewa
 }
 
 func (f *FilterByHourWorker) createExchangeHandlers() error {
-	transactionsYearFilteredSubscriptionRouteKey := "transactions.transactions"
-	transactionsYearFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearFilteredSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsYearFilteredSubscriptionRouteKey := "transactions.transactions.all"
+	transactionsYearFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearFilteredSubscriptionRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
