@@ -36,6 +36,9 @@ func (rc *RabbitConnection) CreateNewChannel() (MiddlewareChannel, error) {
 }
 
 func (rc *RabbitConnection) Close() error {
+	if rc.conn.IsClosed() {
+		return nil
+	}
 	if err := rc.conn.Close(); err != nil {
 		return err
 	}
