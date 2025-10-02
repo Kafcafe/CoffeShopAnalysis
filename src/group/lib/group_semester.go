@@ -4,7 +4,7 @@ import (
 	"common/logger"
 	"common/middleware"
 	"fmt"
-	"group/lib/structures"
+	"group/structures"
 	"os"
 	"os/signal"
 	"sync"
