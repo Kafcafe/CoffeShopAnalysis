@@ -24,7 +24,7 @@ num_group_by_year_month=$6
 num_group_by_semester=$7
 num_group_by_store=$8
 num_join_items=$9
-num_join_store=$10
+num_join_store=${10}
 python3 ./scripts/generate-compose.py $output_file $num_clients $num_filters_by_year $num_filters_by_hour $num_filters_by_amount $num_group_by_year_month $num_group_by_semester $num_group_by_store $num_join_items $num_join_store
 
 # Capture the exit code from the Python script

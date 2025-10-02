@@ -119,7 +119,7 @@ def main():
     """
     try:
         # Validate command line arguments
-        if len(sys.argv) != 10:
+        if len(sys.argv) != 11:
             print("Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_group_by_store> <num_join_items> <num_join_store>")
             sys.exit(1)
 
