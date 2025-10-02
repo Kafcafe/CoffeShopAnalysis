@@ -279,25 +279,25 @@ func (j *JoinGenericWorker) Run() error {
 	j.log.Info("Waiting to receive side table...")
 	j.middlewareHandlers.sideTableSub.StartConsuming(j.storeSideTable, j.errChan)
 	<-j.sideTableReceived
+
+	if !j.isRunning {
+		return nil
+	}
+
 	j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithSideTable, j.errChan)
 	j.middlewareHandlers.eofSub.StartConsuming(j.processInboundEof, j.errChan)
 
+	j.log.Info("Started consuming messages. Ready to join!")
 	for err := range j.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
 			j.log.Errorf("Error found while joining message of type: %v", err)
 		}
 
-		j.log.Infof("Error received on errChan: %v", err)
 		if !j.isRunning {
 			j.log.Info("Inside error loop: breaking")
 			break
 		}
 	}
-
-	// j.middlewareHandlers.prevStageSub.Close()
-	// j.middlewareHandlers.eofSub.StopConsuming()
-	// j.middlewareHandlers.eofSub.Close()
-	// j.middlewareHandlers.eofPub.Close()
 
 	j.log.Info("Finished joining!")
 	return nil
@@ -305,10 +305,8 @@ func (j *JoinGenericWorker) Run() error {
 
 // Shutdown gracefully stops the acceptor, closing the listener and current client.
 func (j *JoinGenericWorker) Shutdown() {
-	if !j.isRunning {
-		return
-	}
 	j.isRunning = false
+	j.sideTableReceived <- ACTIVITY
 	j.errChan <- middleware.MessageMiddlewareSuccess
 
 	j.middlewareHandlers.Shutdown()
