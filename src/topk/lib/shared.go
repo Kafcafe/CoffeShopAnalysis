@@ -3,6 +3,14 @@ package topk
 import (
 	"common/middleware"
 	"fmt"
+
+	amqp "github.com/rabbitmq/amqp091-go"
+)
+
+const (
+	ACK          = 0
+	NACK_REQUEUE = 1
+	NACK_DISCARD = 2
 )
 
 func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
@@ -68,4 +76,14 @@ func prepareDataQueue(rabbitConn *middleware.RabbitConnection, topKId string) (*
 	}
 
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
+}
+
+func answerMessage(ackType int, message amqp.Delivery) {
+	switch ackType {
+	case ACK:
+	case NACK_REQUEUE:
+		message.Nack(false, true)
+	case NACK_DISCARD:
+		message.Nack(false, false)
+	}
 }

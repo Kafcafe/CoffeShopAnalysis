@@ -51,7 +51,7 @@ services:
         container_name: "client1"
         environment:
           CLIENT_ID: "1"
-          FILETYPES: "transactions,transaction_items,stores,menu,users"
+          FILETYPES: "stores,menu,users,transactions,transaction_items,"
         depends_on:
           - client-handler
         networks:
@@ -77,7 +77,91 @@ services:
           RABBITMQ_PASS: user
           FILTER_TYPE: year
           FILTER_ID: -year1
-          FILTER_COUNT: 1
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-year2:
+        container_name: "filter-year2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: year
+          FILTER_ID: -year2
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-year3:
+        container_name: "filter-year3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: year
+          FILTER_ID: -year3
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-year4:
+        container_name: "filter-year4"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: year
+          FILTER_ID: -year4
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-year5:
+        container_name: "filter-year5"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: year
+          FILTER_ID: -year5
+          FILTER_COUNT: 5
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
@@ -98,7 +182,91 @@ services:
           RABBITMQ_PASS: user
           FILTER_TYPE: hour
           FILTER_ID: -hour1
-          FILTER_COUNT: 1
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-hour2:
+        container_name: "filter-hour2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: hour
+          FILTER_ID: -hour2
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-hour3:
+        container_name: "filter-hour3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: hour
+          FILTER_ID: -hour3
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-hour4:
+        container_name: "filter-hour4"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: hour
+          FILTER_ID: -hour4
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-hour5:
+        container_name: "filter-hour5"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: hour
+          FILTER_ID: -hour5
+          FILTER_COUNT: 5
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
@@ -119,7 +287,91 @@ services:
           RABBITMQ_PASS: user
           FILTER_TYPE: amount
           FILTER_ID: -amount1
-          FILTER_COUNT: 1
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-amount2:
+        container_name: "filter-amount2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: amount
+          FILTER_ID: -amount2
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-amount3:
+        container_name: "filter-amount3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: amount
+          FILTER_ID: -amount3
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-amount4:
+        container_name: "filter-amount4"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: amount
+          FILTER_ID: -amount4
+          FILTER_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: filters/Dockerfile
+        volumes:
+          - ./src/filters/config.yaml:/config.yaml 
+
+    filter-amount5:
+        container_name: "filter-amount5"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          FILTER_TYPE: amount
+          FILTER_ID: -amount5
+          FILTER_COUNT: 5
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
@@ -140,7 +392,91 @@ services:
           RABBITMQ_PASS: user
           GROUP_TYPE: yearmonth
           GROUP_ID: -yearmonth1
-          GROUP_COUNT: 1
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth2:
+        container_name: "group-yearmonth2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth2
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth3:
+        container_name: "group-yearmonth3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth3
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth4:
+        container_name: "group-yearmonth4"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth4
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-yearmonth5:
+        container_name: "group-yearmonth5"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: yearmonth
+          GROUP_ID: -yearmonth5
+          GROUP_COUNT: 5
         build:
           context: ./src/
           dockerfile: group/Dockerfile
@@ -161,7 +497,11 @@ services:
           RABBITMQ_PASS: user
           GROUP_TYPE: semester
           GROUP_ID: -semester1
+<<<<<<< Updated upstream
           GROUP_COUNT: 1
+=======
+          GROUP_COUNT: 5
+>>>>>>> Stashed changes
         build:
           context: ./src/
           dockerfile: group/Dockerfile
@@ -180,9 +520,78 @@ services:
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
+<<<<<<< Updated upstream
           GROUP_TYPE: store
           GROUP_ID: -store1
           GROUP_COUNT: 1
+=======
+          GROUP_TYPE: semester
+          GROUP_ID: -semester2
+          GROUP_COUNT: 5
+>>>>>>> Stashed changes
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    join-items1:
+        container_name: "join-items1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: semester
+          GROUP_ID: -semester3
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-semester4:
+        container_name: "group-semester4"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: semester
+          GROUP_ID: -semester4
+          GROUP_COUNT: 5
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-semester5:
+        container_name: "group-semester5"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: semester
+          GROUP_ID: -semester5
+          GROUP_COUNT: 5
         build:
           context: ./src/
           dockerfile: group/Dockerfile
@@ -203,7 +612,28 @@ services:
           RABBITMQ_PASS: user
           JOIN_TYPE: items
           JOIN_ID: -items1
-          JOIN_COUNT: 1
+          JOIN_COUNT: 2
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
+
+    join-items2:
+        container_name: "join-items2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: items
+          JOIN_ID: -items2
+          JOIN_COUNT: 2
         build:
           context: ./src/
           dockerfile: join/Dockerfile

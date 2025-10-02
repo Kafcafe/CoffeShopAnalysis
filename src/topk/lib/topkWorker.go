@@ -7,6 +7,8 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+
+	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type TopKWorker struct {
@@ -15,6 +17,8 @@ type TopKWorker struct {
 	topK        int
 	rbConn      *middleware.RabbitConnection
 	exchHandler *TopKMiddlewareHandler
+	errChan     chan middleware.MessageMiddlewareError
+	topKMap     map[string]*Toper[string]
 }
 
 type TopKMiddlewareHandler struct {
@@ -44,6 +48,8 @@ func NewTopKWorker(topK int, id string, rbConfig middleware.RabbitConfig) (*TopK
 		sigChan: sigChan,
 		topK:    topK,
 		rbConn:  rabbitConn,
+		errChan: make(chan middleware.MessageMiddlewareError),
+		topKMap: make(map[string]*Toper[string]),
 	}, nil
 }
 
@@ -92,7 +98,37 @@ func (t *TopKWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handler: %w", err)
 	}
 
+	t.exchHandler.dataSub.StartConsuming(t.processDataMessage, t.errChan)
+
 	return nil
+}
+
+func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
+	defer answerMessage(ACK, message)
+
+	msg, err := middleware.NewMessageFromBytes(message.Body)
+
+	if err != nil {
+		return fmt.Errorf("failed to unmarshal message: %w", err)
+	}
+
+	// groupByMsg := middleware.NewMessageGrouped()
+
+	isEof := msg.IsEof
+
+	if isEof {
+		go t.initiateEofCoordination(*msg, message.Body)
+		answerMessage(ACK, message)
+		return nil
+	}
+
+	// clientId := msg.ClientId
+	// data := msg.Payload
+	return nil
+}
+
+func (t *TopKWorker) initiateEofCoordination(emptyMsg middleware.Message, rawMsg []byte) {
+
 }
 
 func (t *TopKWorker) Shutdown() {
