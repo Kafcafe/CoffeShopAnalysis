@@ -51,7 +51,7 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 		ofType:       "store",
 		prevStageSub: "transactions.output.topk", // TODO: change when defined
 		sideTableSub: "transactions.store",
-		nextStagePub: "transactions.store.joined",
+		nextStagePub: "transactions.transactions.join.store",
 		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
 			flattenedStores := make([]string, 0)
 			for store, users := range payload {
