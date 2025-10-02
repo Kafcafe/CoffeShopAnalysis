@@ -96,30 +96,16 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, joinerType string,
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
 }
 
-func prepareMenuItemsQueue(rabbitConn *middleware.RabbitConnection, joinerType string, joinerId string) (*middleware.MessageMiddlewareQueue, error) {
-	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
-	}
-
-	queueName := fmt.Sprintf("transactions.items.menu.items.%s.%s", joinerType, joinerId)
-	_, err = middlewareHandler.DeclareQueue(queueName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
-	}
-
-	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, "transactions.items.menu.items")
-	if err != nil {
-		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
-	}
-
-	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
-}
-
 func prepareSideTableQueue(rabbitConn *middleware.RabbitConnection, queueName, routeKey string) (*middleware.MessageMiddlewareQueue, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+
+	// Declare and bind
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_TOPIC_TYPE, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange in prepareSideTableQueue: %v", err)
 	}
 
 	_, err = middlewareHandler.DeclareQueue(queueName)
