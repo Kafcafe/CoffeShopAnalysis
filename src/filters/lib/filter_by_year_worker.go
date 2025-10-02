@@ -81,8 +81,13 @@ func (f *FilterByYearWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions: %v", err)
 	}
 
-	transactionsYearFilteredPublishingRouteKey := "transactions.transactions"
-	transactionsYearFilteredPublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearFilteredPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
+	middlewareHandler, err := middleware.NewMiddlewareHandler(f.rabbitConn)
+	if err != nil {
+		return fmt.Errorf("fialed to create middleware handler: %w", err)
+	}
+
+	transactionsYearFilteredPublishingRouteKey := "transactions.transactions.all"
+	transactionsYearFilteredPublishingHandler, err := middlewareHandler.CreateTopicExchangeStandalone(transactionsYearFilteredPublishingRouteKey)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions: %v", err)
 	}
