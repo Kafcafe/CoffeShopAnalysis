@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"path/filepath"
 	"strings"
 	"syscall"
 
@@ -173,7 +174,7 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 
 func (c *Client) ProcessResults() error {
 	for c.isRunning {
-		query, lines, finish, err := c.protocol.rcvResults()
+		query, lines, finish, err, finishedAll := c.protocol.rcvResults()
 
 		if err != nil {
 			log.Error("Error receiving results: %v", err)
@@ -182,6 +183,11 @@ func (c *Client) ProcessResults() error {
 		if finish {
 			log.Debug("Finished receiving results for query %d", query)
 			c.LogFinishQuery(int(query))
+			continue
+		}
+
+		if finishedAll {
+			log.Info("Finished all queries")
 			c.finishedChan <- true
 			return nil
 		}
@@ -197,6 +203,24 @@ func (c *Client) ProcessResults() error {
 func (c *Client) LogFinishQuery(query int) {
 	log.Infof("Finished receiving results for query %d", query)
 	log.Info("Results:", c.results[query])
+
+	savePath := fmt.Sprintf("./results/results_q%d.txt", query)
+	WriteLines(c.results[query], savePath)
+}
+
+// WriteLines overwrites the file at filePath with the given lines,
+// creating parent directories if needed.
+func WriteLines(lines []string, filePath string) error {
+	// Ensure parent directory exists
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		return err
+	}
+
+	// Join lines with newline separator
+	content := strings.Join(lines, "\n")
+
+	// Write or overwrite the file
+	return os.WriteFile(filePath, []byte(content), 0644)
 }
 
 func (c *Client) Shutdown() {

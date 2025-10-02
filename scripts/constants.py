@@ -118,6 +118,7 @@ CLIENTS_TEMPLATE = """
           dockerfile: Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
+          - ./src/client/results:/results
           - ./.data:/data
 """
 
