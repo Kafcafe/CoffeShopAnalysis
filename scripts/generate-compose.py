@@ -25,6 +25,7 @@ GROUP_BY_STORE: str = "store"
 
 JOIN_ITEMS_TYPE: str = "items"
 JOIN_STORE_TYPE: str = "store"
+JOIN_USERS_TYPE: str = "users"
 
 def generate_compose(file_destination: str,
                      client_nums: int,
@@ -96,6 +97,8 @@ def generate_compose(file_destination: str,
     for i in range(join_store_nums):
         compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_STORE_TYPE}{i+1}", join_type=JOIN_STORE_TYPE, join_count=join_store_nums)
 
+    compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_USERS_TYPE}", join_type=JOIN_USERS_TYPE, join_count=1)
+
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
         f.write(compose)
@@ -161,6 +164,7 @@ def main():
  - Group by Store: {group_by_store_nums}
  - Join Items: {join_items_nums}
  - Join Store: {join_store_nums}
+ - Join Users: 1
         """)
 
         sys.exit(SUCCESS_EXIT_CODE)
