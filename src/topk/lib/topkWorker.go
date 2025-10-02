@@ -91,16 +91,6 @@ func (t *TopKWorker) createTopKExchangeHandler() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions.topk: %v", err)
 	}
 
-	// dataSub, err := prepareDataQueue(t.rbConn, t.id)
-	// if err != nil {
-	// 	return fmt.Errorf("error preparing data queue for topk: %v", err)
-	// }
-
-	// nextStepPub, err := createExchangeHandler(t.rbConn, "", middleware.EXCHANGE_TYPE_DIRECT)
-	// if err != nil {
-	// 	return fmt.Errorf("failed to create next stage publishing exchange: %w", err)
-	// }
-
 	eofPublishingRouteKey := fmt.Sprintf("eot.topk.%s", t.id)
 	eofPublishingHandler, err := createExchangeHandler(t.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 
@@ -174,13 +164,6 @@ func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
 	t.mutex.Unlock()
 
 	msgParsed := structures.NewStoreGroupFromMapString(msg.Payload)
-
-	// var keys []string
-	// for key := range msgParsed {
-	// 	keys = append(keys, string(key))
-	// }
-
-	//allResultsForClient := t.resultForClientSimple(keys[0])
 	allResultsForClient := t.getTopK(msgParsed)
 
 	t.mutex.Lock()
