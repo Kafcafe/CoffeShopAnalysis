@@ -50,6 +50,7 @@ func NewTopKWorker(Kconfig int, topKCount int, id string, rabbitConf middleware.
 	log := logger.GetLoggerWithPrefix("[TOPK]")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
+	log.Infof("There are other %d TOPKs", topKCount)
 
 	rabbitConn, err := middleware.NewRabbitConnection(&rabbitConf)
 	if err != nil {
@@ -170,10 +171,17 @@ func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
 	t.mutex.Lock()
 	t.currentMessageProcessing = *msg
 	t.currentMessageProcessing.Payload = make(map[string][]string)
-	t.mergeMessages(*msg)
 	t.mutex.Unlock()
 
-	allResultsForClient := t.resultForClient(msg.ClientId)
+	msgParsed := structures.NewStoreGroupFromMapString(msg.Payload)
+
+	// var keys []string
+	// for key := range msgParsed {
+	// 	keys = append(keys, string(key))
+	// }
+
+	//allResultsForClient := t.resultForClientSimple(keys[0])
+	allResultsForClient := t.getTopK(msgParsed)
 
 	t.mutex.Lock()
 	t.topKMap[msg.ClientId] = nil
@@ -195,9 +203,50 @@ func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
 	return nil
 }
 
+func (t *TopKWorker) getTopK(msg structures.StoreGroup) map[string][]string {
+	result := make(map[string][]string)
+	for storeId, users := range msg {
+		if users == nil || len(users) == 0 {
+			continue
+		}
+		toper := NewToper(t.k, CmpTransactions)
+		for userID, value := range users {
+			userId := string(userID)
+			if userId == "" {
+				continue
+			}
+			count := int(value)
+			if count <= 0 {
+				continue
+			}
+			registry := NewTopKRegister(string(storeId), userId, count)
+			toper.Add(registry)
+		}
+		topKUsers := toper.GetTopK()
+		result[string(storeId)] = make([]string, 0, len(topKUsers))
+		for _, user := range topKUsers {
+			result[string(storeId)] = append(result[string(storeId)], user.String())
+		}
+	}
+	return result
+}
+
+func (t *TopKWorker) resultForClientSimple(storeId string) map[string][]string {
+	topKClientStore := NewToper(t.k, CmpTransactions)
+	mapResult := make(map[string][]string)
+	mapResult[storeId] = make([]string, 0)
+	topKUsers := topKClientStore.GetTopK()
+	for _, user := range topKUsers {
+		mapResult[storeId] = append(mapResult[storeId], user.String())
+	}
+
+	return mapResult
+}
+
 func (t *TopKWorker) resultForClient(clientId string) map[string][]string {
 	topK := t.topKMap[clientId]
 	mapResult := make(map[string][]string)
+
 	for StoreId, toper := range topK {
 		mapResult[StoreId] = make([]string, 0)
 		topKUsers := toper.GetTopK()
@@ -231,6 +280,7 @@ func (t *TopKWorker) initiateEofCoordination(originalMsg middleware.MessageGroup
 	}
 
 	t.exchangeHandlers.transactionsTopKPublishing.Send(originalMsgBytes)
+	t.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
 }
 
 func (t *TopKWorker) processInboundEof(message amqp.Delivery) error {
@@ -280,29 +330,39 @@ func (t *TopKWorker) processInboundEof(message amqp.Delivery) error {
 }
 
 func (t *TopKWorker) mergeMessages(msg middleware.MessageGrouped) {
+	data := structures.NewStoreGroupFromMapString(msg.Payload)
+	if data == nil || len(data) == 0 {
+		return
+	}
 
-	cliendId := msg.ClientId
-	topKClienteMap, exists := t.topKMap[cliendId]
+	topKClientMap, exists := t.topKMap[msg.ClientId]
 	if !exists {
 		return
 	}
 
-	data := structures.NewStoreGroupFromMapString(msg.Payload)
-
 	// Should happen once because message has one store
 	for storeId, users := range data {
+		if users == nil || len(users) == 0 {
+			continue
+		}
 
-		topKClienteStore, exists := topKClienteMap[string(storeId)]
+		topKClientStore, exists := topKClientMap[string(storeId)]
 		if !exists {
-			topKClienteStore = NewToper(t.k, CmpTransactions)
-			topKClienteMap[string(storeId)] = topKClienteStore
+			topKClientStore = NewToper(t.k, CmpTransactions)
+			topKClientMap[string(storeId)] = topKClientStore
 		}
 
 		for userID, value := range users {
 			userId := string(userID)
+			if userId == "" {
+				continue
+			}
 			count := int(value)
+			if count <= 0 {
+				continue
+			}
 			registry := NewTopKRegister(string(storeId), userId, count)
-			topKClienteStore.Add(registry)
+			topKClientStore.Add(registry)
 		}
 	}
 }

@@ -85,15 +85,15 @@ func main() {
 	)
 
 	topKNodeId := config.GetString("topk.id")
+	topKCount := config.GetInt("topk.count")
 	Kconfig := config.GetInt("k")
-	totalNodes := config.GetInt("nodes")
 
 	if Kconfig <= 0 {
 		logger.Errorf("K must be a positive integer. Current value: %d", Kconfig)
 		return
 	}
 
-	topKWorker, err := topk.NewTopKWorker(Kconfig, totalNodes, topKNodeId, rabbitConf)
+	topKWorker, err := topk.NewTopKWorker(Kconfig, topKCount, topKNodeId, rabbitConf)
 
 	if err != nil {
 		logger.Errorf("Error initializing TopKWorker: %v", err)

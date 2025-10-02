@@ -62,7 +62,7 @@ services:
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./src/client/results:/results
-          - ./../data/kaggle_datos_reducidos_suelto/:/data
+          - ./.data:/data
 
     filter-year1:
         container_name: "filter-year1"
@@ -265,7 +265,7 @@ services:
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
-          TOTAL_TOPS: 1
+          TOPK_COUNT: 1
         build:
           context: ./src/
           dockerfile: topk/Dockerfile
