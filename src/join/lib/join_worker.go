@@ -7,10 +7,61 @@ import (
 
 const (
 	JOIN_ITEMS_TYPE = "items"
+	JOIN_STORE_TYPE = "store"
 )
 
 type JoinItemsWorker interface {
 	Run() error
+}
+
+type JoinWorkerConfig struct {
+	id              string
+	count           int
+	ofType          string
+	prevStageSub    string
+	sideTableSub    string
+	nextStagePub    string
+	messageCallback func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string)
+}
+
+func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:           joinId,
+		count:        joinCount,
+		ofType:       JOIN_ITEMS_TYPE,
+		prevStageSub: "transactions.items.group.yearmonth",
+		sideTableSub: "transactions.items.menu.items",
+		nextStagePub: "results.q2",
+		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+			flattenedItems := make([]string, 0)
+			for yearMonth, items := range payload {
+				for _, item := range items {
+					flattenedItems = append(flattenedItems, fmt.Sprintf("%s,%s", yearMonth, item))
+				}
+			}
+			return joiner.JoinByIndex(sideTable, flattenedItems, 1, 0, 1)
+		},
+	}
+}
+
+func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:           joinId,
+		count:        joinCount,
+		ofType:       "store",
+		prevStageSub: "transactions.output.topk", // TODO: change when defined
+		sideTableSub: "transactions.store",
+		nextStagePub: "transactions.transactions.join.store",
+		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+			flattenedStores := make([]string, 0)
+			for store, users := range payload {
+				for _, user := range users {
+					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", store, user))
+				}
+			}
+			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 0)
+		},
+	}
 }
 
 func CreateJoinItemsWorker(joinItemsType string,
@@ -24,7 +75,14 @@ func CreateJoinItemsWorker(joinItemsType string,
 
 	switch joinItemsType {
 	case JOIN_ITEMS_TYPE:
-		joinItemsWorker, err = NewJoinItemsWorker(rabbitConf, joinerId, joinerCount)
+		config := JoinItemsConfig(joinerId, joinerCount)
+		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+		if err != nil {
+			return nil, err
+		}
+	case JOIN_STORE_TYPE:
+		config := JoinStoreConfig(joinerId, joinerCount)
+		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
 		}
