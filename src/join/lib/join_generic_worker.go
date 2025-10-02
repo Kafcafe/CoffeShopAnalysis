@@ -256,7 +256,6 @@ func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
 		j.log.Info("Received EOF for menu items. Ready to Join.")
 		answerMessage(ACK, message)
 		j.sideTableReceived <- ACTIVITY
-		// j.middlewareHandlers.sideTableSub.StopConsuming()
 		return nil
 	}
 
@@ -268,7 +267,6 @@ func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
 }
 
 func (j *JoinGenericWorker) Run() error {
-	defer j.Shutdown()
 	go j.handleSignal()
 
 	err := j.createExchangeHandlers()
