@@ -182,6 +182,7 @@ TOP_K_TEMPLATE = """
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
+          TOPK_ID: {id}
           TOPK_COUNT: {top_count}
         build:
           context: ./src/
