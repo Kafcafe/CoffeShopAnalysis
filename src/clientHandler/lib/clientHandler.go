@@ -376,6 +376,8 @@ func (clh *ClientHandler) cleanBatch(dataType string, batch []string) (cleanBatc
 		return cleanMenuItems(batch)
 	case "store":
 		return cleanStores(batch)
+	case "users":
+		return cleanUsers(batch)
 	default:
 		clh.log.Infof("Batch clean for %s dataType not available", dataType)
 		return batch, nil
@@ -409,6 +411,9 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
 	case "store":
 		res = clh.exchangeHandlers.storePublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	case "users":
+		res = clh.exchangeHandlers.usersPublishing.Send(msgBytes)
 		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
 	default:
 		clh.log.Infof("Dispatch for %s dataType not available", dataType)

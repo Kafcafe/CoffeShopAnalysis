@@ -257,3 +257,62 @@ func cleanStores(stores []string) ([]string, error) {
 
 	return cleaned, nil
 }
+
+// cleanUser cleans a single user line.
+//
+// Input format (CSV):
+//
+// user_id,gender,birthdate,registered_at
+// Example:
+// 42,F,1990-05-15,2023-11-20
+//
+// Output format (CSV):
+// user_id,birthdate
+//
+// Example:
+// 42,1990-05-15
+func cleanUser(user string) (string, error) {
+	parts := strings.Split(user, ",")
+	if len(parts) < 3 {
+		return "", fmt.Errorf("invalid line: %s", user)
+	}
+
+	selected := []string{
+		parts[0], // user_id
+		parts[2], // birthdate
+	}
+
+	return strings.Join(selected, ","), nil
+}
+
+// cleanUsers cleans multiple user lines.
+// Input format:
+//
+// user_id,gender,birthdate,registered_at
+//
+//	[]string{
+//	    "42,F,1990-05-15,2023-11-20",
+//	    "43,M,1985-08-30,2022-07-15",
+//	}
+//
+// Output format:
+//
+// user_id,birthdate
+//
+//	[]string{
+//	    "42,1990-05-15",
+//	    "43,1985-08-30",
+//	}
+func cleanUsers(users []string) ([]string, error) {
+	var cleaned []string
+
+	for _, line := range users {
+		result, err := cleanUser(line)
+		if err != nil {
+			return nil, err
+		}
+		cleaned = append(cleaned, result)
+	}
+
+	return cleaned, nil
+}
