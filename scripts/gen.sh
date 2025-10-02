@@ -14,8 +14,6 @@
 #   1 - Invalid arguments or ValueError
 #   2 - Unexpected error
 
-# Call the Python script with all provided arguments
-python3 ./scripts/generate-compose.py $1 $2 $3 $4 $5 $6 $7 $8 $9 $10
 
 output_file=$1
 num_clients=$2
