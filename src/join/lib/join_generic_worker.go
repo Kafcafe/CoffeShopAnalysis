@@ -155,6 +155,34 @@ func (j *JoinGenericWorker) initiateEofCoordination(originalMsg middleware.Messa
 	j.log.Warningf("Propagated EOF for %s to next pipeline stage: %s", originalMsg.DataType, j.conf.nextStagePub)
 }
 
+func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
+	defer answerMessage(NACK_DISCARD, message)
+
+	msg, err := middleware.NewMessageFromBytes(message.Body)
+	if err != nil {
+		return err
+	}
+
+	if !msg.IsEof {
+		j.log.Debugf("Received payload: %v", msg.Payload)
+		j.sideTable = j.conf.messageCallbackUpdateSideTable(j.sideTable, msg.Payload)
+		answerMessage(ACK, message)
+		j.log.Debug("Partially updated side table")
+		return nil
+	}
+
+	j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF: %v", msg.DataType, j.conf.id, j.sideTable)
+	table, err := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false).ToBytes()
+	if err != nil {
+		return err
+	}
+	j.middlewareHandlers.nextStagePub.Send(table)
+	j.middlewareHandlers.nextStagePub.Send(message.Body) // EOF
+	j.log.Infof("Sent side table and EOF to next stage: %s", j.conf.nextStagePub)
+	answerMessage(ACK, message)
+	return nil
+}
+
 func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
@@ -253,15 +281,15 @@ func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		j.log.Info("Received EOF for menu items. Ready to Join.")
+		j.log.Infof("Received EOF for %s. Ready to Join.", j.conf.ofType)
 		answerMessage(ACK, message)
 		j.sideTableReceived <- ACTIVITY
 		return nil
 	}
 
-	j.sideTable = msg.Payload
+	j.sideTable = append(j.sideTable, msg.Payload...)
 
-	j.log.Infof("Stored %d side table: %v", len(msg.Payload), msg.Payload)
+	j.log.Infof("Stored %d side table: %v", len(j.sideTable), j.sideTable)
 	answerMessage(ACK, message)
 	return nil
 }
@@ -282,8 +310,13 @@ func (j *JoinGenericWorker) Run() error {
 		return nil
 	}
 
-	j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithSideTable, j.errChan)
-	j.middlewareHandlers.eofSub.StartConsuming(j.processInboundEof, j.errChan)
+	if j.conf.ofType == JOIN_USERS_TYPE {
+		// RESTRICTION: Users ONLY can have 1 replica
+		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithPayload, j.errChan)
+	} else {
+		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithSideTable, j.errChan)
+		j.middlewareHandlers.eofSub.StartConsuming(j.processInboundEof, j.errChan)
+	}
 
 	j.log.Info("Started consuming messages. Ready to join!")
 	for err := range j.errChan {
