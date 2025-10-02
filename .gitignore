@@ -45,3 +45,4 @@ src/common/example
 scripts/__pycache__
 scripts/*.pyc
 results
+.fuse_hidden*
