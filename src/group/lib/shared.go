@@ -50,6 +50,11 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 	}
 
 	// Declare and bind for Query 1
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_TOPIC_TYPE, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange in prepareEofQueue: %v", err)
+	}
+
 	queueName := fmt.Sprintf("eof.group.%s.%s", filterType, filterId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {

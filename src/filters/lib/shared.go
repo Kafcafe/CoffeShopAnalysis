@@ -41,6 +41,12 @@ func prepareQuery1InputQueues(rabbitConn *middleware.RabbitConnection) error {
 		return fmt.Errorf("failed to create middleware handler: %w", err)
 	}
 	// Declare and bind for Query 1
+
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_DIRECT_TYPE, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return fmt.Errorf("failed to declare exchange in prepareQuery1InputQueues: %v", err)
+	}
+
 	routeKey := "transactions.year-hour-filtered.q1"
 	_, err = middlewareHandler.DeclareQueue(routeKey)
 	if err != nil {
@@ -61,6 +67,12 @@ func prepareQuery1OutputQueues(rabbitConn *middleware.RabbitConnection) error {
 		return fmt.Errorf("failed to create middleware handler: %w", err)
 	}
 	// Declare and bind for Query 1
+
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_TOPIC_TYPE, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return fmt.Errorf("failed to declare exchange in prepareQuery1OutputQueues: %v", err)
+	}
+
 	routeKey := "results.q1"
 	_, err = middlewareHandler.DeclareQueue(routeKey)
 	if err != nil {
@@ -82,6 +94,12 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 	}
 
 	// Declare and bind for Query 1
+
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_TOPIC_TYPE, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange in prepareEofQueue: %v", err)
+	}
+
 	queueName := fmt.Sprintf("eof.filters.%s.%s", filterType, filterId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {
