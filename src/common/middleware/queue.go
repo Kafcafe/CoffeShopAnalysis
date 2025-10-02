@@ -72,6 +72,9 @@ func (m *MessageMiddlewareQueue) Send(message []byte) (middlewareError MessageMi
 }
 
 func (m *MessageMiddlewareQueue) Close() (middlewareError MessageMiddlewareError) {
+	if m.channel == nil || m.channel.IsClosed() {
+		return MessageMiddlewareSuccess
+	}
 	err := m.channel.Close()
 	if err != nil {
 		return MessageMiddlewareCloseError

@@ -71,9 +71,9 @@ up:
 .PHONY: up
 
 # Stop and remove all services and networks
-# Gracefully stops containers with 1s timeout, then removes them
+# Gracefully stops containers with 3s timeout, then removes them
 down:
-	docker compose -f $(FILE) stop -t 1
+	docker compose -f $(FILE) stop -t 3
 	docker compose -f $(FILE) down
 .PHONY: down
 
