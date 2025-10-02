@@ -33,7 +33,8 @@ def generate_compose(file_destination: str,
                      group_by_year_month_nums: int,
                      group_by_semester_nums: int,
                      group_by_store_nums: int,
-                     join_items_nums: int):
+                     join_items_nums: int,
+                     topk_nums: int) -> None:
     """
     Generate a Docker Compose file with the specified number of clients.
 
@@ -90,6 +91,9 @@ def generate_compose(file_destination: str,
         join_type = JOIN_ITEMS_TYPE
         compose += constants.JOIN_TEMPLATE.format(id=f"-{join_type}{i+1}", join_type=join_type, join_count=join_items_nums)
 
+    for i in range(topk_nums):
+        join_type = JOIN_ITEMS_TYPE
+        compose += constants.TOPK_TEMPLATE.format(id=f"-topk{i+1}", join_type=join_type, join_count=topk_nums)
 
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
@@ -131,6 +135,7 @@ def main():
         group_by_semester_nums: int = int(sys.argv[7])
         group_by_store_nums: int = int(sys.argv[8])
         join_items_nums: int = int(sys.argv[9])
+        topk_nums: int = int(sys.argv[10])
 
         # Generate the compose file
         generate_compose(file_destination,
@@ -141,7 +146,8 @@ def main():
                          group_by_year_month_nums,
                          group_by_semester_nums,
                          group_by_store_nums,
-                         join_items_nums)
+                         join_items_nums,
+                         topk_nums)
         
         print(f"""
  Compose file '{file_destination}' generated with:
@@ -153,6 +159,7 @@ def main():
  - Group by Semester: {group_by_semester_nums}
  - Group by Store: {group_by_store_nums}
  - Join Items: {join_items_nums}
+ - Top K: {topk_nums}
         """)        
         sys.exit(SUCCESS_EXIT_CODE)
 

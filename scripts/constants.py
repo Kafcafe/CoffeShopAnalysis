@@ -166,3 +166,24 @@ JOIN_TEMPLATE = """
         volumes:
           - ./src/join/config.yaml:/config.yaml 
 """
+
+
+TOP_K_TEMPLATE = """
+    topk{id}:
+        container_name: "topk{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+        build:
+          context: ./src/
+          dockerfile: topk/Dockerfile
+        volumes:
+          - ./src/topk/config.yaml:/config.yaml
+"""
