@@ -44,8 +44,9 @@ func (j *Join) JoinByIndex(rightTable []string, leftTable []string, rightIndex, 
 			continue
 		}
 
-		joinedItem := strings.Join(fields[:leftIndex], ",") + "," + itemName + "," + strings.Join(fields[leftIndex+1:], ",")
-		joinedItems = append(joinedItems, joinedItem)
+		newFields := append([]string{}, fields...)
+		newFields[leftIndex] = itemName
+		joinedItems = append(joinedItems, strings.Join(newFields, ","))
 	}
 	return joinedItems
 }
