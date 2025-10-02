@@ -8,6 +8,7 @@ import (
 const (
 	JOIN_ITEMS_TYPE = "items"
 	JOIN_STORE_TYPE = "store"
+	JOIN_USERS_TYPE = "users"
 )
 
 type JoinItemsWorker interface {
@@ -15,13 +16,14 @@ type JoinItemsWorker interface {
 }
 
 type JoinWorkerConfig struct {
-	id              string
-	count           int
-	ofType          string
-	prevStageSub    string
-	sideTableSub    string
-	nextStagePub    string
-	messageCallback func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string)
+	id                             string
+	count                          int
+	ofType                         string
+	prevStageSub                   string
+	sideTableSub                   string
+	nextStagePub                   string
+	messageCallback                func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string)
+	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
 }
 
 func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
@@ -64,6 +66,18 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
+func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:                             joinId,
+		count:                          joinCount,
+		ofType:                         "users",
+		prevStageSub:                   "transactions.users", // TODO: change when defined
+		sideTableSub:                   "transactions.transactions.join.store",
+		nextStagePub:                   "results.q4",
+		messageCallbackUpdateSideTable: UpdatedSideTableWithUsers,
+	}
+}
+
 func CreateJoinItemsWorker(joinItemsType string,
 	rabbitConf middleware.RabbitConfig,
 	joinerId string,
@@ -82,6 +96,12 @@ func CreateJoinItemsWorker(joinItemsType string,
 		}
 	case JOIN_STORE_TYPE:
 		config := JoinStoreConfig(joinerId, joinerCount)
+		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+		if err != nil {
+			return nil, err
+		}
+	case JOIN_USERS_TYPE:
+		config := JoinUsersConfig(joinerId, joinerCount)
 		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
