@@ -39,13 +39,13 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, topKId string) (*m
 		return nil, fmt.Errorf("failed to declare exchange in prepareEofQueue: %v", err)
 	}
 
-	queueName := fmt.Sprintf("eof.%s", topKId)
+	queueName := fmt.Sprintf("eof.topk.%s", topKId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {
 		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
 	}
 
-	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, fmt.Sprintf("eof.%s", topKId))
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, "eof.topk.*")
 	if err != nil {
 		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
 	}
