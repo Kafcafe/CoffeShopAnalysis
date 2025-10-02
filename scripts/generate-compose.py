@@ -92,8 +92,7 @@ def generate_compose(file_destination: str,
         compose += constants.JOIN_TEMPLATE.format(id=f"-{join_type}{i+1}", join_type=join_type, join_count=join_items_nums)
 
     for i in range(topk_nums):
-        join_type = JOIN_ITEMS_TYPE
-        compose += constants.TOPK_TEMPLATE.format(id=f"-topk{i+1}", join_type=join_type, join_count=topk_nums)
+        compose += constants.TOPK_TEMPLATE.format(id=f"{i+1}", top_count=topk_nums)
 
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
