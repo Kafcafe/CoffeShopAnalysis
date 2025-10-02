@@ -7,6 +7,7 @@ import (
 
 const (
 	JOIN_ITEMS_TYPE = "items"
+	JOIN_STORE_TYPE = "store"
 )
 
 type JoinItemsWorker interface {
@@ -43,6 +44,26 @@ func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
+func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:           joinId,
+		count:        joinCount,
+		ofType:       "store",
+		prevStageSub: "transactions.output.topk", // TODO: change when defined
+		sideTableSub: "transactions.store",
+		nextStagePub: "transactions.store.joined",
+		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+			flattenedStores := make([]string, 0)
+			for store, users := range payload {
+				for _, user := range users {
+					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", store, user))
+				}
+			}
+			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 0)
+		},
+	}
+}
+
 func CreateJoinItemsWorker(joinItemsType string,
 	rabbitConf middleware.RabbitConfig,
 	joinerId string,
@@ -55,6 +76,12 @@ func CreateJoinItemsWorker(joinItemsType string,
 	switch joinItemsType {
 	case JOIN_ITEMS_TYPE:
 		config := JoinItemsConfig(joinerId, joinerCount)
+		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+		if err != nil {
+			return nil, err
+		}
+	case JOIN_STORE_TYPE:
+		config := JoinStoreConfig(joinerId, joinerCount)
 		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
