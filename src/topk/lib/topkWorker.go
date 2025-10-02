@@ -18,8 +18,10 @@ type TopKWorker struct {
 }
 
 type TopKMiddlewareHandler struct {
-	eofPub middleware.MessageMiddlewareExchange
-	eofSub middleware.MessageMiddlewareQueue
+	eofPub      middleware.MessageMiddlewareExchange
+	eofSub      middleware.MessageMiddlewareQueue
+	dataSub     middleware.MessageMiddlewareQueue
+	nextStepPub middleware.MessageMiddlewareExchange
 }
 
 func NewTopKWorker(topK int, id string, rbConfig middleware.RabbitConfig) (*TopKWorker, error) {
@@ -46,7 +48,7 @@ func NewTopKWorker(topK int, id string, rbConfig middleware.RabbitConfig) (*TopK
 }
 
 func (t *TopKWorker) createTopKExchangeHandler() error {
-	eofPubRouteKey := fmt.Sprintf("eof.%s", t.id)
+	eofPubRouteKey := fmt.Sprintf("eof.topk.%s", t.id)
 	eofPub, err := createExchangeHandler(t.rbConn, eofPubRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 
 	if err != nil {
@@ -58,9 +60,23 @@ func (t *TopKWorker) createTopKExchangeHandler() error {
 		return fmt.Errorf("error preparing EOF queue for eof.topk: %v", err)
 	}
 
+	dataSub, err := prepareDataQueue(t.rbConn, t.id)
+
+	if err != nil {
+		return fmt.Errorf("error preparing data queue for topk: %v", err)
+	}
+
+	nextStepPub, err := createExchangeHandler(t.rbConn, "", middleware.EXCHANGE_TYPE_DIRECT)
+
+	if err != nil {
+		return fmt.Errorf("failed to create next stage publishing exchange: %w", err)
+	}
+
 	t.exchHandler = &TopKMiddlewareHandler{
-		eofPub: *eofPub,
-		eofSub: *eofSub,
+		eofPub:      *eofPub,
+		eofSub:      *eofSub,
+		dataSub:     *dataSub,
+		nextStepPub: *nextStepPub,
 	}
 
 	return nil

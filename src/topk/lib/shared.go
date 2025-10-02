@@ -44,3 +44,28 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, topKId string) (*m
 
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
 }
+
+func prepareDataQueue(rabbitConn *middleware.RabbitConnection, topKId string) (*middleware.MessageMiddlewareQueue, error) {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_DIRECT_TYPE, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange in prepareDataQueue: %v", err)
+	}
+
+	queueName := fmt.Sprintf("data.%s", topKId)
+	_, err = middlewareHandler.DeclareQueue(queueName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
+	}
+
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, fmt.Sprintf("data.%s", topKId))
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
+}
