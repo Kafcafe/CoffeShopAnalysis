@@ -201,6 +201,10 @@ func (c *Client) ProcessResults() error {
 }
 
 func (c *Client) LogFinishQuery(query int) {
+	if query <= 0 || query >= 5 {
+		return
+	}
+
 	log.Infof("Finished receiving results for query %d", query)
 	log.Info("Results:", c.results[query])
 
@@ -212,6 +216,7 @@ func (c *Client) LogFinishQuery(query int) {
 // creating parent directories if needed.
 func WriteLines(lines []string, filePath string) error {
 	// Ensure parent directory exists
+
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
 		return err
 	}
