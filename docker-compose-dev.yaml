@@ -231,3 +231,24 @@ services:
           dockerfile: join/Dockerfile
         volumes:
           - ./src/join/config.yaml:/config.yaml 
+
+    join-users:
+        container_name: "join-users"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: users
+          JOIN_ID: -users
+          JOIN_COUNT: 1
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
