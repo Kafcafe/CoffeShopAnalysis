@@ -14,31 +14,31 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-type SemesterExchangeHandlers struct {
+type StoreExchangeHandlers struct {
 	transactionsYearHourFilteredSubscription middleware.MessageMiddlewareExchange
-	resultsQ3Publishing                      middleware.MessageMiddlewareExchange
+	transactionsGroupedByStorePublishing     middleware.MessageMiddlewareExchange
 	eofPublishing                            middleware.MessageMiddlewareExchange
 	eofSubscription                          middleware.MessageMiddlewareQueue
 }
 
-type GroupBySemesterWorker struct {
+type GroupByStoreWorker struct {
 	log                       *logging.Logger
 	rabbitConn                *middleware.RabbitConnection
 	sigChan                   chan os.Signal
 	isRunning                 bool
-	exchangeHandlers          SemesterExchangeHandlers
+	exchangeHandlers          StoreExchangeHandlers
 	errChan                   chan middleware.MessageMiddlewareError
 	id                        string
 	groupByCount              int
 	currentMessageProcessing  middleware.Message
 	mutex                     sync.Mutex
 	eofChan                   chan int
-	eofIntercommunicationChan chan structures.SemesterGroup
-	groupedPerClient          structures.SemesterGroupPerClient
+	eofIntercommunicationChan chan structures.StoreGroup
+	groupedPerClient          structures.StoreGroupPerClient
 }
 
-func NewGroupBySemesterWorker(rabbitConf middleware.RabbitConfig, groupById string, groupByCount int) (*GroupBySemesterWorker, error) {
-	log := logger.GetLoggerWithPrefix("[GROUP-SM]")
+func NewGroupByStoreWorker(rabbitConf middleware.RabbitConfig, groupById string, groupByCount int) (*GroupByStoreWorker, error) {
+	log := logger.GetLoggerWithPrefix("[GROUP-ST]")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
 
@@ -52,7 +52,7 @@ func NewGroupBySemesterWorker(rabbitConf middleware.RabbitConfig, groupById stri
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-	return &GroupBySemesterWorker{
+	return &GroupByStoreWorker{
 		log:                       log,
 		rabbitConn:                rabbitConn,
 		sigChan:                   sigChan,
@@ -62,19 +62,19 @@ func NewGroupBySemesterWorker(rabbitConf middleware.RabbitConfig, groupById stri
 		groupByCount:              groupByCount,
 		mutex:                     sync.Mutex{},
 		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
-		eofIntercommunicationChan: make(chan structures.SemesterGroup, SINGLE_ITEM_BUFFER_LEN),
-		groupedPerClient:          structures.NewSemesterGroupPerClient(),
+		eofIntercommunicationChan: make(chan structures.StoreGroup, SINGLE_ITEM_BUFFER_LEN),
+		groupedPerClient:          structures.NewStoreGroupPerClient(),
 	}, nil
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
-func (g *GroupBySemesterWorker) handleSignal() {
+func (g *GroupByStoreWorker) handleSignal() {
 	<-g.sigChan
 	g.log.Info("Handling signal")
 	g.Shutdown()
 }
 
-func (g *GroupBySemesterWorker) processInboundEof(message amqp.Delivery) error {
+func (g *GroupByStoreWorker) processInboundEof(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
@@ -85,8 +85,7 @@ func (g *GroupBySemesterWorker) processInboundEof(message amqp.Delivery) error {
 
 	didSomebodyElseAcked := msg.Origin == g.id && msg.IsAck && msg.ImmediateSource != g.id
 	if didSomebodyElseAcked {
-		partialGrouping := structures.NewSemesterGroupFromMapString(msg.Payload)
-		g.log.Infof("%v", partialGrouping)
+		partialGrouping := structures.NewStoreGroupFromMapString(msg.Payload)
 		g.eofIntercommunicationChan <- partialGrouping
 		return nil
 	}
@@ -127,7 +126,7 @@ func (g *GroupBySemesterWorker) processInboundEof(message amqp.Delivery) error {
 	return nil
 }
 
-func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
 	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false, nil)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
@@ -147,37 +146,39 @@ func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.M
 	g.log.Infof("Consolidating partial results for %s", originalMsg.DataType)
 
 	g.mutex.Lock()
-	clientSemesterGroup := g.groupedPerClient.Get(originalMsg.ClientId)
+	clientStoreGroup := g.groupedPerClient.Get(originalMsg.ClientId)
+	g.log.Infof("%s", g.groupedPerClient)
+
 	g.groupedPerClient.Delete(originalMsg.ClientId)
 	g.mutex.Unlock()
 
 	for i := 0; i < totalEofs; i++ {
 		g.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
 		partialGrouping := <-g.eofIntercommunicationChan
-		clientSemesterGroup.Merge(partialGrouping)
+		clientStoreGroup.Merge(partialGrouping)
 		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	allGroupedByClient := clientSemesterGroup.ToMapString()
+	allGroupedByClient := clientStoreGroup.ToMapString()
 
 	for key, records := range allGroupedByClient {
-		singleSemesterRecords := map[string][]string{key: records}
-		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleSemesterRecords, false)
+		singleStoreRecords := map[string][]string{key: records}
+		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleStoreRecords, false)
 		responseBytes, err := response.ToBytes()
 		if err != nil {
 			g.log.Errorf("%v", err)
 		}
 
-		g.log.Infof("Sent consolidated results for semester: %s", key)
+		g.log.Infof("Sent consolidated results for store: %s", key)
 
-		middleError := g.exchangeHandlers.resultsQ3Publishing.Send(responseBytes)
+		middleError := g.exchangeHandlers.transactionsGroupedByStorePublishing.Send(responseBytes)
 		if middleError != middleware.MessageMiddlewareSuccess {
 			g.log.Errorf("problem while sending message to resultsQ3Publishing")
 		}
 	}
 	g.log.Infof("Final results grouped and consolidated")
 
-	middleError := g.exchangeHandlers.resultsQ3Publishing.Send(originalMsgBytes)
+	middleError := g.exchangeHandlers.transactionsGroupedByStorePublishing.Send(originalMsgBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		g.log.Errorf("problem while propagating EOF")
 	}
@@ -185,7 +186,7 @@ func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.M
 	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
 }
 
-func (g *GroupBySemesterWorker) groupBySemester(message amqp.Delivery) error {
+func (g *GroupByStoreWorker) groupByStore(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
@@ -213,37 +214,39 @@ func (g *GroupBySemesterWorker) groupBySemester(message amqp.Delivery) error {
 
 	g.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
-	g.log.Info("Grouped message and sent groupBySemester batch")
+	g.log.Info("Grouped message and sent groupByStore batch")
 	return nil
 }
 
-func (f *GroupBySemesterWorker) createExchangeHandlers() error {
-	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.year-hour-filtered.q3"
-	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_DIRECT)
+func (f *GroupByStoreWorker) createExchangeHandlers() error {
+	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.transactions.store"
+	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for transactions.year-hour-filtered.q3: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.transactions: %v", err)
 	}
 
-	resultsQ3Publishing := "results.q3"
-	resultsQ3PublishingHandler, err := createExchangeHandler(f.rabbitConn, resultsQ3Publishing, middleware.EXCHANGE_TYPE_DIRECT)
+	prepareInputQueues(f.rabbitConn, "store")
+
+	transactionsGroupedByStorePublishingRouteKey := "transactions.transactions.group.store"
+	transactionsGroupedByStorePublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionsGroupedByStorePublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for results.q3: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.transactions.group.store: %v", err)
 	}
 
-	eofPublishingRouteKey := fmt.Sprintf("eof.group.semester.%s", f.id)
+	eofPublishingRouteKey := fmt.Sprintf("eof.group.store.%s", f.id)
 	eofPublishingHandler, err := createExchangeHandler(f.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for eof.group.semester: %v", err)
+		return fmt.Errorf("Error creating exchange handler for eof.group.store: %v", err)
 	}
 
-	eofSubscription, err := prepareEofQueue(f.rabbitConn, "semester", f.id)
+	eofSubscription, err := prepareEofQueue(f.rabbitConn, "store", f.id)
 	if err != nil {
 		return fmt.Errorf("Error preparing EOF queue for transactions: %v", err)
 	}
 
-	f.exchangeHandlers = SemesterExchangeHandlers{
+	f.exchangeHandlers = StoreExchangeHandlers{
 		transactionsYearHourFilteredSubscription: *transactionsYearHourFilteredSubscriptionHandler,
-		resultsQ3Publishing:                      *resultsQ3PublishingHandler,
+		transactionsGroupedByStorePublishing:     *transactionsGroupedByStorePublishingHandler,
 		eofPublishing:                            *eofPublishingHandler,
 		eofSubscription:                          *eofSubscription,
 	}
@@ -251,7 +254,7 @@ func (f *GroupBySemesterWorker) createExchangeHandlers() error {
 	return nil
 }
 
-func (g *GroupBySemesterWorker) Run() error {
+func (g *GroupByStoreWorker) Run() error {
 	defer g.Shutdown()
 	go g.handleSignal()
 
@@ -260,12 +263,12 @@ func (g *GroupBySemesterWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	g.exchangeHandlers.transactionsYearHourFilteredSubscription.StartConsuming(g.groupBySemester, g.errChan)
+	g.exchangeHandlers.transactionsYearHourFilteredSubscription.StartConsuming(g.groupByStore, g.errChan)
 	g.exchangeHandlers.eofSubscription.StartConsuming(g.processInboundEof, g.errChan)
 
 	for err := range g.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
-			g.log.Errorf("Error found while grouping by Semester message of type: %v", err)
+			g.log.Errorf("Error found while grouping by store message of type: %v", err)
 		}
 
 		if !g.isRunning {
@@ -279,7 +282,7 @@ func (g *GroupBySemesterWorker) Run() error {
 }
 
 // Shutdown gracefully stops the acceptor, closing the listener and current client.
-func (g *GroupBySemesterWorker) Shutdown() {
+func (g *GroupByStoreWorker) Shutdown() {
 	g.isRunning = false
 	g.errChan <- middleware.MessageMiddlewareSuccess
 
