@@ -51,6 +51,12 @@ func (g *StoreGroup) Add(record Record) error {
 	return nil
 }
 
+/*
+	{
+		"storeId1": ["userId1,3", "userId2,6"],
+		"storeId2": ["userId1,5", "userId4,5"],
+	}
+*/
 func (g StoreGroup) ToMapString() map[string][]string {
 	out := make(map[string][]string, len(g))
 

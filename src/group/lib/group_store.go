@@ -86,7 +86,6 @@ func (g *GroupByStoreWorker) processInboundEof(message amqp.Delivery) error {
 	didSomebodyElseAcked := msg.Origin == g.id && msg.IsAck && msg.ImmediateSource != g.id
 	if didSomebodyElseAcked {
 		partialGrouping := structures.NewStoreGroupFromMapString(msg.Payload)
-		g.log.Infof("%v", partialGrouping)
 		g.eofIntercommunicationChan <- partialGrouping
 		return nil
 	}
@@ -147,7 +146,7 @@ func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Mess
 	g.log.Infof("Consolidating partial results for %s", originalMsg.DataType)
 
 	g.mutex.Lock()
-	clientSemesterGroup := g.groupedPerClient.Get(originalMsg.ClientId)
+	clientStoreGroup := g.groupedPerClient.Get(originalMsg.ClientId)
 	g.log.Infof("%s", g.groupedPerClient)
 
 	g.groupedPerClient.Delete(originalMsg.ClientId)
@@ -156,21 +155,21 @@ func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Mess
 	for i := 0; i < totalEofs; i++ {
 		g.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
 		partialGrouping := <-g.eofIntercommunicationChan
-		clientSemesterGroup.Merge(partialGrouping)
+		clientStoreGroup.Merge(partialGrouping)
 		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	allGroupedByClient := clientSemesterGroup.ToMapString()
+	allGroupedByClient := clientStoreGroup.ToMapString()
 
 	for key, records := range allGroupedByClient {
-		singleSemesterRecords := map[string][]string{key: records}
-		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleSemesterRecords, false)
+		singleStoreRecords := map[string][]string{key: records}
+		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleStoreRecords, false)
 		responseBytes, err := response.ToBytes()
 		if err != nil {
 			g.log.Errorf("%v", err)
 		}
 
-		g.log.Infof("Sent consolidated results for semester: %s", key)
+		g.log.Infof("Sent consolidated results for store: %s", key)
 
 		middleError := g.exchangeHandlers.transactionsGroupedByStorePublishing.Send(responseBytes)
 		if middleError != middleware.MessageMiddlewareSuccess {
@@ -220,16 +219,18 @@ func (g *GroupByStoreWorker) groupByStore(message amqp.Delivery) error {
 }
 
 func (f *GroupByStoreWorker) createExchangeHandlers() error {
-	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.transactions"
+	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.transactions.store"
 	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions: %v", err)
 	}
 
-	transactionsGroupedByStorePublishingRouteKey := "transactions.items.group.store"
+	prepareInputQueues(f.rabbitConn, "store")
+
+	transactionsGroupedByStorePublishingRouteKey := "transactions.transactions.group.store"
 	transactionsGroupedByStorePublishingHandler, err := createExchangeHandler(f.rabbitConn, transactionsGroupedByStorePublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for transactions.items.group.store: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.transactions.group.store: %v", err)
 	}
 
 	eofPublishingRouteKey := fmt.Sprintf("eof.group.store.%s", f.id)
@@ -267,7 +268,7 @@ func (g *GroupByStoreWorker) Run() error {
 
 	for err := range g.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
-			g.log.Errorf("Error found while grouping by Semester message of type: %v", err)
+			g.log.Errorf("Error found while grouping by store message of type: %v", err)
 		}
 
 		if !g.isRunning {

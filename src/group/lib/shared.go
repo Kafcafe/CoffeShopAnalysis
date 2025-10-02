@@ -63,3 +63,23 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
 }
+
+func prepareInputQueues(rabbitConn *middleware.RabbitConnection, groupType string) error {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+	// Declare and bind for Query 1
+	routeKey := fmt.Sprintf("transactions.transactions.%s", groupType)
+	_, err = middlewareHandler.DeclareQueue(routeKey)
+	if err != nil {
+		return fmt.Errorf("failed to declare queue %s: %v", routeKey, err)
+	}
+
+	err = middlewareHandler.BindQueue(routeKey, middleware.EXCHANGE_NAME_TOPIC_TYPE, "transactions.transactions.all")
+	if err != nil {
+		return fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	return nil
+}
