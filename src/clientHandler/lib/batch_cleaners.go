@@ -196,3 +196,64 @@ func cleanMenuItem(menuItem string) (string, error) {
 
 	return strings.Join(selected, ","), nil
 }
+
+// cleanStore cleans a single store line.
+//
+// Input format (CSV):
+//
+// store_id,store_name,street,postal_code,city,state,latitude,longitude
+//
+// Example:
+// 5,Coffee Shop Downtown,123 Main St,12345,Metropolis,State,40.7128,-74.0060
+//
+// Output format (CSV):
+// store_id,store_name
+//
+// Example:
+// 5,Coffee Shop Downtown
+func cleanStore(store string) (string, error) {
+	parts := strings.Split(store, ",")
+	if len(parts) < 3 {
+		return "", fmt.Errorf("invalid line: %s", store)
+	}
+
+	selected := []string{
+		parts[0], // store_id
+		parts[1], // store_name
+	}
+
+	return strings.Join(selected, ","), nil
+}
+
+// cleanStores cleans multiple store lines.
+//
+// Input format:
+//
+// store_id,store_name,street,postal_code,city,state,latitude,longitude
+//
+//	[]string{
+//	    "5,Coffee Shop Downtown,123 Main St,12345,Metropolis,State,40.7128,-74.0060",
+//	    "6,Coffee Shop Uptown,456 Elm St,67890,Gotham,State,34.0522,-118.2437",
+//	}
+//
+// Output format:
+//
+// store_id,store_name
+//
+//	[]string{
+//	    "5,Coffee Shop Downtown",
+//	    "6,Coffee Shop Uptown",
+//	}
+func cleanStores(stores []string) ([]string, error) {
+	var cleaned []string
+
+	for _, line := range stores {
+		result, err := cleanStore(line)
+		if err != nil {
+			return nil, err
+		}
+		cleaned = append(cleaned, result)
+	}
+
+	return cleaned, nil
+}
