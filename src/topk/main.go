@@ -2,7 +2,9 @@ package main
 
 import (
 	logger "common/logger"
+	middleware "common/middleware"
 	"fmt"
+	"os"
 	"strings"
 	topk "topk/lib"
 
@@ -45,10 +47,9 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("ClientHandler up with configuration: ip: %s | port: %d | loglevel: %s",
-		v.GetString("server.ip"),
-		v.GetInt("server.port"),
+	logger.Infof("ClientHandler up with configuration: loglevel: %s | Ktop: %d",
 		v.GetString("log.level"),
+		v.GetInt("k"),
 	)
 
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
@@ -60,7 +61,6 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 }
 
 func main() {
-	// Application entry point
 	config, err := InitConfig()
 	if err != nil {
 		fmt.Printf("Error initializing configuration: %v\n", err)
@@ -77,6 +77,33 @@ func main() {
 
 	PrintConfig(config, logger)
 
-	topKWorker := topk.NewTopKWorker()
-	topKWorker.Run()
+	rabbitConf := middleware.NewRabbitConfig(
+		config.GetString("rabbitmq.user"),
+		config.GetString("rabbitmq.pass"),
+		config.GetString("rabbitmq.host"),
+		config.GetInt("rabbitmq.port"),
+	)
+
+	topKNodeId := config.GetString("topk.id")
+	Kconfig := config.GetInt("k")
+
+	if Kconfig <= 0 {
+		logger.Errorf("K must be a positive integer. Current value: %d", Kconfig)
+		return
+	}
+
+	topKWorker, err := topk.NewTopKWorker(Kconfig, topKNodeId, rabbitConf)
+
+	if err != nil {
+		logger.Errorf("Error initializing TopKWorker: %v", err)
+		os.Exit(FAIL_EXIT_CODE)
+	}
+
+	err = topKWorker.Run()
+
+	if err != nil {
+		logger.Errorf("Error running TopKWorker: %v", err)
+		os.Exit(FAIL_EXIT_CODE)
+	}
+
 }
