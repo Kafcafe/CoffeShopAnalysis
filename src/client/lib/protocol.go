@@ -18,8 +18,9 @@ const (
 )
 
 type Protocol struct {
-	serverAddress string
-	conn          net.Conn
+	serverAddress      string
+	conn               net.Conn
+	finishedAllQueries map[int]bool
 }
 
 func NewProtocol(serverAddress string) (*Protocol, error) {
@@ -33,6 +34,12 @@ func NewProtocol(serverAddress string) (*Protocol, error) {
 	return &Protocol{
 		serverAddress: serverAddress,
 		conn:          conn,
+		finishedAllQueries: map[int]bool{
+			1: false,
+			2: false,
+			3: false,
+			4: false,
+		},
 	}, nil
 }
 
@@ -101,12 +108,12 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	return nil
 }
 
-func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, err error) {
+func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, err error, finishedAll bool) {
 	log.Debug("[CLIENT-P] Receiving results...")
 	QNumber := make([]byte, SIZEOF_UINT32)
 	if err := p.receiveAll(QNumber); err != nil {
 		log.Error("Error receiving QNumber: %v", err)
-		return 0, nil, true, err
+		return 0, nil, true, err, false
 	}
 
 	qNumber := p.ntohsUint32(QNumber)
@@ -116,19 +123,24 @@ func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, e
 
 	if err := p.receiveAll(finishQuery); err != nil {
 		log.Error("Error sending FinishedQuery code: %v", err)
-		return 0, nil, true, err
+		return 0, nil, true, err, false
 	}
 
 	if finishQuery[0] == FinishedQuery {
+		p.finishedAllQueries[int(qNumber)] = true
 		log.Debug("[CLIENT-P] | action: receive query end | query:", qNumber)
-		return qNumber, nil, true, nil
+
+		if p.finishedAllQueries[1] && p.finishedAllQueries[2] && p.finishedAllQueries[3] && p.finishedAllQueries[4] {
+			return qNumber, nil, true, nil, true
+		}
+		return qNumber, nil, true, nil, false
 	}
 
 	totalLines := make([]byte, 4)
 
 	if err := p.receiveAll(totalLines); err != nil {
 		log.Error("Error receiving totalLines: %v", err)
-		return 0, nil, true, err
+		return 0, nil, true, err, false
 	}
 
 	totalLinesBytes := int(p.ntohsUint32(totalLines))
@@ -140,7 +152,7 @@ func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, e
 		lineLen := make([]byte, SIZEOF_UINT32)
 		if err := p.receiveAll(lineLen); err != nil {
 			log.Error("Error receiving line length: %v", err)
-			return 0, nil, true, err
+			return 0, nil, true, err, false
 		}
 
 		lineLenBytes := int(p.ntohsUint32(lineLen))
@@ -149,7 +161,7 @@ func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, e
 		lineData := make([]byte, lineLenBytes)
 		if err := p.receiveAll(lineData); err != nil {
 			log.Error("Error receiving line data: %v", err)
-			return 0, nil, true, err
+			return 0, nil, true, err, false
 		}
 		lines[i] = string(lineData)
 		log.Debug("Received line data: ", string(lineData))
@@ -157,7 +169,7 @@ func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, e
 
 	log.Debug("Finished receiving all lines for query ", qNumber)
 
-	return qNumber, lines, false, nil
+	return qNumber, lines, false, nil, false
 }
 
 // func (p *Protocol) receivedConfirmation() error {

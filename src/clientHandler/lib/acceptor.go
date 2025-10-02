@@ -111,9 +111,9 @@ type ExchangeHandlers struct {
 
 	// Results
 	resultsQ1Subscription middleware.MessageMiddlewareExchange
-	// resultQuery2Subscription Exchange
-	// resultQuery3Subscription Exchange
-	// resultQuery4Subscription Exchange
+	resultsQ2Subscription middleware.MessageMiddlewareExchange
+	resultsQ3Subscription middleware.MessageMiddlewareExchange
+	resultsQ4Subscription middleware.MessageMiddlewareExchange
 }
 
 func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
@@ -123,8 +123,26 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
-	resultsSubscriptionRouteKey := "results.q1"
-	resultsSubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsQ1SubscriptionRouteKey := "results.q1"
+	resultsQ1SubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsQ1SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
+	}
+
+	resultsQ2SubscriptionRouteKey := "results.q2"
+	resultsQ2SubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsQ2SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
+	}
+
+	resultsQ3SubscriptionRouteKey := "results.q3"
+	resultsQ3SubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsQ3SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
+	}
+
+	resultsQ4SubscriptionRouteKey := "results.q4"
+	resultsQ4SubscriptionHandler, err := a.createExchangeHandler(a.rabbitConn, resultsQ4SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
@@ -149,10 +167,13 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 
 	return &ExchangeHandlers{
 		transactionsPublishing: *transactionsPublishingHandler,
-		resultsQ1Subscription:  *resultsSubscriptionHandler,
 		menuItemsPublishing:    *menuItemsPublishingHandler,
 		storePublishing:        *storePublishingHandler,
 		usersPublishing:        *usersPublishingHandler,
+		resultsQ1Subscription:  *resultsQ1SubscriptionHandler,
+		resultsQ2Subscription:  *resultsQ2SubscriptionHandler,
+		resultsQ3Subscription:  *resultsQ3SubscriptionHandler,
+		resultsQ4Subscription:  *resultsQ4SubscriptionHandler,
 	}, nil
 }
 

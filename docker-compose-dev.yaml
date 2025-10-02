@@ -51,7 +51,7 @@ services:
         container_name: "client1"
         environment:
           CLIENT_ID: "1"
-          FILETYPES: "transactions,transaction_items,stores,menu,users"
+          FILETYPES: "transactions,transaction_items,store,menu,users"
         depends_on:
           - client-handler
         networks:
@@ -61,6 +61,7 @@ services:
           dockerfile: Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
+          - ./src/client/results:/results
           - ./.data:/data
 
     filter-year1:
@@ -203,6 +204,48 @@ services:
           RABBITMQ_PASS: user
           JOIN_TYPE: items
           JOIN_ID: -items1
+          JOIN_COUNT: 1
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
+
+    join-store1:
+        container_name: "join-store1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: store
+          JOIN_ID: -store1
+          JOIN_COUNT: 1
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
+
+    join-users:
+        container_name: "join-users"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: users
+          JOIN_ID: -users
           JOIN_COUNT: 1
         build:
           context: ./src/
