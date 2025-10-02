@@ -116,6 +116,25 @@ func prepareMenuItemsQueue(rabbitConn *middleware.RabbitConnection, joinerType s
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
 }
 
+func prepareSideTableQueue(rabbitConn *middleware.RabbitConnection, queueName, routeKey string) (*middleware.MessageMiddlewareQueue, error) {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+
+	_, err = middlewareHandler.DeclareQueue(queueName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
+	}
+
+	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, routeKey)
+	if err != nil {
+		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
+}
+
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
