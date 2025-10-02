@@ -252,3 +252,22 @@ services:
           dockerfile: join/Dockerfile
         volumes:
           - ./src/join/config.yaml:/config.yaml 
+
+    topk1:
+        container_name: "topk1"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          TOTAL_TOPS = 1
+        build:
+          context: ./src/
+          dockerfile: topk/Dockerfile
+        volumes:
+          - ./src/topk/config.yaml:/config.yaml
