@@ -182,7 +182,7 @@ TOP_K_TEMPLATE = """
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
-          TOTAL_TOPS = {top_count}
+          TOTAL_TOPS: {top_count}
         build:
           context: ./src/
           dockerfile: topk/Dockerfile

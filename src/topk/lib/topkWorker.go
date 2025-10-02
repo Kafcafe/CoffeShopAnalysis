@@ -26,8 +26,9 @@ type TopKWorker struct {
 	currentMessageProcessing  middleware.MessageGrouped
 	mutex                     sync.Mutex
 	eofChan                   chan int
-	eofIntercommunicationChan chan structures.StoreGroup
+	eofIntercommunicationChan chan int
 	topKMap                   map[string]map[string]*Toper[TopKRegister]
+	k                         int
 }
 
 type TopkExchangeHandlers struct {
@@ -42,6 +43,7 @@ const (
 	SINGLE_ITEM_BUFFER_LEN    = 1
 
 	THERE_IS_PREVIOUS_MESSAGE = 0
+	ACTIVITY                  = 0
 )
 
 func NewTopKWorker(Kconfig int, topKCount int, id string, rabbitConf middleware.RabbitConfig) (*TopKWorker, error) {
@@ -69,8 +71,9 @@ func NewTopKWorker(Kconfig int, topKCount int, id string, rabbitConf middleware.
 		topKCount:                 topKCount,
 		mutex:                     sync.Mutex{},
 		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
-		eofIntercommunicationChan: make(chan structures.StoreGroup, SINGLE_ITEM_BUFFER_LEN),
+		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
 		topKMap:                   make(map[string]map[string]*Toper[TopKRegister]),
+		k:                         Kconfig,
 	}, nil
 }
 
@@ -97,7 +100,7 @@ func (t *TopKWorker) createTopKExchangeHandler() error {
 	// 	return fmt.Errorf("failed to create next stage publishing exchange: %w", err)
 	// }
 
-	eofPublishingRouteKey := fmt.Sprintf("eof.topk.%s", t.id)
+	eofPublishingRouteKey := fmt.Sprintf("eot.topk.%s", t.id)
 	eofPublishingHandler, err := createExchangeHandler(t.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 
 	if err != nil {
@@ -106,7 +109,7 @@ func (t *TopKWorker) createTopKExchangeHandler() error {
 
 	eofSubscriptionHandler, err := prepareEofQueue(t.rabbitConn, t.id)
 	if err != nil {
-		return fmt.Errorf("error preparing EOF queue for eof.topk: %v", err)
+		return fmt.Errorf("error preparing EOF queue for eot.topk: %v", err)
 	}
 
 	t.exchangeHandlers = TopkExchangeHandlers{
@@ -169,8 +172,23 @@ func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
 	t.currentMessageProcessing.Payload = make(map[string][]string)
 	t.mergeMessages(*msg)
 	t.mutex.Unlock()
+
+	allResultsForClient := t.resultForClient(msg.ClientId)
+
+	t.mutex.Lock()
+	t.topKMap[msg.ClientId] = nil
+	t.mutex.Unlock()
+
+	t.log.Infof("Final results for client %s: %v", msg.ClientId, allResultsForClient)
 	answerMessage(ACK, message)
 
+	msgToSend := middleware.NewMessageGrouped(msg.DataType, msg.ClientId, allResultsForClient, false)
+	msgToSendBytes, err := msgToSend.ToBytes()
+	if err != nil {
+		return err
+	}
+
+	t.exchangeHandlers.transactionsTopKPublishing.Send(msgToSendBytes)
 	t.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 
 	t.log.Info("TopK'd message")
@@ -208,33 +226,25 @@ func (t *TopKWorker) initiateEofCoordination(originalMsg middleware.MessageGroup
 
 	for i := 0; i < totalOfEofs; i++ {
 		t.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
-		<-t.eofChan
+		<-t.eofIntercommunicationChan
 		t.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	allResultsForClient := t.resultForClient(clientId)
-	t.log.Infof("Final results for client %s: %v", clientId, allResultsForClient)
-	// t.exchHandler.eofPub.Send([]byte(allResultsForClient))
-
+	t.exchangeHandlers.transactionsTopKPublishing.Send(originalMsgBytes)
 }
 
 func (t *TopKWorker) processInboundEof(message amqp.Delivery) error {
-	defer answerMessage(ACK, message)
+	defer answerMessage(NACK_DISCARD, message)
 
-	t.log.Infof("Received inbound EOF message")
-
-	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
+	msg, err := middleware.NewEofMessageFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
-
-	t.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, t.id)
+	t.log.Warningf("processInboundEof %s filter%s", msg.DataType, t.id)
 
 	didSomebodyElseAcked := msg.Origin == t.id && msg.IsAck && msg.ImmediateSource != t.id
 	if didSomebodyElseAcked {
-		partialTopK := t.resultForClient(msg.ClientId)
-		t.log.Infof("Merging partial TopK from %s for client %s: %v", msg.ImmediateSource, msg.ClientId, partialTopK)
-		// t.exchHandler.eofPub <- partialTopK
+		t.eofIntercommunicationChan <- ACTIVITY
 		return nil
 	}
 
@@ -245,20 +255,46 @@ func (t *TopKWorker) processInboundEof(message amqp.Delivery) error {
 		return nil
 	}
 
+	t.log.Warning("Lock")
+	t.mutex.Lock()
+	currentMessageProcessing := t.currentMessageProcessing
+	t.mutex.Unlock()
+	t.log.Warning("Unlock")
+
+	if currentMessageProcessing.IsFromSameStream(msg.DataType, msg.ClientId) {
+		t.log.Warningf("BEFORE INBOUND %s", msg.DataType)
+		<-t.eofChan
+		t.log.Warningf("AFTER INBOUND %s", msg.DataType)
+	}
+
+	msg.ImmediateSource = t.id
+	msg.IsAck = true
+	msgBytes, err := msg.ToBytes()
+	if err != nil {
+		return err
+	}
+
+	answerMessage(ACK, message)
+	t.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }
 
 func (t *TopKWorker) mergeMessages(msg middleware.MessageGrouped) {
 
 	cliendId := msg.ClientId
-	topKClienteMap := t.topKMap[cliendId]
+	topKClienteMap, exists := t.topKMap[cliendId]
+	if !exists {
+		return
+	}
 
 	data := structures.NewStoreGroupFromMapString(msg.Payload)
+
+	// Should happen once because message has one store
 	for storeId, users := range data {
 
 		topKClienteStore, exists := topKClienteMap[string(storeId)]
 		if !exists {
-			topKClienteStore = NewToper(t.topK, CmpTransactions)
+			topKClienteStore = NewToper(t.k, CmpTransactions)
 			topKClienteMap[string(storeId)] = topKClienteStore
 		}
 
