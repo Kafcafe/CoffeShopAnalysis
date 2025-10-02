@@ -103,17 +103,6 @@ func (clh *ClientHandler) processResultsQ1(message amqp.Delivery) error {
 
 	clh.resultsChans.resultsQ1Chan <- *msg
 
-	// clh.mtx.Lock()
-	// err = clh.protocol.SendResults(1, stringPayload, msg.IsEof)
-	// clh.mtx.Unlock()
-
-	// clh.log.Debug("Sent results to client")
-
-	// if err != nil {
-	// 	clh.log.Errorf("Error sending results to client: %v", err)
-	// 	return err
-	// }
-
 	if msg.IsEof {
 		clh.log.Info("Received EOF message for result")
 	} else {

@@ -161,9 +161,9 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	allGroupedByClient := clientYearMonth.ToMapString()
+	allGroupedByClientTopProfit := clientYearMonth.GetTopProfit().ToMapString()
 
-	for key, records := range allGroupedByClient {
+	for key, records := range allGroupedByClientTopProfit {
 		singleYearMonthRecords := map[string][]string{key: records}
 		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false)
 		responseBytes, err := response.ToBytes()
@@ -171,13 +171,32 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 			g.log.Errorf("%v", err)
 		}
 
-		g.log.Infof("Sent consolidated results for year-month: %s", key)
+		g.log.Infof("Sent consolidated results for year-month top profit: %s", key)
 
 		middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(responseBytes)
 		if middleError != middleware.MessageMiddlewareSuccess {
 			g.log.Errorf("problem while sending message to transactionItemsGroupedByYearmonthPublishing")
 		}
 	}
+
+	allGroupedByClientBestSeller := clientYearMonth.GetBestSeller().ToMapString()
+
+	for key, records := range allGroupedByClientBestSeller {
+		singleYearMonthRecords := map[string][]string{key: records}
+		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false)
+		responseBytes, err := response.ToBytes()
+		if err != nil {
+			g.log.Errorf("%v", err)
+		}
+
+		g.log.Infof("Sent consolidated results for year-month top profit: %s", key)
+
+		middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(responseBytes)
+		if middleError != middleware.MessageMiddlewareSuccess {
+			g.log.Errorf("problem while sending message to transactionItemsGroupedByYearmonthPublishing")
+		}
+	}
+
 	g.log.Infof("Final results grouped and consolidated")
 
 	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(originalMsgBytes)
