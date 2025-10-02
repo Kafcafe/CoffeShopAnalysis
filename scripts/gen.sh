@@ -39,3 +39,4 @@ elif [ $exit_code -eq 1 ]; then
 else
     echo " ❌ Unexpected error occurred with exit code $exit_code"
     echo "Usage: ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_group_by_store> <num_join_items> <num_join_store>"
+fi
