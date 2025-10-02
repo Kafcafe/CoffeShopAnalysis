@@ -2,8 +2,18 @@ package clientHandler
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
+
+func toInt(s string) (int, error) {
+	// Convert string to int, returning an error if the conversion fails
+	i, err := strconv.Atoi(strings.TrimSpace(s))
+	if err != nil {
+		return 0, err
+	}
+	return i, nil
+}
 
 // cleanTransaction cleans a single transaction line.
 //
@@ -27,13 +37,23 @@ func cleanTransaction(transaction string) (string, error) {
 	if len(parts) < 9 {
 		return "", fmt.Errorf("invalid line: %s", transaction)
 	}
+	// userIdParsed := ""
+	userIdRaw := parts[4]
+	userIdParsed := strings.Split(userIdRaw, ".")
+
+	// if userIdRaw != "" {
+	// 	userId, err := toInt(userIdRaw)
+	// 	if err == nil {
+	// 		userIdParsed = strconv.Itoa(userId)
+	// 	}
+	// }
 
 	selected := []string{
-		parts[0], // transaction_id
-		parts[1], // store_id
-		parts[4], // user_id
-		parts[7], // final_amount
-		parts[8], // created_at
+		parts[0],        // transaction_id
+		parts[1],        // store_id
+		userIdParsed[0], // user_id
+		parts[7],        // final_amount
+		parts[8],        // created_at
 	}
 
 	return strings.Join(selected, ","), nil

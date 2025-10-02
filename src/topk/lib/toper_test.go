@@ -92,6 +92,9 @@ func ValueTransaction(line string) float64 {
 	return value
 }
 
+// / 1 si b es mas grande que a
+// / -1 si a es mas grande que b
+// / 0 si son iguales
 func CmpTransactions(a, b string) int {
 	va := ValueTransaction(a)
 	vb := ValueTransaction(b)
