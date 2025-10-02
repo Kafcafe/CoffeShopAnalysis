@@ -252,6 +252,7 @@ func (t *TopKWorker) initiateEofCoordination(originalMsg middleware.MessageGroup
 		t.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
+	t.exchangeHandlers.transactionsTopKPublishing.Send(originalMsgBytes)
 	t.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
 }
 

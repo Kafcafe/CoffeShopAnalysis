@@ -51,7 +51,7 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 		id:           joinId,
 		count:        joinCount,
 		ofType:       "store",
-		prevStageSub: "transactions.transactions.topk", // TODO: change when defined -> Maybe ready
+		prevStageSub: "transactions.transactions.topk",
 		sideTableSub: "transactions.store",
 		nextStagePub: "transactions.transactions.join.store",
 		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {

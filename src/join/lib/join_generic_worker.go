@@ -103,13 +103,13 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for results.q2: %v", err)
 	}
 
-	eofPubRouteKey := fmt.Sprintf("eof.join.items.%s", j.conf.id)
+	eofPubRouteKey := fmt.Sprintf("eof.join.%s.%s", j.conf.ofType, j.conf.id)
 	eofPub, err := createExchangeHandler(j.rabbitConn, eofPubRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for eof.join.items: %v", err)
 	}
 
-	eofSub, err := prepareEofQueue(j.rabbitConn, "items", j.conf.id)
+	eofSub, err := prepareEofQueue(j.rabbitConn, j.conf.ofType, j.conf.id)
 	if err != nil {
 		return fmt.Errorf("Error preparing EOF queue for eof.join.items: %v", err)
 	}
@@ -131,8 +131,6 @@ func (j *JoinGenericWorker) initiateEofCoordination(originalMsg middleware.Messa
 		j.log.Errorf("Failed to serialize message: %v", err)
 	}
 
-	j.middlewareHandlers.eofPub.Send(msgBytes)
-
 	totalEofs := j.conf.count - 1
 
 	if totalEofs == 0 {
@@ -140,6 +138,8 @@ func (j *JoinGenericWorker) initiateEofCoordination(originalMsg middleware.Messa
 	} else {
 		j.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
 	}
+
+	j.middlewareHandlers.eofPub.Send(msgBytes)
 
 	for i := 0; i < totalEofs; i++ {
 		j.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
@@ -171,7 +171,7 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return nil
 	}
 
-	j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF: %v", msg.DataType, j.conf.id, j.sideTable)
+	j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF", msg.DataType, j.conf.id)
 	table, err := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false).ToBytes()
 	if err != nil {
 		return err
@@ -209,7 +209,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 
 	joined := j.conf.messageCallback(NewJoiner(), j.sideTable, msg.Payload)
 
-	j.log.Infof("Joined %v", joined)
+	j.log.Infof("Joined %v items", len(joined))
 
 	isEof := false
 	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, isEof)
@@ -233,7 +233,7 @@ func (j *JoinGenericWorker) processInboundEof(message amqp.Delivery) error {
 	if err != nil {
 		return err
 	}
-	j.log.Warningf("processInboundEof %s join%s", msg.DataType, j.conf.id)
+	j.log.Warningf("processInboundEof %s join%s from %s", msg.DataType, j.conf.id, msg.Origin)
 
 	didSomebodyElseAcked := msg.Origin == j.conf.id && msg.IsAck && msg.ImmediateSource != j.conf.id
 	if didSomebodyElseAcked {
@@ -289,7 +289,7 @@ func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
 
 	j.sideTable = append(j.sideTable, msg.Payload...)
 
-	j.log.Infof("Stored %d side table: %v", len(j.sideTable), j.sideTable)
+	j.log.Infof("Side table size: %d", len(j.sideTable))
 	answerMessage(ACK, message)
 	return nil
 }
@@ -304,6 +304,7 @@ func (j *JoinGenericWorker) Run() error {
 
 	j.log.Info("Waiting to receive side table...")
 	j.middlewareHandlers.sideTableSub.StartConsuming(j.storeSideTable, j.errChan)
+	j.middlewareHandlers.eofSub.StartConsuming(j.processInboundEof, j.errChan)
 	<-j.sideTableReceived
 
 	if !j.isRunning {
@@ -315,7 +316,6 @@ func (j *JoinGenericWorker) Run() error {
 		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithPayload, j.errChan)
 	} else {
 		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithSideTable, j.errChan)
-		j.middlewareHandlers.eofSub.StartConsuming(j.processInboundEof, j.errChan)
 	}
 
 	j.log.Info("Started consuming messages. Ready to join!")
