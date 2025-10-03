@@ -50,7 +50,6 @@ func NewTopKWorker(Kconfig int, topKCount int, id string, rabbitConf middleware.
 	log := logger.GetLoggerWithPrefix("[TOPK]")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
-	log.Infof("There are other %d TOPKs", topKCount)
 
 	rabbitConn, err := middleware.NewRabbitConnection(&rabbitConf)
 	if err != nil {
@@ -91,7 +90,7 @@ func (t *TopKWorker) createTopKExchangeHandler() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions.topk: %v", err)
 	}
 
-	eofPublishingRouteKey := fmt.Sprintf("eot.topk.%s", t.id)
+	eofPublishingRouteKey := fmt.Sprintf("eof.topk.%s", t.id)
 	eofPublishingHandler, err := createExchangeHandler(t.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 
 	if err != nil {
@@ -100,7 +99,7 @@ func (t *TopKWorker) createTopKExchangeHandler() error {
 
 	eofSubscriptionHandler, err := prepareEofQueue(t.rabbitConn, t.id)
 	if err != nil {
-		return fmt.Errorf("error preparing EOF queue for eot.topk: %v", err)
+		return fmt.Errorf("error preparing EOF queue for eof.topk: %v", err)
 	}
 
 	t.exchangeHandlers = TopkExchangeHandlers{
@@ -141,7 +140,7 @@ func (t *TopKWorker) Run() error {
 }
 
 func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
-	defer answerMessage(ACK, message)
+	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
 	if err != nil {
@@ -164,14 +163,11 @@ func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
 	t.mutex.Unlock()
 
 	msgParsed := structures.NewStoreGroupFromMapString(msg.Payload)
-	allResultsForClient := t.getTopK(msgParsed)
+	allResultsForClient, storeId := t.getTopK(msgParsed)
 
 	t.mutex.Lock()
 	t.topKMap[msg.ClientId] = nil
 	t.mutex.Unlock()
-
-	t.log.Infof("Final results for client %s: %v", msg.ClientId, allResultsForClient)
-	answerMessage(ACK, message)
 
 	msgToSend := middleware.NewMessageGrouped(msg.DataType, msg.ClientId, allResultsForClient, false)
 	msgToSendBytes, err := msgToSend.ToBytes()
@@ -180,16 +176,19 @@ func (t *TopKWorker) processDataMessage(message amqp.Delivery) error {
 	}
 
 	t.exchangeHandlers.transactionsTopKPublishing.Send(msgToSendBytes)
-	t.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+	answerMessage(ACK, message)
 
-	t.log.Info("TopK'd message")
+	t.log.Infof("Final TopK results sent for store %s", storeId)
+	t.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 	return nil
 }
 
-func (t *TopKWorker) getTopK(msg structures.StoreGroup) map[string][]string {
+func (t *TopKWorker) getTopK(msg structures.StoreGroup) (map[string][]string, string) {
 	result := make(map[string][]string)
+	var returnStoreId string = ""
+
 	for storeId, users := range msg {
-		if users == nil || len(users) == 0 {
+		if len(users) == 0 {
 			continue
 		}
 		toper := NewToper(t.k, CmpTransactions)
@@ -210,39 +209,28 @@ func (t *TopKWorker) getTopK(msg structures.StoreGroup) map[string][]string {
 		for _, user := range topKUsers {
 			result[string(storeId)] = append(result[string(storeId)], user.String())
 		}
+		returnStoreId = string(storeId)
 	}
-	return result
+	return result, returnStoreId
 }
 
-func (t *TopKWorker) resultForClientSimple(storeId string) map[string][]string {
-	topKClientStore := NewToper(t.k, CmpTransactions)
-	mapResult := make(map[string][]string)
-	mapResult[storeId] = make([]string, 0)
-	topKUsers := topKClientStore.GetTopK()
-	for _, user := range topKUsers {
-		mapResult[storeId] = append(mapResult[storeId], user.String())
-	}
+// func (t *TopKWorker) resultForClient(clientId string) map[string][]string {
+// 	topK := t.topKMap[clientId]
+// 	mapResult := make(map[string][]string)
 
-	return mapResult
-}
+// 	for StoreId, toper := range topK {
+// 		mapResult[StoreId] = make([]string, 0)
+// 		topKUsers := toper.GetTopK()
+// 		for _, user := range topKUsers {
+// 			mapResult[StoreId] = append(mapResult[StoreId], user.String())
+// 		}
 
-func (t *TopKWorker) resultForClient(clientId string) map[string][]string {
-	topK := t.topKMap[clientId]
-	mapResult := make(map[string][]string)
+// 	}
 
-	for StoreId, toper := range topK {
-		mapResult[StoreId] = make([]string, 0)
-		topKUsers := toper.GetTopK()
-		for _, user := range topKUsers {
-			mapResult[StoreId] = append(mapResult[StoreId], user.String())
-		}
+// 	// delete(t.topKMap, clientId)
 
-	}
-
-	// delete(t.topKMap, clientId)
-
-	return mapResult
-}
+// 	return mapResult
+// }
 
 func (t *TopKWorker) initiateEofCoordination(originalMsg middleware.MessageGrouped, originalMsgBytes []byte) {
 	clientId := originalMsg.ClientId
@@ -255,6 +243,8 @@ func (t *TopKWorker) initiateEofCoordination(originalMsg middleware.MessageGroup
 	} else {
 		t.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
 	}
+
+	t.exchangeHandlers.eofPublishing.Send(originalMsgBytes)
 
 	for i := 0; i < totalOfEofs; i++ {
 		t.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
@@ -269,11 +259,11 @@ func (t *TopKWorker) initiateEofCoordination(originalMsg middleware.MessageGroup
 func (t *TopKWorker) processInboundEof(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewEofMessageFromBytes(message.Body)
+	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
-	t.log.Warningf("processInboundEof %s filter%s", msg.DataType, t.id)
+	t.log.Warningf("processInboundEof %s topK%s", msg.DataType, t.id)
 
 	didSomebodyElseAcked := msg.Origin == t.id && msg.IsAck && msg.ImmediateSource != t.id
 	if didSomebodyElseAcked {
@@ -312,43 +302,43 @@ func (t *TopKWorker) processInboundEof(message amqp.Delivery) error {
 	return nil
 }
 
-func (t *TopKWorker) mergeMessages(msg middleware.MessageGrouped) {
-	data := structures.NewStoreGroupFromMapString(msg.Payload)
-	if data == nil || len(data) == 0 {
-		return
-	}
+// func (t *TopKWorker) mergeMessages(msg middleware.MessageGrouped) {
+// 	data := structures.NewStoreGroupFromMapString(msg.Payload)
+// 	if len(data) == 0 {
+// 		return
+// 	}
 
-	topKClientMap, exists := t.topKMap[msg.ClientId]
-	if !exists {
-		return
-	}
+// 	topKClientMap, exists := t.topKMap[msg.ClientId]
+// 	if !exists {
+// 		return
+// 	}
 
-	// Should happen once because message has one store
-	for storeId, users := range data {
-		if users == nil || len(users) == 0 {
-			continue
-		}
+// 	// Should happen once because message has one store
+// 	for storeId, users := range data {
+// 		if len(users) == 0 {
+// 			continue
+// 		}
 
-		topKClientStore, exists := topKClientMap[string(storeId)]
-		if !exists {
-			topKClientStore = NewToper(t.k, CmpTransactions)
-			topKClientMap[string(storeId)] = topKClientStore
-		}
+// 		topKClientStore, exists := topKClientMap[string(storeId)]
+// 		if !exists {
+// 			topKClientStore = NewToper(t.k, CmpTransactions)
+// 			topKClientMap[string(storeId)] = topKClientStore
+// 		}
 
-		for userID, value := range users {
-			userId := string(userID)
-			if userId == "" {
-				continue
-			}
-			count := int(value)
-			if count <= 0 {
-				continue
-			}
-			registry := NewTopKRegister(string(storeId), userId, count)
-			topKClientStore.Add(registry)
-		}
-	}
-}
+// 		for userID, value := range users {
+// 			userId := string(userID)
+// 			if userId == "" {
+// 				continue
+// 			}
+// 			count := int(value)
+// 			if count <= 0 {
+// 				continue
+// 			}
+// 			registry := NewTopKRegister(string(storeId), userId, count)
+// 			topKClientStore.Add(registry)
+// 		}
+// 	}
+// }
 
 func (t *TopKWorker) Shutdown() {
 	t.isRunning = false

@@ -265,6 +265,7 @@ services:
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
+          TOPK_ID: 1
           TOPK_COUNT: 1
         build:
           context: ./src/

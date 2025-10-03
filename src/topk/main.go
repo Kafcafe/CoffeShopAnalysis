@@ -47,9 +47,10 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("ClientHandler up with configuration: loglevel: %s | Ktop: %d",
+	logger.Infof("ClientHandler up with configuration: loglevel: %s | k: %d | id: %s",
 		v.GetString("log.level"),
 		v.GetInt("k"),
+		v.GetString("topk.id"),
 	)
 
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
@@ -84,7 +85,7 @@ func main() {
 		config.GetInt("rabbitmq.port"),
 	)
 
-	topKNodeId := config.GetString("topk.id")
+	topKId := config.GetString("topk.id")
 	topKCount := config.GetInt("topk.count")
 	Kconfig := config.GetInt("k")
 
@@ -93,7 +94,7 @@ func main() {
 		return
 	}
 
-	topKWorker, err := topk.NewTopKWorker(Kconfig, topKCount, topKNodeId, rabbitConf)
+	topKWorker, err := topk.NewTopKWorker(Kconfig, topKCount, topKId, rabbitConf)
 
 	if err != nil {
 		logger.Errorf("Error initializing TopKWorker: %v", err)

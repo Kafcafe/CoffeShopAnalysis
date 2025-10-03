@@ -1,7 +1,6 @@
 package join
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -31,7 +30,7 @@ func (j *Join) JoinByIndex(rightTable []string, leftTable []string, rightIndex, 
 	}
 
 	itemMap := j.generateMapItemsByIndex(rightTable, rightIndex, rightIdIndex)
-	fmt.Println(itemMap)
+
 	for _, lItem := range leftTable {
 		fields := strings.Split(lItem, ",")
 		if len(fields) <= leftIndex {
