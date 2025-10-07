@@ -107,7 +107,7 @@ CLIENTS_TEMPLATE = """
     client{id}:
         container_name: "client{id}"
         environment:
-          CLIENT_ID: "{id}"
+          CLIENT_ID: {id}
           FILETYPES: "transactions,transaction_items,store,menu,users"
         depends_on:
           - client-handler

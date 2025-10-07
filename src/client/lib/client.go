@@ -22,12 +22,13 @@ type Client struct {
 	Id           string
 	results      map[int][]string
 	finishedChan chan bool
+	fileTypes    string
 	log          *logging.Logger
 }
 
 type ClientExecutionError error
 
-func NewClient(config *ClientConfig) *Client {
+func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 	protocol, err := NewProtocol(config.serverAddress)
 	logger := logger.GetLoggerWithPrefix("[CLIENT]")
 
@@ -45,6 +46,8 @@ func NewClient(config *ClientConfig) *Client {
 		results:      make(map[int][]string),
 		finishedChan: make(chan bool, 1),
 		log:          logger,
+		Id:           clientId,
+		fileTypes:    fileTypes,
 	}
 
 	signal.Notify(client.sigChan, syscall.SIGTERM)
@@ -62,9 +65,7 @@ func (c *Client) Run() ClientExecutionError {
 		c.config.batchMaxAmount,
 	)
 
-	var fileTypes string = os.Getenv("FILETYPES")
-	c.Id = os.Getenv("ID")
-	var listfiles []string = strings.Split(fileTypes, ",")
+	var listfiles []string = strings.Split(c.fileTypes, ",")
 	c.log.Info(listfiles)
 	defer c.Shutdown()
 	go c.handleSignals()

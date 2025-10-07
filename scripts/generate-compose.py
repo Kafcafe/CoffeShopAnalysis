@@ -147,6 +147,7 @@ def main():
         join_items_nums: int = int(sys.argv[9])
         join_store_nums: int = int(sys.argv[10])
         topk_nums: int = int(sys.argv[11])
+
         # Generate the compose file
         generate_compose(file_destination,
                          client_nums,

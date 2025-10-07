@@ -23,14 +23,13 @@ func InitConfig() (*viper.Viper, error) {
 
 	// Configure viper to read env variables with the CLI_ prefix
 	v.AutomaticEnv()
-	v.SetEnvPrefix("cli")
+
 	// Use a replacer to replace env variables underscores with points. This let us
 	// use nested configurations in the config file and at the same time define
 	// env variables for the nested configurations
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Add env variables supported
-	v.BindEnv("id")
 	v.BindEnv("log", "level")
 	v.BindEnv("batch", "maxAmount")
 	v.BindEnv("datapath", "folder")
@@ -50,7 +49,7 @@ func InitConfig() (*viper.Viper, error) {
 // For debugging purposes only
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 	logger.Infof("action: config | result: success | client_id: %s | server_address: %s | log_level: %s | batch_max_amount: %s | datapath_folder: %s",
-		v.GetString("id"),
+		v.GetString("client.id"),
 		v.GetString("server.address"),
 		v.GetString("log.level"),
 		v.GetString("batch.maxAmount"),
@@ -75,7 +74,10 @@ func main() {
 
 	PrintConfig(config, logger)
 
-	logger.Infof("Client %s started", config.GetString("id"))
+	clientId := config.GetString("client.id")
+	logger.Infof("Client %s started", clientId)
+
+	filetypes := config.GetString("filetypes")
 
 	clientConfig := client.NewClientConfig(
 		config.GetString("server.address"),
@@ -83,7 +85,7 @@ func main() {
 		config.GetInt("batch.maxAmount"),
 	)
 
-	client := client.NewClient(clientConfig)
+	client := client.NewClient(clientConfig, clientId, filetypes)
 
 	if client == nil {
 		logger.Criticalf("Client could not be created")
@@ -98,8 +100,9 @@ func main() {
 	}
 
 	elapsed := time.Since(start)
+
+	logger.Infof("Client %s finished", clientId)
 	logger.Infof("Execution took %s\n", elapsed)
 
-	logger.Infof("Client %s finished", config.GetString("id"))
 	os.Exit(SUCCESS_EXIT_CODE)
 }
