@@ -11,14 +11,16 @@ RUN mkdir -p /build
 WORKDIR /build/
 
 # Pre-cache dependencies
-COPY go.mod go.sum ./
+COPY ./client/go.mod ./client/go.sum ./
+COPY ./common ../common
 RUN go mod download
 
-COPY . .
+COPY ./client .
 # CGO_ENABLED must be disabled to run go binary in Alpine
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/client .
 
 
 FROM busybox:latest
 COPY --from=builder /build/bin/client /client
+RUN chmod +x /client
 ENTRYPOINT ["/client"]

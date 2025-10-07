@@ -114,8 +114,8 @@ CLIENTS_TEMPLATE = """
         networks:
           - analysis_net
         build:
-          context: ./src/client
-          dockerfile: Dockerfile
+          context: ./src/
+          dockerfile: client/Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./src/client/results:/results
