@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	client "github.com/Kafcafe/CoffeShopAnalysis/client/lib"
 	"github.com/op/go-logging"
@@ -101,10 +102,15 @@ func main() {
 		os.Exit(1)
 	}
 
+	start := time.Now()
+
 	if err := client.Run(); err != nil {
 		log.Criticalf("Client execution failed: %s", err)
 		os.Exit(1)
 	}
+
+	elapsed := time.Since(start)
+	log.Infof("Execution took %s\n", elapsed)
 
 	log.Infof("Client %s finished", v.GetString("id"))
 	os.Exit(0)

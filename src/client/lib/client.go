@@ -180,13 +180,13 @@ func (c *Client) ProcessResults() error {
 			log.Error("Error receiving results: %v", err)
 		}
 
-		if finish {
+		if finish && !finishedAll {
 			log.Debug("Finished receiving results for query %d", query)
 			c.LogFinishQuery(int(query))
 			continue
-		}
-
-		if finishedAll {
+		} else if finish && finishedAll {
+			log.Debug("Finished receiving results for query %d", query)
+			c.LogFinishQuery(int(query))
 			log.Info("Finished all queries")
 			c.finishedChan <- true
 			return nil
