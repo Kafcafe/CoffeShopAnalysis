@@ -8,6 +8,8 @@ import (
 	"strings"
 	"syscall"
 
+	logger "common/logger"
+
 	"github.com/op/go-logging"
 )
 
@@ -20,17 +22,17 @@ type Client struct {
 	Id           string
 	results      map[int][]string
 	finishedChan chan bool
+	log          *logging.Logger
 }
-
-var log = logging.MustGetLogger("log")
 
 type ClientExecutionError error
 
 func NewClient(config *ClientConfig) *Client {
 	protocol, err := NewProtocol(config.serverAddress)
+	logger := logger.GetLoggerWithPrefix("[CLIENT]")
 
 	if err != nil {
-		log.Error("Error connecting to server: %v", err)
+		logger.Error("Error connecting to server: %v", err)
 		return nil
 	}
 
@@ -42,6 +44,7 @@ func NewClient(config *ClientConfig) *Client {
 		currBg:       nil,
 		results:      make(map[int][]string),
 		finishedChan: make(chan bool, 1),
+		log:          logger,
 	}
 
 	signal.Notify(client.sigChan, syscall.SIGTERM)
@@ -54,7 +57,7 @@ func (c *Client) handleSignals() {
 }
 
 func (c *Client) Run() ClientExecutionError {
-	log.Infof("Client %s is running with server address %s and batch max amount %d",
+	c.log.Infof("Client %s is running with server address %s and batch max amount %d",
 		c.config.serverAddress,
 		c.config.batchMaxAmount,
 	)
@@ -62,7 +65,7 @@ func (c *Client) Run() ClientExecutionError {
 	var fileTypes string = os.Getenv("FILETYPES")
 	c.Id = os.Getenv("ID")
 	var listfiles []string = strings.Split(fileTypes, ",")
-	log.Info(listfiles)
+	c.log.Info(listfiles)
 	defer c.Shutdown()
 	go c.handleSignals()
 	go c.ProcessResults()
@@ -72,24 +75,24 @@ func (c *Client) Run() ClientExecutionError {
 	err := c.protocol.sendAmountOfTopics(len(listfiles))
 
 	if err != nil {
-		log.Error("Error sending amount of topics: %v", err)
+		c.log.Error("Error sending amount of topics: %v", err)
 		return err
 	}
 
 	for _, pattern := range listfiles {
 		files, err := c.GetFilesWithPattern(pattern, fileHandler)
 		if err != nil {
-			log.Error("Error getting files: %v", err)
+			c.log.Error("Error getting files: %v", err)
 			return err
 		}
 
 		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
-			log.Error("Error sending files topic: %v", err)
+			c.log.Error("Error sending files topic: %v", err)
 			return err
 		}
 
 		if err = c.ProcessFileList(files, pattern); err != nil {
-			log.Error("Error processing file list: %v", err)
+			c.log.Error("Error processing file list: %v", err)
 			return err
 		}
 	}
@@ -100,11 +103,11 @@ func (c *Client) Run() ClientExecutionError {
 }
 
 func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string, error) {
-	log.Infof("Processing files with pattern: %s", pattern)
+	c.log.Infof("Processing files with pattern: %s", pattern)
 	files, err := fh.GetFilesWithPattern(pattern)
 
 	if err != nil {
-		log.Error("Error getting files with pattern %s: %v", pattern, err)
+		c.log.Error("Error getting files with pattern %s: %v", pattern, err)
 		return nil, err
 	}
 
@@ -113,38 +116,38 @@ func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string,
 
 func (c *Client) ProcessFileList(files []string, pattern string) error {
 	for _, file := range files {
-		log.Infof("Processing file: %s", file)
+		c.log.Infof("Processing file: %s", file)
 
 		c.currBg = NewBatchGenerator(c.config.dataPath, file)
 
 		if c.currBg == nil {
-			log.Error("Error creating batch generator for file %s", file)
+			c.log.Error("Error creating batch generator for file %s", file)
 			return fmt.Errorf("error creating batch generator for file %s", file)
 		}
 
 		for c.currBg.IsReading() {
 			if err := c.processBatch(c.currBg, file); err != nil {
-				log.Error("Error processing batch for file %s: %v", file, err)
+				c.log.Error("Error processing batch for file %s: %v", file, err)
 				return err
 			}
-			log.Info("Sending Batch...")
+			c.log.Info("Sending Batch...")
 		}
 
 		err := c.protocol.finishBatch()
 
 		if err != nil {
-			log.Error("Error finishing batch for file %s: %v", file, err)
+			c.log.Error("Error finishing batch for file %s: %v", file, err)
 			return err
 		}
 
-		log.Infof("Finished processing file: %s", file)
+		c.log.Infof("Finished processing file: %s", file)
 
 	}
 
 	err := c.protocol.FinishSendingFilesOf(pattern)
 
 	if err != nil {
-		log.Error("Error finishing sending files of pattern %s: %v", pattern, err)
+		c.log.Error("Error finishing sending files of pattern %s: %v", pattern, err)
 		return err
 	}
 	return nil
@@ -156,18 +159,18 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 	batch, err := bg.GetNextBatch(c.config.batchMaxAmount)
 
 	if err != nil {
-		log.Error("Error getting next batch from file %s: %v", file, err)
+		c.log.Error("Error getting next batch from file %s: %v", file, err)
 		return err
 	}
 
 	err = c.protocol.SendBatch(batch)
 
 	if err != nil {
-		log.Error("Error sending batch from file %s: %v", file, err)
+		c.log.Error("Error sending batch from file %s: %v", file, err)
 		return err
 	}
 
-	log.Infof("Sent batch with information of file: %s", file)
+	c.log.Infof("Sent batch with information of file: %s", file)
 
 	return nil
 }
@@ -177,25 +180,25 @@ func (c *Client) ProcessResults() error {
 		query, lines, finish, err, finishedAll := c.protocol.rcvResults()
 
 		if err != nil {
-			log.Error("Error receiving results: %v", err)
+			c.log.Error("Error receiving results: %v", err)
 		}
 
 		if finish && !finishedAll {
-			log.Debug("Finished receiving results for query %d", query)
+			c.log.Debug("Finished receiving results for query %d", query)
 			c.LogFinishQuery(int(query))
 			continue
 		} else if finish && finishedAll {
-			log.Debug("Finished receiving results for query %d", query)
+			c.log.Debug("Finished receiving results for query %d", query)
 			c.LogFinishQuery(int(query))
-			log.Info("Finished all queries")
+			c.log.Info("Finished all queries")
 			c.finishedChan <- true
 			return nil
 		}
 
-		log.Debugf("[CLIENT] | action: received results for query %d | results: %s | of len: %d", query, strings.Join(lines, ", "), len(lines))
+		c.log.Debugf("[CLIENT] | action: received results for query %d | results: %s | of len: %d", query, strings.Join(lines, ", "), len(lines))
 
 		c.results[int(query)] = append(c.results[int(query)], lines...)
-		log.Debug(c.results)
+		c.log.Debug(c.results)
 	}
 	return nil
 }
@@ -205,8 +208,8 @@ func (c *Client) LogFinishQuery(query int) {
 		return
 	}
 
-	log.Infof("Finished receiving results for query %d", query)
-	log.Info("Results:", c.results[query])
+	c.log.Infof("Finished receiving results for query %d", query)
+	c.log.Info("Results:", c.results[query])
 
 	savePath := fmt.Sprintf("./results/results_q%d.txt", query)
 	WriteLines(c.results[query], savePath)
@@ -242,5 +245,5 @@ func (c *Client) Shutdown() {
 	}
 
 	c.isRunning = false
-	log.Info("Client shutdown complete")
+	c.log.Info("Client shutdown complete")
 }

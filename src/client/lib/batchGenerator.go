@@ -2,7 +2,10 @@ package client
 
 import (
 	"bufio"
+	logger "common/logger"
 	"os"
+
+	"github.com/op/go-logging"
 )
 
 type BatchGenerator struct {
@@ -12,14 +15,15 @@ type BatchGenerator struct {
 	isReading    bool
 	lastLineRead string
 	file         *os.File
+	log          *logging.Logger
 }
 
 func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
-
+	logger := logger.GetLoggerWithPrefix("[BATCH-GEN]")
 	file, err := os.Open(dataPath + "/" + filename)
 
 	if err != nil {
-		log.Errorf("Error opening file %s: %v", filename, err)
+		logger.Errorf("Error opening file %s: %v", filename, err)
 		return nil
 	}
 
@@ -33,6 +37,7 @@ func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
 		isReading:    true,
 		lastLineRead: "",
 		file:         file,
+		log:          logger,
 	}
 }
 
