@@ -3,7 +3,6 @@ package clientHandler
 import (
 	logger "common/logger"
 	"common/middleware"
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -25,7 +24,7 @@ const (
 type ResultsChannels struct {
 	resultsQ1Chan chan middleware.Message
 	resultsQ2Chan chan middleware.Message
-	resultsQ3Chan chan middleware.MessageGrouped
+	resultsQ3Chan chan middleware.Message
 	resultsQ4Chan chan middleware.Message
 }
 
@@ -33,7 +32,7 @@ func NewResultsChannels() ResultsChannels {
 	return ResultsChannels{
 		resultsQ1Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 		resultsQ2Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-		resultsQ3Chan: make(chan middleware.MessageGrouped, RESULTS_CHANNEL_BUFFER_SIZE),
+		resultsQ3Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 		resultsQ4Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 	}
 }
@@ -141,13 +140,13 @@ func (clh *ClientHandler) processResultsQ2(message amqp.Delivery) error {
 func (clh *ClientHandler) processResultsQ3(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
 
-	//stringPayload := msg.Payload
-	//clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	stringPayload := msg.Payload
+	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
 	clh.resultsChans.resultsQ3Chan <- *msg
@@ -224,13 +223,7 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 			if msg.IsEof {
 				eofFlags[3] = true
 			}
-			parsedPayload, err := json.Marshal(msg.Payload)
-			if err != nil {
-				clh.log.Errorf("Failed marshalling payload for query 3: %v", err)
-				continue
-			}
-			jsonString := string(parsedPayload)
-			if err := clh.protocol.SendResults(3, []string{jsonString}, msg.IsEof); err != nil {
+			if err := clh.protocol.SendResults(3, msg.Payload, msg.IsEof); err != nil {
 				clh.log.Errorf("Error sending result to client for query 3: %v", err)
 			}
 

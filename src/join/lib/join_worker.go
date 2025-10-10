@@ -6,9 +6,10 @@ import (
 )
 
 const (
-	JOIN_ITEMS_TYPE = "items"
-	JOIN_STORE_TYPE = "store"
-	JOIN_USERS_TYPE = "users"
+	JOIN_ITEMS_TYPE    = "items"
+	JOIN_STORE_TYPE    = "store"
+	JOIN_STORE_Q3_TYPE = "store_q3"
+	JOIN_USERS_TYPE    = "users"
 )
 
 type JoinItemsWorker interface {
@@ -66,6 +67,26 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
+func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:           joinId,
+		count:        joinCount,
+		ofType:       "store_q3",
+		prevStageSub: "transactions.transactions.group.semester",
+		sideTableSub: "transactions.store",
+		nextStagePub: "results.q3",
+		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+			flattenedStores := make([]string, 0)
+			for semester, storesAndTPV := range payload {
+				for _, storeAndTPV := range storesAndTPV {
+					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", semester, storeAndTPV))
+				}
+			}
+			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 1)
+		},
+	}
+}
+
 func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
 	return JoinWorkerConfig{
 		id:                             joinId,
@@ -102,6 +123,12 @@ func CreateJoinItemsWorker(joinItemsType string,
 		}
 	case JOIN_USERS_TYPE:
 		config := JoinUsersConfig(joinerId, joinerCount)
+		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+		if err != nil {
+			return nil, err
+		}
+	case JOIN_STORE_Q3_TYPE:
+		config := JoinStoreQ3Config(joinerId, joinerCount)
 		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
