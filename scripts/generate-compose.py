@@ -25,6 +25,7 @@ GROUP_BY_STORE: str = "store"
 
 JOIN_ITEMS_TYPE: str = "items"
 JOIN_STORE_TYPE: str = "store"
+JOIN_STORE_Q3_TYPE: str = "store_q3"
 JOIN_USERS_TYPE: str = "users"
 
 def generate_compose(file_destination: str,
@@ -96,6 +97,9 @@ def generate_compose(file_destination: str,
 
     for i in range(join_store_nums):
         compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_STORE_TYPE}{i+1}", join_type=JOIN_STORE_TYPE, join_count=join_store_nums)
+
+    for i in range(join_store_nums):
+        compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_STORE_Q3_TYPE}{i+1}", join_type=JOIN_STORE_Q3_TYPE, join_count=join_store_nums)
 
     # Always 1 node currentyl
     compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_USERS_TYPE}", join_type=JOIN_USERS_TYPE, join_count=1)

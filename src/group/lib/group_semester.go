@@ -16,7 +16,7 @@ import (
 
 type SemesterExchangeHandlers struct {
 	transactionsYearHourFilteredSubscription middleware.MessageMiddlewareExchange
-	resultsQ3Publishing                      middleware.MessageMiddlewareExchange
+	nextStagePublishing                      middleware.MessageMiddlewareExchange
 	eofPublishing                            middleware.MessageMiddlewareExchange
 	eofSubscription                          middleware.MessageMiddlewareQueue
 }
@@ -170,14 +170,14 @@ func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.M
 
 		g.log.Infof("Sent consolidated results for semester: %s", key)
 
-		middleError := g.exchangeHandlers.resultsQ3Publishing.Send(responseBytes)
+		middleError := g.exchangeHandlers.nextStagePublishing.Send(responseBytes)
 		if middleError != middleware.MessageMiddlewareSuccess {
-			g.log.Errorf("problem while sending message to resultsQ3Publishing")
+			g.log.Errorf("problem while sending message to nextStagePublishing")
 		}
 	}
 	g.log.Infof("Final results grouped and consolidated")
 
-	middleError := g.exchangeHandlers.resultsQ3Publishing.Send(originalMsgBytes)
+	middleError := g.exchangeHandlers.nextStagePublishing.Send(originalMsgBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		g.log.Errorf("problem while propagating EOF")
 	}
@@ -224,10 +224,10 @@ func (f *GroupBySemesterWorker) createExchangeHandlers() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.year-hour-filtered.q3: %v", err)
 	}
 
-	resultsQ3Publishing := "results.q3"
-	resultsQ3PublishingHandler, err := createExchangeHandler(f.rabbitConn, resultsQ3Publishing, middleware.EXCHANGE_TYPE_DIRECT)
+	nextStagePublishing := "transactions.transactions.group.semester"
+	nextStagePublishingHandler, err := createExchangeHandler(f.rabbitConn, nextStagePublishing, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for results.q3: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.transactions.group.semester: %v", err)
 	}
 
 	eofPublishingRouteKey := fmt.Sprintf("eof.group.semester.%s", f.id)
@@ -243,7 +243,7 @@ func (f *GroupBySemesterWorker) createExchangeHandlers() error {
 
 	f.exchangeHandlers = SemesterExchangeHandlers{
 		transactionsYearHourFilteredSubscription: *transactionsYearHourFilteredSubscriptionHandler,
-		resultsQ3Publishing:                      *resultsQ3PublishingHandler,
+		nextStagePublishing:                      *nextStagePublishingHandler,
 		eofPublishing:                            *eofPublishingHandler,
 		eofSubscription:                          *eofSubscription,
 	}
