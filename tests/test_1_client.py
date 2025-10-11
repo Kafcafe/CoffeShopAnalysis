@@ -5,13 +5,14 @@ from utils import docker
 
 @pytest.fixture(scope="module", autouse=True)
 def setup():
+    os.chdir(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
     docker.stop_all()
     docker.prune()
-    docker.build()
+    docker.up()
 
 @pytest.fixture(autouse=True)
 def beforeEach():
-    docker.down(t=10)
+    docker.down(grace_period=10)
 
 def test():
     logs = docker.logs(follow=False)
