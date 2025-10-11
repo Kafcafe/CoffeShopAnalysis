@@ -47,3 +47,6 @@ scripts/*.pyc
 results
 .fuse_hidden*
 .vscode
+
+venv/
+.pytest_cache/
