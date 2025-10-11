@@ -50,3 +50,4 @@ results
 
 venv/
 .pytest_cache/
+reduce_data_set/
