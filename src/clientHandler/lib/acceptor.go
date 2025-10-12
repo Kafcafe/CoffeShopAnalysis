@@ -18,13 +18,14 @@ const (
 )
 
 type Acceptor struct {
-	config     AcceptorConfig
-	listener   net.Listener
-	isRunning  bool
-	currClient *ClientHandler
-	sigChan    chan os.Signal
-	log        *logging.Logger
-	rabbitConn *middleware.RabbitConnection
+	config       AcceptorConfig
+	listener     net.Listener
+	isRunning    bool
+	currClients  map[ClientUuid]*ClientHandler
+	sigChan      chan os.Signal
+	log          *logging.Logger
+	rabbitConn   *middleware.RabbitConnection
+	limitHandler *ConnectionLimit
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -67,13 +68,14 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 	log.Infof("Server listening on address %s", listenAddr)
 
 	acceptor := &Acceptor{
-		config:     *acceptorConfig,
-		listener:   listener,
-		isRunning:  true,
-		currClient: nil,
-		sigChan:    make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
-		log:        log,
-		rabbitConn: rabbitConn,
+		config:       *acceptorConfig,
+		listener:     listener,
+		isRunning:    true,
+		currClients:  make(map[ClientUuid]*ClientHandler),
+		sigChan:      make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
+		log:          log,
+		rabbitConn:   rabbitConn,
+		limitHandler: NewConnectionLimit(5),
 	}
 
 	// Set up signal notification for graceful shutdown
@@ -182,38 +184,46 @@ func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
 // Returns an error if accepting fails.
 func (a *Acceptor) Run() error {
 	a.log.Info("Running and ready to accept connections")
-	// defer a.Shutdown()
 	go a.handleSignal()
 
 	for a.isRunning {
 		a.log.Info("Waiting for a new client connection...")
 
+		/// In case the limit is reached, it will block here
+		a.limitHandler.Wait()
 		conn, err := a.listener.Accept()
+
 		if err != nil {
 			a.log.Warningf("Failed to accept connection: %v", err)
 			return nil
 		}
 
-		a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
-		newId := NewClientUuid()
+		err = a.CreateNewClient(conn)
 
-		exchangeHandlers, err := a.createExchangeHandlers()
 		if err != nil {
-			return fmt.Errorf("failed to create exchange handlers: %v", err)
+			a.log.Errorf("Error creating new client: %v", err)
 		}
-
-		a.currClient = NewClientHandler(conn, newId, *exchangeHandlers)
-
-		a.log.Infof("Assigned client id %s with short form %s", a.currClient.ClientId, a.currClient.ClientId.Short)
-
-		err = a.currClient.Handle()
-		if err != nil {
-			a.log.Errorf("Error handling client connection: %v", err)
-		}
-
-		a.log.Info("Closing client connection, conection finished successfully")
-		// a.currClient.Shutdown()
 	}
+
+	return nil
+}
+
+func (a *Acceptor) CreateNewClient(conn net.Conn) error {
+
+	a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
+	newId := NewClientUuid()
+
+	exchangeHandlers, err := a.createExchangeHandlers()
+
+	if err != nil {
+		return fmt.Errorf("failed to create exchange handlers: %v", err)
+	}
+
+	newClient := NewClientHandler(conn, newId, *exchangeHandlers)
+
+	a.log.Infof("Assigned client id %s with short form %s", newClient, newId.Short)
+
+	go newClient.Handle()
 
 	return nil
 }
@@ -226,8 +236,8 @@ func (a *Acceptor) Shutdown() {
 		a.listener.Close()
 	}
 
-	if a.currClient != nil {
-		a.currClient.Shutdown()
+	for _, client := range a.currClients {
+		client.Shutdown()
 	}
 
 	a.rabbitConn.Close()
