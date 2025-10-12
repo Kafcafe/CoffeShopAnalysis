@@ -169,27 +169,6 @@ services:
         volumes:
           - ./src/group/config.yaml:/config.yaml 
 
-    group-store1:
-        container_name: "group-store1"
-        depends_on:
-          rabbitmq:
-            condition: service_healthy
-        networks:
-          - analysis_net
-        environment:
-          RABBITMQ_HOST: rabbitmq
-          RABBITMQ_PORT: 5672
-          RABBITMQ_USER: user
-          RABBITMQ_PASS: user
-          GROUP_TYPE: store
-          GROUP_ID: -store1
-          GROUP_COUNT: 1
-        build:
-          context: ./src/
-          dockerfile: group/Dockerfile
-        volumes:
-          - ./src/group/config.yaml:/config.yaml 
-
     join-items1:
         container_name: "join-items1"
         depends_on:

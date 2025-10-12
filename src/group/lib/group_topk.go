@@ -166,7 +166,7 @@ func (t *GroupByTopKBestClients) groupByStore(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		go t.initiateEofCoordination(*msg, message.Body)
+		go t.initiateEofCoordination(*msg)
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -225,7 +225,7 @@ func bytesToMB(bytes int) float64 {
 	return float64(int64(bytes)) / float64(bytesInMB)
 }
 
-func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.Message) {
 	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, t.id, t.id, false, nil)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
@@ -287,7 +287,14 @@ func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.
 	* Propagate EOF
 	 */
 
-	middleError := t.exchangeHandlers.transactionsTopKPublishing.Send(originalMsgBytes)
+	originalMsg.TotalEmitted = 1
+	msgToSendEofBytes, err := originalMsg.ToBytes()
+	if err != nil {
+		t.log.Errorf("Failed to serialize message: %v", err)
+		return
+	}
+
+	middleError := t.exchangeHandlers.transactionsTopKPublishing.Send(msgToSendEofBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		t.log.Errorf("problem while propagating EOF")
 	}
