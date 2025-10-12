@@ -101,7 +101,7 @@ func main() {
 
 	elapsed := time.Since(start)
 
-	logger.Infof("| action: run client | result: success | client_id: %s | Client %s finished", clientId, clientId)
+	logger.Infof("| action: finish | result: success | client_id: %s | Client %s finished", clientId, clientId)
 	logger.Infof("| action: log execution time | client_id: %s | Execution took %s\n", clientId, elapsed)
 
 	os.Exit(SUCCESS_EXIT_CODE)

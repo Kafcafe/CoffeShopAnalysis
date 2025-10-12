@@ -32,8 +32,8 @@ def down(grace_period=0):
 	shell_cmd.silent('docker compose -f docker-compose-dev.yaml stop' + (f' -t {grace_period}' if grace_period > 0 else ''))
 	shell_cmd.silent('docker compose -f docker-compose-dev.yaml down')
 
-def logs(follow=True):
-	return shell_cmd.pipe('docker compose -f docker-compose-dev.yaml logs' + (' -f' if follow else ''))
+def logs(follow=True, target=''):
+	return shell_cmd.pipe('docker compose -f docker-compose-dev.yaml logs' + (f' {target}' if target else '') + (' -f' if follow else ''))
 
 def wait_for_clients(n_clients):
 	if n_clients <= 0:

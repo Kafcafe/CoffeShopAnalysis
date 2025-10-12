@@ -132,7 +132,7 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 				c.log.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
 				return err
 			}
-			c.log.Info("| action: processed batch for file | client_id: %s | file: %s", c.Id, file)
+			c.log.Infof("| action: processed batch for file | client_id: %s | file: %s", c.Id, file)
 		}
 
 		err := c.protocol.finishBatch()
@@ -209,7 +209,7 @@ func (c *Client) LogFinishQuery(query int) {
 		return
 	}
 
-	c.log.Infof("action: Finished receiving results for query %d", query)
+	c.log.Infof("| action: Finished receiving results for query %d", query)
 	savePath := fmt.Sprintf("./results/results_q%d_%s.txt", query, c.Id)
 	WriteLines(c.results[query], savePath)
 }
