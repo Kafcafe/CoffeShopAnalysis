@@ -6,12 +6,14 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"sync"
 	"syscall"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
+
+type ClientId = string
+type DataType = string
 
 type FilterGenericWorker struct {
 	log               *logging.Logger
@@ -19,22 +21,19 @@ type FilterGenericWorker struct {
 	sigChan           chan os.Signal
 	isRunning         bool
 
-	filter                   Filter
-	conf                     FilterConfig
-	middlewareHandlers       MiddlewareHandlers
-	errChan                  chan middleware.MessageMiddlewareError
-	currentMessageProcessing middleware.Message
-	mutex                    sync.Mutex
-
-	eofChan                   chan int
-	eofIntercommunicationChan chan int
+	filter             Filter
+	conf               FilterConfig
+	middlewareHandlers MiddlewareHandlers
+	errChan            chan middleware.MessageMiddlewareError
+	// new eof
+	clientsStats map[ClientId]*ClientStats
 }
 
 type MiddlewareHandlers struct {
-	prevStageSub  middleware.MessageMiddlewareQueue // consider a queue
-	nextStagePubs map[string]middleware.MessageMiddlewareExchange
-	eofPub        middleware.MessageMiddlewareExchange
-	eofSub        middleware.MessageMiddlewareQueue
+	prevStageSub      middleware.MessageMiddlewareQueue // consider a queue
+	nextStagePubs     map[string]middleware.MessageMiddlewareExchange
+	broadcastCountPub middleware.MessageMiddlewareExchange
+	broadcastCountSub middleware.MessageMiddlewareQueue
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -65,34 +64,32 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
 	return &FilterGenericWorker{
-		log:                       log,
-		middlewareHandler:         middlewareHandler,
-		sigChan:                   sigChan,
-		isRunning:                 true,
-		filter:                    *NewFilter(),
-		conf:                      config,
-		errChan:                   make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
-		mutex:                     sync.Mutex{},
-		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
-		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		log:               log,
+		middlewareHandler: middlewareHandler,
+		sigChan:           sigChan,
+		isRunning:         true,
+		filter:            *NewFilter(),
+		conf:              config,
+		errChan:           make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		clientsStats:      make(map[ClientId]*ClientStats),
 	}, nil
 }
 
 func (f *FilterGenericWorker) createExchangeHandlers() error {
 	_, err := f.middlewareHandler.CreateDirectExchangeStandalone(f.conf.prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for %s: %v", f.conf.prevStageSub, err)
+		return fmt.Errorf("error creating exchange handler for %s: %v", f.conf.prevStageSub, err)
 	}
 	// this name is just for identification purposes
 	prevStageSubQueueName := f.conf.prevStageSub + "." + f.conf.ofType
 	prevStageSub, err := f.middlewareHandler.CreateQueue(prevStageSubQueueName)
 	if err != nil {
-		return fmt.Errorf("Error creating queue handler for %s: %v", prevStageSubQueueName, err)
+		return fmt.Errorf("error creating queue handler for %s: %v", prevStageSubQueueName, err)
 	}
 
 	err = f.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, f.conf.prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error preparing queue for transactions: %v", err)
+		return fmt.Errorf("error preparing queue for transactions: %v", err)
 	}
 
 	// Prepare next stage publishing handlers
@@ -107,165 +104,157 @@ func (f *FilterGenericWorker) createExchangeHandlers() error {
 		nextStagePubs[datatype] = *exchange
 	}
 
-	f.log.Infof("Setting up EOF coordination PUB for filter %s", f.conf.id)
-	eofPublishingRouteKey := fmt.Sprintf("eof.filters.%s", f.conf.ofType)
-	eofPub, err := f.middlewareHandler.CreateFanoutExchangeStandalone(eofPublishingRouteKey)
+	f.log.Infof("Setting up count PUB for filter %s", f.conf.id)
+	broadcastCountPubRoutKey := fmt.Sprintf("filters.%s.count", f.conf.ofType)
+	broadcastCountPub, err := f.middlewareHandler.CreateFanoutExchangeStandalone(broadcastCountPubRoutKey)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for %s: %v", eofPublishingRouteKey, err)
+		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastCountPubRoutKey, err)
 	}
 
-	f.log.Infof("Setting up EOF coordination SUB for filter %s", f.conf.id)
-	eofSubQueueName := fmt.Sprintf("eof.filters.%s.%s", f.conf.ofType, f.conf.id)
-	eofSub, err := f.middlewareHandler.CreateQueue(eofSubQueueName)
+	f.log.Infof("Setting up count SUB for filter %s", f.conf.id)
+	broadcastCountSubQueueName := fmt.Sprintf("filters.%s.count.%s", f.conf.ofType, f.conf.id)
+	broadcastCountSub, err := f.middlewareHandler.CreateQueue(broadcastCountSubQueueName)
 	if err != nil {
-		return fmt.Errorf("Error creating EOF queue for %s: %v", eofSubQueueName, err)
+		return fmt.Errorf("error creating count queue for %s: %v", broadcastCountSubQueueName, err)
 	}
-	err = f.middlewareHandler.BindQueue(eofSubQueueName, eofPublishingRouteKey, "")
+	err = f.middlewareHandler.BindQueue(broadcastCountSubQueueName, broadcastCountPubRoutKey, "")
 
 	if err != nil {
-		return fmt.Errorf("Error preparing EOF queue for transactions: %v", err)
+		return fmt.Errorf("error preparing count queue for %s: %v", f.conf.ofType, err)
 	}
 
 	f.middlewareHandlers = MiddlewareHandlers{
-		prevStageSub:  *prevStageSub,
-		nextStagePubs: nextStagePubs,
-		eofPub:        *eofPub,
-		eofSub:        *eofSub,
+		prevStageSub:      *prevStageSub,
+		nextStagePubs:     nextStagePubs,
+		broadcastCountPub: *broadcastCountPub,
+		broadcastCountSub: *broadcastCountSub,
 	}
 	return nil
 }
 
-func (f *FilterGenericWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
-	eofMsg := middleware.NewEofMessage(originalMsg.DataType, originalMsg.ClientId, f.conf.id, f.conf.id, false)
-	msgBytes, err := eofMsg.ToBytes()
+func (f *FilterGenericWorker) sendProcessedMessage(msgProcessed *middleware.MessageProcessed) error {
+	msgProcessedBytes, err := msgProcessed.ToBytes()
 	if err != nil {
-		f.log.Errorf("Failed to serialize message: %v", err)
+		return err
 	}
-
-	f.middlewareHandlers.eofPub.Send(msgBytes)
-
-	totalEofs := f.conf.filtersCount - 1
-
-	if totalEofs == 0 {
-		f.log.Infof("No EOF coordination needed for %s", originalMsg.DataType)
-	} else {
-		f.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
+	sendErr := f.middlewareHandlers.broadcastCountPub.Send(msgProcessedBytes)
+	if sendErr != middleware.MessageMiddlewareSuccess {
+		return fmt.Errorf("failed to send processed count message: %v", sendErr)
 	}
-
-	for i := 0; i < totalEofs; i++ {
-		f.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
-		<-f.eofIntercommunicationChan
-		f.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
-	}
-
-	nextStagePub, exists := f.middlewareHandlers.nextStagePubs[originalMsg.DataType]
-	if !exists {
-		f.log.Errorf("Unknown dataType '%s' on initiateEofCoordination", originalMsg.DataType)
-		return
-	}
-	nextStagePub.Send(originalMsgBytes)
-
-	f.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+	return nil
 }
 
 func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
 	if msg.IsEof {
-		go f.initiateEofCoordination(*msg, message.Body)
-		answerMessage(ACK, message)
+		clientStats := f.getClientStats(msg.ClientId)
+		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
+		go f.handleEofMessage(message, *msg)
 		return nil
 	}
 
-	if len(f.eofChan) > 0 {
-		<-f.eofChan
-	}
-
-	f.mutex.Lock()
-	f.currentMessageProcessing = *msg
-	f.currentMessageProcessing.Payload = []string{}
-	f.mutex.Unlock()
-
 	filteredBatch := f.conf.messageCallback(&f.filter, msg.Payload)
+
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0)
+	err = f.sendProcessedMessage(msgProcessed)
+	if err != nil {
+		f.log.Errorf("Failed to send processed count message: %v", err)
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
 
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessage of type " + f.conf.ofType)
 		answerMessage(ACK, message)
-		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
 		return nil
 	}
 
-	isEof := false
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch, isEof)
-	responseBytes, err := response.ToBytes()
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch, false)
+	err = f.sendNextStage(*response)
 	if err != nil {
+		f.log.Errorf("Failed to send message to next stage: %v", err)
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
-	// Send the filtered response to the appropriate exchange
-	nextStagePub, exists := f.middlewareHandlers.nextStagePubs[msg.DataType]
-	if !exists {
-		f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
-
-		return fmt.Errorf("received unprocessabble message in filterMessage of type %s", msg.DataType)
-	}
-	nextStagePub.Send(responseBytes)
 	answerMessage(ACK, message)
-
-	f.eofChan <- THERE_IS_PREVIOUS_MESSAGE
-
 	f.log.Infof("Filtered message and sent filterMessage batch")
 	return nil
 }
 
-func (f *FilterGenericWorker) processInboundEof(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
-	msg, err := middleware.NewEofMessageFromBytes(message.Body)
+func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error {
+	nextStagePub, exists := f.middlewareHandlers.nextStagePubs[msgToSend.DataType]
+	if !exists {
+		return fmt.Errorf("received unprocessabble message in sendNextStage of type %s", msgToSend.DataType)
+	}
+	msgBytes, err := msgToSend.ToBytes()
 	if err != nil {
 		return err
 	}
-	f.log.Warningf("processInboundEof %s filter%s", msg.DataType, f.conf.id)
+	nextStagePub.Send(msgBytes)
+	return nil
+}
 
-	didSomebodyElseAcked := msg.Origin == f.conf.id && msg.IsAck && msg.ImmediateSource != f.conf.id
-	if didSomebodyElseAcked {
-		f.eofIntercommunicationChan <- ACTIVITY
-		return nil
+func (f *FilterGenericWorker) getClientStats(clientId ClientId) *ClientStats {
+	if _, exists := f.clientsStats[clientId]; !exists {
+		f.clientsStats[clientId] = NewClientStats()
+	}
+	return f.clientsStats[clientId]
+}
+
+func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
+	clientStats := f.getClientStats(eofMsg.ClientId)
+
+	f.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
+
+	if clientStats.GetProcessed(eofMsg.DataType) < eofMsg.TotalEmitted {
+		f.log.Infof("Not all messages processed yet for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
+		f.log.Infof("Waiting for all messages to be processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
+		clientStats.WaitForEofChan(eofMsg.DataType)
 	}
 
-	isAckMine := msg.ImmediateSource == f.conf.id
-	isAckForNotForMe := msg.IsAck && msg.Origin != f.conf.id
-	if isAckMine || isAckForNotForMe {
-		answerMessage(ACK, message)
-		return nil
-	}
+	f.log.Infof("All messages processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 
-	f.log.Warning("Lock")
-	f.mutex.Lock()
-	currentMessageProcessing := f.currentMessageProcessing
-	f.mutex.Unlock()
-	f.log.Warning("Unlock")
-
-	if currentMessageProcessing.IsFromSameStream(msg.DataType, msg.ClientId) {
-		f.log.Warningf("BEFORE INBOUND %s", msg.DataType)
-		<-f.eofChan
-		f.log.Warningf("AFTER INBOUND %s", msg.DataType)
-	}
-
-	msg.ImmediateSource = f.conf.id
-	msg.IsAck = true
-	msgBytes, err := msg.ToBytes()
+	// update emitted count
+	eofMsg.TotalEmitted = clientStats.GetEmitted(eofMsg.DataType)
+	err := f.sendNextStage(eofMsg)
 	if err != nil {
+		f.log.Errorf("Failed to send EOF message to next stage: %v", err)
+		answerMessage(NACK_DISCARD, eofMessage)
+		return
+	}
+	answerMessage(ACK, eofMessage)
+	f.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
+}
+
+func (f *FilterGenericWorker) processedCountMessage(message amqp.Delivery) error {
+	msg, err := middleware.NewMessageProcessedFromBytes(message.Body)
+	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
+	}
+
+	clientStats := f.getClientStats(msg.ClientId)
+
+	clientStats.AddProcessed(msg.DataType)
+	if msg.Emitted {
+		clientStats.AddEmitted(msg.DataType)
+	}
+
+	if prevEofEmittedCount, exists := clientStats.GetEof(msg.DataType); exists {
+		// EOF ARRIVED!
+		if clientStats.GetProcessed(msg.DataType) == prevEofEmittedCount {
+			f.log.Infof("All messages processed for client %s and dataType %s", msg.ClientId, msg.DataType)
+			clientStats.SendEofChan(msg.DataType)
+		}
 	}
 
 	answerMessage(ACK, message)
-	f.middlewareHandlers.eofPub.Send(msgBytes)
 	return nil
 }
 
@@ -279,7 +268,7 @@ func (f *FilterGenericWorker) Run() error {
 	}
 
 	f.middlewareHandlers.prevStageSub.StartConsuming(f.filterMessage, f.errChan)
-	f.middlewareHandlers.eofSub.StartConsuming(f.processInboundEof, f.errChan)
+	f.middlewareHandlers.broadcastCountSub.StartConsuming(f.processedCountMessage, f.errChan)
 
 	for err := range f.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -292,11 +281,6 @@ func (f *FilterGenericWorker) Run() error {
 		}
 	}
 
-	f.middlewareHandlers.prevStageSub.Close()
-	f.middlewareHandlers.eofSub.StopConsuming()
-	f.middlewareHandlers.eofSub.Close()
-	f.middlewareHandlers.eofPub.Close()
-
 	f.log.Info("Finished filtering")
 	return nil
 }
@@ -308,9 +292,11 @@ func (f *FilterGenericWorker) Shutdown() {
 	f.middlewareHandler.Close()
 
 	f.middlewareHandlers.prevStageSub.Close()
-	f.middlewareHandlers.eofSub.StopConsuming()
-	f.middlewareHandlers.eofSub.Close()
-	f.middlewareHandlers.eofPub.Close()
+	f.middlewareHandlers.broadcastCountPub.Close()
+	f.middlewareHandlers.broadcastCountSub.Close()
+	for _, nextStagePub := range f.middlewareHandlers.nextStagePubs {
+		nextStagePub.Close()
+	}
 
 	f.log.Info("Shutdown complete")
 }
