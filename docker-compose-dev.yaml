@@ -267,7 +267,49 @@ services:
           RABBITMQ_PASS: user
           GROUP_TYPE: topk
           GROUP_ID: -topk1
-          GROUP_COUNT: 1
+          GROUP_COUNT: 3
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-topk2:
+        container_name: "group-topk2"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: topk
+          GROUP_ID: -topk2
+          GROUP_COUNT: 3
+        build:
+          context: ./src/
+          dockerfile: group/Dockerfile
+        volumes:
+          - ./src/group/config.yaml:/config.yaml 
+
+    group-topk3:
+        container_name: "group-topk3"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          GROUP_TYPE: topk
+          GROUP_ID: -topk3
+          GROUP_COUNT: 3
         build:
           context: ./src/
           dockerfile: group/Dockerfile

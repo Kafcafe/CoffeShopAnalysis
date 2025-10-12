@@ -108,7 +108,7 @@ func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions.topk: %v", err)
 	}
 
-	eofPublishingRouteKey := fmt.Sprintf("eof.topk.%s", t.id)
+	eofPublishingRouteKey := fmt.Sprintf("eof.group.topk.%s", t.id)
 	eofPublishingHandler, err := createExchangeHandler(t.rabbitConn, eofPublishingRouteKey, middleware.EXCHANGE_TYPE_TOPIC)
 
 	if err != nil {
@@ -117,7 +117,7 @@ func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
 
 	eofSubscriptionHandler, err := prepareEofQueue(t.rabbitConn, "topk", t.id)
 	if err != nil {
-		return fmt.Errorf("error preparing EOF queue for eof.topk: %v", err)
+		return fmt.Errorf("error preparing EOF queue for eof.group.topk: %v", err)
 	}
 
 	t.exchangeHandlers = TopkExchangeHandlers{
