@@ -62,7 +62,7 @@ services:
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
-          - ../data/kaggle_datos_reducidos_suelto/:/data
+          - ./../data/kaggle_datos_reducidos_suelto:/data
 
     filter-year1:
         container_name: "filter-year1"
