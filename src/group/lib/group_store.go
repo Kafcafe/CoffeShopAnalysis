@@ -15,15 +15,16 @@ import (
 )
 
 type StoreExchangeHandlers struct {
-	transactionsYearHourFilteredSubscription middleware.MessageMiddlewareExchange
-	transactionsGroupedByStorePublishing     middleware.MessageMiddlewareExchange
-	eofPublishing                            middleware.MessageMiddlewareExchange
-	eofSubscription                          middleware.MessageMiddlewareQueue
+	prevStageSubscription                middleware.MessageMiddlewareQueue
+	transactionsGroupedByStorePublishing middleware.MessageMiddlewareExchange
+	eofPublishing                        middleware.MessageMiddlewareExchange
+	eofSubscription                      middleware.MessageMiddlewareQueue
 }
 
 type GroupByStoreWorker struct {
 	log                       *logging.Logger
 	rabbitConn                *middleware.RabbitConnection
+	middlewareHandler         *middleware.MiddlewareHandler
 	sigChan                   chan os.Signal
 	isRunning                 bool
 	exchangeHandlers          StoreExchangeHandlers
@@ -47,6 +48,11 @@ func NewGroupByStoreWorker(rabbitConf middleware.RabbitConfig, groupById string,
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
 
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %v", err)
+	}
+
 	log.Info("Connection with RabbitMQ successfully established")
 
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
@@ -55,6 +61,7 @@ func NewGroupByStoreWorker(rabbitConf middleware.RabbitConfig, groupById string,
 	return &GroupByStoreWorker{
 		log:                       log,
 		rabbitConn:                rabbitConn,
+		middlewareHandler:         middlewareHandler,
 		sigChan:                   sigChan,
 		isRunning:                 true,
 		errChan:                   make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
@@ -219,10 +226,21 @@ func (g *GroupByStoreWorker) groupByStore(message amqp.Delivery) error {
 }
 
 func (f *GroupByStoreWorker) createExchangeHandlers() error {
-	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.transactions.store"
-	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_TOPIC)
+	prevStageSub := "transactions.transactions.all"
+	_, err := f.middlewareHandler.CreateDirectExchangeStandalone(prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for transactions.transactions: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.year-hour-filtered.all: %v", err)
+	}
+
+	prevStageSubQueueName := prevStageSub + ".store"
+	prevStageSubscription, err := f.middlewareHandler.CreateQueue(prevStageSubQueueName)
+	if err != nil {
+		return fmt.Errorf("Error creating queue handler for %s: %v", prevStageSubQueueName, err)
+	}
+
+	err = f.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, prevStageSub)
+	if err != nil {
+		return fmt.Errorf("Error preparing queue for transactions: %v", err)
 	}
 
 	prepareInputQueues(f.rabbitConn, "store")
@@ -245,10 +263,10 @@ func (f *GroupByStoreWorker) createExchangeHandlers() error {
 	}
 
 	f.exchangeHandlers = StoreExchangeHandlers{
-		transactionsYearHourFilteredSubscription: *transactionsYearHourFilteredSubscriptionHandler,
-		transactionsGroupedByStorePublishing:     *transactionsGroupedByStorePublishingHandler,
-		eofPublishing:                            *eofPublishingHandler,
-		eofSubscription:                          *eofSubscription,
+		prevStageSubscription:                *prevStageSubscription,
+		transactionsGroupedByStorePublishing: *transactionsGroupedByStorePublishingHandler,
+		eofPublishing:                        *eofPublishingHandler,
+		eofSubscription:                      *eofSubscription,
 	}
 
 	return nil
@@ -263,7 +281,7 @@ func (g *GroupByStoreWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	g.exchangeHandlers.transactionsYearHourFilteredSubscription.StartConsuming(g.groupByStore, g.errChan)
+	g.exchangeHandlers.prevStageSubscription.StartConsuming(g.groupByStore, g.errChan)
 	g.exchangeHandlers.eofSubscription.StartConsuming(g.processInboundEof, g.errChan)
 
 	for err := range g.errChan {
