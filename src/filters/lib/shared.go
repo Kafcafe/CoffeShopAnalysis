@@ -20,6 +20,7 @@ const (
 	OPT_IS_EOF_ACK            = "ACK"
 )
 
+// TODO: borrar, no se usa en el generic
 func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
@@ -35,6 +36,7 @@ func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey str
 	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
+// TODO: borrar, no se usa en el generic
 func prepareQuery1InputQueues(rabbitConn *middleware.RabbitConnection) error {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
@@ -61,6 +63,7 @@ func prepareQuery1InputQueues(rabbitConn *middleware.RabbitConnection) error {
 	return nil
 }
 
+// TODO: borrar, no se usa en el generic
 func prepareQuery1OutputQueues(rabbitConn *middleware.RabbitConnection) error {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
@@ -87,6 +90,7 @@ func prepareQuery1OutputQueues(rabbitConn *middleware.RabbitConnection) error {
 	return nil
 }
 
+// TODO: borrar, no se usa en el generic
 func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string, filterId string) (*middleware.MessageMiddlewareQueue, error) {
 	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
 	if err != nil {
@@ -117,6 +121,7 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:
