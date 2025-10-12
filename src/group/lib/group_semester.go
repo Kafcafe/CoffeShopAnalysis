@@ -239,7 +239,7 @@ func (f *GroupBySemesterWorker) createExchangeHandlers() error {
 
 	err = f.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error preparing queue for transactions: %v", err)
+		return fmt.Errorf("Error preparing queue for %s: %v", prevStageSubQueueName, err)
 	}
 
 	nextStagePublishing := "transactions.transactions.group.semester"
