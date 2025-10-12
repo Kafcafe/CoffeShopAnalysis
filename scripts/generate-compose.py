@@ -22,6 +22,7 @@ FILTER_BY_AMOUNT_TYPE: str = "amount"
 GROUP_BY_YEAR_MONTH: str = "yearmonth"
 GROUP_BY_SEMESTER: str = "semester"
 GROUP_BY_STORE: str = "store"
+GROUP_BY_TOPK_BEST_CLIENTS: str = "topk"
 
 JOIN_ITEMS_TYPE: str = "items"
 JOIN_STORE_TYPE: str = "store"
@@ -105,8 +106,8 @@ def generate_compose(file_destination: str,
     compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_USERS_TYPE}", join_type=JOIN_USERS_TYPE, join_count=1)
 
     for i in range(topk_nums):
-        compose += constants.TOP_K_TEMPLATE.format(id=f"{i+1}", top_count=topk_nums)
-
+        group_type = GROUP_BY_TOPK_BEST_CLIENTS
+        compose += constants.GROUP_TEMPLATE.format(id=f"-{group_type}{i+1}", group_type=group_type, group_count=topk_nums)
 
     # Write the complete compose file to disk
     with open(file_destination, 'w') as f:
