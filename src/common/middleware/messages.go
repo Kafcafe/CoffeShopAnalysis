@@ -98,27 +98,44 @@ func (m *EofMessage) ToBytes() ([]byte, error) {
 //////////////////////////////////////////////////////////////////////////////////////
 
 type MessageGrouped struct {
-	DataType string
-	ClientId string
-	Payload  map[string][]string
-	IsEof    bool
+	DataType     string
+	ClientId     string
+	Payload      map[string][]string
+	IsEof        bool
+	TotalEmitted int
 }
 
 func NewMessageGrouped(dataType, clientId string, payload map[string][]string, isEof bool) *MessageGrouped {
 	return &MessageGrouped{
-		DataType: dataType,
-		ClientId: clientId,
-		Payload:  payload,
-		IsEof:    isEof,
+		DataType:     dataType,
+		ClientId:     clientId,
+		Payload:      payload,
+		IsEof:        isEof,
+		TotalEmitted: 0,
 	}
 }
 
 func (m *MessageGrouped) ToEmptyMessage() *Message {
 	return &Message{
-		DataType: m.DataType,
-		ClientId: m.ClientId,
-		Payload:  []string{},
-		IsEof:    m.IsEof,
+		DataType:     m.DataType,
+		ClientId:     m.ClientId,
+		Payload:      []string{},
+		IsEof:        m.IsEof,
+		TotalEmitted: m.TotalEmitted,
+	}
+}
+
+func (m *MessageGrouped) ToMessage() *Message {
+	flatPayload := []string{}
+	for _, values := range m.Payload {
+		flatPayload = append(flatPayload, values...)
+	}
+	return &Message{
+		DataType:     m.DataType,
+		ClientId:     m.ClientId,
+		Payload:      flatPayload,
+		IsEof:        m.IsEof,
+		TotalEmitted: m.TotalEmitted,
 	}
 }
 

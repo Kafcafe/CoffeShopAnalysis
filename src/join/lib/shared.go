@@ -90,6 +90,7 @@ func prepareSideTableQueue(rabbitConn *middleware.RabbitConnection, queueName, r
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:
