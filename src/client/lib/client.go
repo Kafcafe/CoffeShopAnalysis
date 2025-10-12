@@ -60,7 +60,8 @@ func (c *Client) handleSignals() {
 }
 
 func (c *Client) Run() ClientExecutionError {
-	c.log.Infof("Client %s is running with server address %s and batch max amount %d",
+	c.log.Infof("| action: run client | client_id: %s | server_address: %s | batch_max_amount: %d",
+		c.Id,
 		c.config.serverAddress,
 		c.config.batchMaxAmount,
 	)
@@ -76,24 +77,24 @@ func (c *Client) Run() ClientExecutionError {
 	err := c.protocol.sendAmountOfTopics(len(listfiles))
 
 	if err != nil {
-		c.log.Error("Error sending amount of topics: %v", err)
+		c.log.Error("| action: Error sending amount of topics: %v | result: error", err)
 		return err
 	}
 
 	for _, pattern := range listfiles {
 		files, err := c.GetFilesWithPattern(pattern, fileHandler)
 		if err != nil {
-			c.log.Error("Error getting files: %v", err)
+			c.log.Error("| action: Error getting files: %v | result: error", err)
 			return err
 		}
 
 		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
-			c.log.Error("Error sending files topic: %v", err)
+			c.log.Error("| action: Error sending files topic: %v | result: error", err)
 			return err
 		}
 
 		if err = c.ProcessFileList(files, pattern); err != nil {
-			c.log.Error("Error processing file list: %v", err)
+			c.log.Error("| action: Error processing file list: %v | result: error", err)
 			return err
 		}
 	}
@@ -104,11 +105,11 @@ func (c *Client) Run() ClientExecutionError {
 }
 
 func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string, error) {
-	c.log.Infof("Processing files with pattern: %s", pattern)
+	c.log.Infof("| action: get files with pattern | client_id: %s | pattern: %s", c.Id, pattern)
 	files, err := fh.GetFilesWithPattern(pattern)
 
 	if err != nil {
-		c.log.Error("Error getting files with pattern %s: %v", pattern, err)
+		c.log.Error("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
 		return nil, err
 	}
 
@@ -117,38 +118,38 @@ func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string,
 
 func (c *Client) ProcessFileList(files []string, pattern string) error {
 	for _, file := range files {
-		c.log.Infof("Processing file: %s", file)
+		c.log.Infof("| action: process file | client_id: %s | file: %s", c.Id, file)
 
 		c.currBg = NewBatchGenerator(c.config.dataPath, file)
 
 		if c.currBg == nil {
-			c.log.Error("Error creating batch generator for file %s", file)
+			c.log.Errorf("| action: Error creating batch generator for file %s | result: error", file)
 			return fmt.Errorf("error creating batch generator for file %s", file)
 		}
 
 		for c.currBg.IsReading() {
 			if err := c.processBatch(c.currBg, file); err != nil {
-				c.log.Error("Error processing batch for file %s: %v", file, err)
+				c.log.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
 				return err
 			}
-			c.log.Info("Sending Batch...")
+			c.log.Infof("| action: processed batch for file | client_id: %s | file: %s", c.Id, file)
 		}
 
 		err := c.protocol.finishBatch()
 
 		if err != nil {
-			c.log.Error("Error finishing batch for file %s: %v", file, err)
+			c.log.Error("| action: Error finishing batch for file %s: %v | result: error", file, err)
 			return err
 		}
 
-		c.log.Infof("Finished processing file: %s", file)
+		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
 
 	}
 
 	err := c.protocol.FinishSendingFilesOf(pattern)
 
 	if err != nil {
-		c.log.Error("Error finishing sending files of pattern %s: %v", pattern, err)
+		c.log.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
 		return err
 	}
 	return nil
@@ -160,18 +161,18 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 	batch, err := bg.GetNextBatch(c.config.batchMaxAmount)
 
 	if err != nil {
-		c.log.Error("Error getting next batch from file %s: %v", file, err)
+		c.log.Errorf("| action: Error getting next batch from file %s: %v | result: error", file, err)
 		return err
 	}
 
 	err = c.protocol.SendBatch(batch)
 
 	if err != nil {
-		c.log.Error("Error sending batch from file %s: %v", file, err)
+		c.log.Errorf("| action: Error sending batch from file %s: %v | result: error", file, err)
 		return err
 	}
 
-	c.log.Infof("Sent batch with information of file: %s", file)
+	c.log.Infof("| action: Sent batch with information of file: %s", file)
 
 	return nil
 }
@@ -181,17 +182,16 @@ func (c *Client) ProcessResults() error {
 		query, lines, finish, err, finishedAll := c.protocol.rcvResults()
 
 		if err != nil {
-			c.log.Error("Error receiving results: %v", err)
+			c.log.Error("action: Error receiving results: %v, result: error", err)
 		}
 
 		if finish && !finishedAll {
-			c.log.Debug("Finished receiving results for query %d", query)
+			c.log.Infof("Finished receiving results for query %d | results: %v", query, c.results[int(query)])
 			c.LogFinishQuery(int(query))
 			continue
 		} else if finish && finishedAll {
 			c.log.Debug("Finished receiving results for query %d", query)
 			c.LogFinishQuery(int(query))
-			c.log.Info("Finished all queries")
 			c.finishedChan <- true
 			return nil
 		}
@@ -209,10 +209,8 @@ func (c *Client) LogFinishQuery(query int) {
 		return
 	}
 
-	c.log.Infof("Finished receiving results for query %d", query)
-	c.log.Info("Results:", c.results[query])
-
-	savePath := fmt.Sprintf("./results/results_q%d.txt", query)
+	c.log.Infof("| action: Finished receiving results for query %d", query)
+	savePath := fmt.Sprintf("./results/results_q%d_%s.txt", query, c.Id)
 	WriteLines(c.results[query], savePath)
 }
 

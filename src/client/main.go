@@ -60,13 +60,13 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 func main() {
 	config, err := InitConfig()
 	if err != nil {
-		fmt.Printf("Error initializing configuration: %v\n", err)
+		fmt.Printf("action: init configs | result: error | Error initializing configuration: %v\n", err)
 		return
 	}
 
 	err = logger.InitGlobalLogger(config.GetString("log.level"))
 	if err != nil {
-		fmt.Printf("Error initializing logger: %v\n", err)
+		fmt.Printf("action: init logger | result: error | Error initializing logger: %v\n", err)
 		return
 	}
 
@@ -88,21 +88,21 @@ func main() {
 	client := client.NewClient(clientConfig, clientId, filetypes)
 
 	if client == nil {
-		logger.Criticalf("Client could not be created")
+		logger.Criticalf("| action: create client | result: error | client_id: %s | Client could not be created", clientId)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
 	}
 
 	start := time.Now()
 
 	if err := client.Run(); err != nil {
-		logger.Criticalf("Client execution failed: %s", err)
+		logger.Criticalf("| action: run client | result: error | client_id: %s | Client execution failed: %s", clientId, err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
 	}
 
 	elapsed := time.Since(start)
 
-	logger.Infof("Client %s finished", clientId)
-	logger.Infof("Execution took %s\n", elapsed)
+	logger.Infof("| action: finish | result: success | client_id: %s | Client %s finished", clientId, clientId)
+	logger.Infof("| action: log execution time | client_id: %s | Execution took %s\n", clientId, elapsed)
 
 	os.Exit(SUCCESS_EXIT_CODE)
 }
