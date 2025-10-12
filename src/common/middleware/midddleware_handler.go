@@ -119,6 +119,29 @@ func (mh *MiddlewareHandler) CreateTopicExchangeStandalone(routeKey string) (*Me
 	return NewMessageMiddlewareExchange(exchangeName, routeKey, mh.Channel, nil), nil
 }
 
+func (mh *MiddlewareHandler) CreateFanoutExchangeStandalone(exchangeName string) (*MessageMiddlewareExchange, error) {
+	exchangeType := EXCHANGE_TYPE_FANOUT
+
+	err := mh.DeclareExchange(exchangeName, exchangeType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange: %v", err)
+	}
+
+	return NewMessageMiddlewareExchange(exchangeName, "", mh.Channel, nil), nil
+}
+
+func (mh *MiddlewareHandler) CreateDirectExchangeStandalone(routeKey string) (*MessageMiddlewareExchange, error) {
+	exchangeName := EXCHANGE_NAME_DIRECT_TYPE
+	exchangeType := EXCHANGE_TYPE_DIRECT
+
+	err := mh.DeclareExchange(exchangeName, exchangeType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange: %v", err)
+	}
+
+	return NewMessageMiddlewareExchange(exchangeName, routeKey, mh.Channel, nil), nil
+}
+
 func (mh *MiddlewareHandler) createExchange(exchangeName, exchangeType, routeKey string) (*MessageMiddlewareExchange, error) {
 	err := mh.DeclareExchange(exchangeName, exchangeType)
 	if err != nil {
