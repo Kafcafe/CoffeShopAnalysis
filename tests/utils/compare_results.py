@@ -29,7 +29,7 @@ def _compare_sets(name, current_set, expected_set, sample_size=3):
 
 def compare_results_q1(q1_path):
     name = "results_q1"
-    expected_results = "./scripts/expected_results/results_q1.csv"
+    expected_results = "./tests/expected_results/results_q1.csv"
 
     lines_current_results = set()
     lines_expected_results = set()
@@ -52,7 +52,7 @@ def compare_results_q1(q1_path):
 
 def compare_results_q2_top_earners(q2_path):
     name = "results_q2_top_earners"
-    expected_results_path = "./scripts/expected_results/results_q2_top_earners.csv"
+    expected_results_path = "./tests/expected_results/results_q2_top_earners.csv"
 
     current_results = set()
     expected_results = set()
@@ -75,7 +75,7 @@ def compare_results_q2_top_earners(q2_path):
 
 def compare_results_q2_best_sellers(q2_path):
     name = "results_q2_best_sellers"
-    expected_results_path = "./scripts/expected_results/results_q2_best_sellers.csv"
+    expected_results_path = "./tests/expected_results/results_q2_best_sellers.csv"
 
     current_results = set()
     expected_results = set()
@@ -98,7 +98,7 @@ def compare_results_q2_best_sellers(q2_path):
 
 def compare_results_q3(q3_path):
     name = "results_q3"
-    expected_results_path = "./scripts/expected_results/results_q3.csv"
+    expected_results_path = "./tests/expected_results/results_q3.csv"
 
     def parse_line(line: str) -> str:
         semester, store, total = line.strip().split(',')
@@ -121,25 +121,19 @@ def compare_results_q3(q3_path):
 
 def compare_results_q4(q4_path):
     name = "results_q4"
-    expected_results_path = "./scripts/expected_results/results_q4.csv"
-
-    def parse_line(line: str) -> str:
-        parts = line.strip().split(',')
-        store = parts[0]
-        bday = parts[1]
-        return f"{store},{bday}"
+    expected_results_path = "./tests/expected_results/results_q4.csv"
 
     current_results = set()
     expected_results = set()
 
-    with open(q4_path, 'r') as file:
+    with open(q4_path, 'r', encoding='utf-8') as file:
         for line in file:
-            current_results.add(parse_line(line))
+            current_results.add(line.strip('\n'))
 
-    with open(expected_results_path, 'r') as file:
+    with open(expected_results_path, 'r', encoding='utf-8') as file:
         next(file)
         for line in file:
-            expected_results.add(parse_line(line))
+            expected_results.add(line.strip('\n'))
 
     return _compare_sets(name, current_results, expected_results)
 

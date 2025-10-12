@@ -27,16 +27,17 @@ def read_logs(container_name):
     
     pytest.fail("Client did not finish successfully")
 
-def build_results_path(client_id):
+def build_results_path(clients_id):
     root_path = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
     paths = []
     for i in range(4): 
-        paths.append(os.path.join(root_path, f"results/results_q{i+1}_{client_id}.txt"))
+        for client_id in clients_id:
+            paths.append(os.path.join(root_path, f"results/results_q{i+1}_{client_id}.txt"))
     return paths
 
 def test():
     docker.wait_for_clients(1)
     read_logs('client1')
-    results_paths = build_results_path(1)
+    results_paths = build_results_path([1])
     assert compare_results.compare_all_results(*results_paths)
     
