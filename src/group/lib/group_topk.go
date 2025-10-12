@@ -15,10 +15,10 @@ import (
 )
 
 type TopkExchangeHandlers struct {
-	transactionsGroupedByStoreSubscription middleware.MessageMiddlewareExchange
-	transactionsTopKPublishing             middleware.MessageMiddlewareExchange
-	eofPublishing                          middleware.MessageMiddlewareExchange
-	eofSubscription                        middleware.MessageMiddlewareQueue
+	prevStageSubscription      middleware.MessageMiddlewareQueue
+	transactionsTopKPublishing middleware.MessageMiddlewareExchange
+	eofPublishing              middleware.MessageMiddlewareExchange
+	eofSubscription            middleware.MessageMiddlewareQueue
 }
 
 type GroupByTopKBestClients struct {
@@ -36,6 +36,7 @@ type GroupByTopKBestClients struct {
 	eofIntercommunicationChan chan int
 	topKMap                   map[string]map[string]*structures.Toper[structures.TopKRegister]
 	k                         int
+	middlewareHandler         *middleware.MiddlewareHandler
 }
 
 const (
@@ -50,6 +51,11 @@ func NewGroupByTopKBestClients(rabbitConf middleware.RabbitConfig, groupById str
 	rabbitConn, err := middleware.NewRabbitConnection(&rabbitConf)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
+	}
+
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %v", err)
 	}
 
 	log.Info("Connection with RabbitMQ successfully established")
@@ -70,15 +76,29 @@ func NewGroupByTopKBestClients(rabbitConf middleware.RabbitConfig, groupById str
 		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
 		topKMap:                   make(map[string]map[string]*structures.Toper[structures.TopKRegister]),
 		k:                         Kconfig,
+		middlewareHandler:         middlewareHandler,
 	}, nil
 }
 
 func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
-	transactionsGroupedByStoreSubscriptionRouteKey := "transactions.transactions.group.store"
-	transactionsGroupedByStoreSubscriptionHandler, err := createExchangeHandler(t.rabbitConn, transactionsGroupedByStoreSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	prevStageSub := "transactions.transactions.all"
+	_, err := t.middlewareHandler.CreateDirectExchangeStandalone(prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for transactions.transactions.group.store: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.year-hour-filtered.all: %v", err)
 	}
+
+	prevStageSubQueueName := prevStageSub + ".topk"
+	prevStageSubscription, err := t.middlewareHandler.CreateQueue(prevStageSubQueueName)
+	if err != nil {
+		return fmt.Errorf("Error creating queue handler for %s: %v", prevStageSubQueueName, err)
+	}
+
+	err = t.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, prevStageSub)
+	if err != nil {
+		return fmt.Errorf("Error preparing queue for %s: %v", prevStageSubQueueName, err)
+	}
+
+	prepareInputQueues(t.rabbitConn, "store")
 
 	transactionsTopKPublishingRouteKey := "transactions.transactions.topk"
 	transactionsTopKPublishingHandler, err := createExchangeHandler(t.rabbitConn, transactionsTopKPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
@@ -99,10 +119,10 @@ func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
 	}
 
 	t.exchangeHandlers = TopkExchangeHandlers{
-		transactionsGroupedByStoreSubscription: *transactionsGroupedByStoreSubscriptionHandler,
-		transactionsTopKPublishing:             *transactionsTopKPublishingHandler,
-		eofPublishing:                          *eofPublishingHandler,
-		eofSubscription:                        *eofSubscriptionHandler,
+		prevStageSubscription:      *prevStageSubscription,
+		transactionsTopKPublishing: *transactionsTopKPublishingHandler,
+		eofPublishing:              *eofPublishingHandler,
+		eofSubscription:            *eofSubscriptionHandler,
 	}
 
 	return nil
@@ -117,7 +137,7 @@ func (t *GroupByTopKBestClients) Run() error {
 		return fmt.Errorf("failed to create exchange handler: %w", err)
 	}
 
-	t.exchangeHandlers.transactionsGroupedByStoreSubscription.StartConsuming(t.processDataMessage, t.errChan)
+	t.exchangeHandlers.prevStageSubscription.StartConsuming(t.processDataMessage, t.errChan)
 	t.exchangeHandlers.eofSubscription.StartConsuming(t.processInboundEof, t.errChan)
 
 	for err := range t.errChan {
