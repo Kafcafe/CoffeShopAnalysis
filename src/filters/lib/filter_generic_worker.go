@@ -32,7 +32,7 @@ type FilterGenericWorker struct {
 
 type MiddlewareHandlers struct {
 	prevStageSub  middleware.MessageMiddlewareQueue // consider a queue
-	nextStagePubs map[string]middleware.MessageMiddlewareQueue
+	nextStagePubs map[string]middleware.MessageMiddlewareExchange
 	eofPub        middleware.MessageMiddlewareExchange
 	eofSub        middleware.MessageMiddlewareQueue
 }
@@ -79,19 +79,32 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 }
 
 func (f *FilterGenericWorker) createExchangeHandlers() error {
-	prevStageSub, err := f.middlewareHandler.CreateQueue(f.conf.prevStageSub)
+	_, err := f.middlewareHandler.CreateDirectExchangeStandalone(f.conf.prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error creating queue handler for %s: %v", f.conf.prevStageSub, err)
+		return fmt.Errorf("Error creating exchange handler for %s: %v", f.conf.prevStageSub, err)
+	}
+	// this name is just for identification purposes
+	prevStageSubQueueName := f.conf.prevStageSub + "." + f.conf.ofType
+	prevStageSub, err := f.middlewareHandler.CreateQueue(prevStageSubQueueName)
+	if err != nil {
+		return fmt.Errorf("Error creating queue handler for %s: %v", prevStageSubQueueName, err)
 	}
 
-	nextStagePubs := make(map[string]middleware.MessageMiddlewareQueue)
+	err = f.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, f.conf.prevStageSub)
+	if err != nil {
+		return fmt.Errorf("Error preparing queue for transactions: %v", err)
+	}
+
+	// Prepare next stage publishing handlers
+
+	nextStagePubs := make(map[string]middleware.MessageMiddlewareExchange)
 	for datatype, routeKey := range f.conf.nextStagePubs {
 		f.log.Infof("Next stage publishing for datatype %s on routeKey %s", datatype, routeKey)
-		queue, err := f.middlewareHandler.CreateQueue(routeKey)
+		exchange, err := f.middlewareHandler.CreateDirectExchangeStandalone(routeKey)
 		if err != nil {
 			return fmt.Errorf("Error creating exchange handler for %s: %v", routeKey, err)
 		}
-		nextStagePubs[datatype] = *queue
+		nextStagePubs[datatype] = *exchange
 	}
 
 	f.log.Infof("Setting up EOF coordination PUB for filter %s", f.conf.id)
