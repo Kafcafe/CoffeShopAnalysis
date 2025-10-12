@@ -1,4 +1,6 @@
-package filters
+package middleware
+
+type DataType = string
 
 type ClientStats struct {
 	processed map[DataType]int

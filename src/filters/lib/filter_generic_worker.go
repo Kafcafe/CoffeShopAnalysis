@@ -26,7 +26,7 @@ type FilterGenericWorker struct {
 	middlewareHandlers MiddlewareHandlers
 	errChan            chan middleware.MessageMiddlewareError
 	// new eof
-	clientsStats map[ClientId]*ClientStats
+	clientsStats map[ClientId]*middleware.ClientStats
 }
 
 type MiddlewareHandlers struct {
@@ -71,7 +71,7 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 		filter:            *NewFilter(),
 		conf:              config,
 		errChan:           make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
-		clientsStats:      make(map[ClientId]*ClientStats),
+		clientsStats:      make(map[ClientId]*middleware.ClientStats),
 	}, nil
 }
 
@@ -200,9 +200,9 @@ func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error 
 	return nil
 }
 
-func (f *FilterGenericWorker) getClientStats(clientId ClientId) *ClientStats {
+func (f *FilterGenericWorker) getClientStats(clientId ClientId) *middleware.ClientStats {
 	if _, exists := f.clientsStats[clientId]; !exists {
-		f.clientsStats[clientId] = NewClientStats()
+		f.clientsStats[clientId] = middleware.NewClientStats()
 	}
 	return f.clientsStats[clientId]
 }
