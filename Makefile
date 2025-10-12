@@ -171,3 +171,28 @@ clean: clean-containers clean-images
 	@echo "Limpieza básica completada"
 .PHONY: clean
 
+
+##########################################################
+### PYTHON TESTS FOR FULL CLIENT EXECUTION END-TO-END
+##########################################################
+
+init-env:
+	python3 -m venv .venv
+	. .venv/bin/activate && pip install -r ./tests/requirements.txt
+.PHONY: init-env
+
+activate-env:
+	@echo "To activate the virtual environment, run: source .venv/bin/activate"
+.PHONY: activate-env
+
+deactivate-env:
+	@echo "To deactivate the virtual environment, run: deactivate"
+.PHONY: deactivate-env
+
+pytest:
+	pytest 
+.PHONY: test
+
+pytest-verbose:
+	pytest -v -ss
+.PHONY: test-verbose

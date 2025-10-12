@@ -8,6 +8,8 @@ def setup():
     docker.stop_all()
     docker.prune()
     docker.up()
+    yield
+    docker.down()
 
 @pytest.fixture(autouse=True)
 def beforeEach():
