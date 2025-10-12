@@ -6,18 +6,20 @@ import (
 )
 
 type Message struct {
-	DataType string
-	ClientId string
-	Payload  []string
-	IsEof    bool
+	DataType     string
+	ClientId     string
+	Payload      []string
+	IsEof        bool
+	TotalEmitted int
 }
 
 func NewMessage(dataType, clientId string, payload []string, isEof bool) *Message {
 	return &Message{
-		DataType: dataType,
-		ClientId: clientId,
-		Payload:  payload,
-		IsEof:    isEof,
+		DataType:     dataType,
+		ClientId:     clientId,
+		Payload:      payload,
+		IsEof:        isEof,
+		TotalEmitted: 0,
 	}
 }
 
@@ -188,4 +190,37 @@ func (m *EofMessageGrouped) ToBytes() ([]byte, error) {
 	}
 
 	return msgBytes, nil
+}
+
+// New eof method types
+
+type MessageProcessed struct {
+	DataType string
+	ClientId string
+	Emitted  bool
+}
+
+func NewMessageProcessed(dataType, clientId string, emitted bool) *MessageProcessed {
+	return &MessageProcessed{
+		DataType: dataType,
+		ClientId: clientId,
+		Emitted:  emitted,
+	}
+}
+
+func (m *MessageProcessed) ToBytes() ([]byte, error) {
+	msgBytes, err := json.Marshal(m)
+	if err != nil {
+		return []byte{}, fmt.Errorf("problem while marshalling MessageProcessed of dataType %s: %w", m.DataType, err)
+	}
+	return msgBytes, nil
+}
+
+func NewMessageProcessedFromBytes(msgBytes []byte) (*MessageProcessed, error) {
+	var msg MessageProcessed
+	err := json.Unmarshal(msgBytes, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed message deserialization: %w", err)
+	}
+	return &msg, nil
 }
