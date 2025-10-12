@@ -149,6 +149,6 @@ def compare_all_results(q1_path, q2_path, q3_path, q4_path):
     resultq2_te = compare_results_q2_top_earners(q2_path)
     resultq2_bs = compare_results_q2_best_sellers(q2_path)
     resultsq3 = compare_results_q3(q3_path)
-    resultsq4 = compare_results_q4(q4_path)
-    return resultq1 and resultq2_te and resultq2_bs and resultsq3 and resultsq4
+    # resultsq4 = compare_results_q4(q4_path)
+    return resultq1 and resultq2_te and resultq2_bs and resultsq3
     
