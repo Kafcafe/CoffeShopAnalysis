@@ -24,7 +24,7 @@ def build():
 	shell_cmd.silent('docker build -f ./client/Dockerfile -t client:latest .')
 
 def up():
-	return_code = shell_cmd.silent('docker compose -f docker-compose-dev.yaml up -d')
+	return_code = shell_cmd.silent('docker compose -f docker-compose-dev.yaml up -d --build')
 	if (return_code != 0):
 		raise DockerException('Can\'t start system')
 
