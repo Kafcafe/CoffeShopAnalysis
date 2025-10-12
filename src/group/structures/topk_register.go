@@ -12,6 +12,13 @@ func CmpTransactions(a, b TopKRegister) int {
 	} else if a.Count > b.Count {
 		return -1
 	}
+
+	if a.UserId < b.UserId {
+		return 1
+	} else if a.UserId > b.UserId {
+		return -1
+	}
+
 	return 0
 }
 

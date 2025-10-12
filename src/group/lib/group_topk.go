@@ -30,11 +30,12 @@ type GroupByTopKBestClients struct {
 	errChan                   chan middleware.MessageMiddlewareError
 	id                        string
 	topKCount                 int
-	currentMessageProcessing  middleware.MessageGrouped
+	currentMessageProcessing  middleware.Message
 	mutex                     sync.Mutex
 	eofChan                   chan int
-	eofIntercommunicationChan chan int
+	eofIntercommunicationChan chan structures.StoreGroup
 	topKMap                   map[string]map[string]*structures.Toper[structures.TopKRegister]
+	groupedPerClient          structures.StoreGroupPerClient
 	k                         int
 	middlewareHandler         *middleware.MiddlewareHandler
 }
@@ -73,10 +74,11 @@ func NewGroupByTopKBestClients(rabbitConf middleware.RabbitConfig, groupById str
 		topKCount:                 groupByCount,
 		mutex:                     sync.Mutex{},
 		eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
-		eofIntercommunicationChan: make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		eofIntercommunicationChan: make(chan structures.StoreGroup, SINGLE_ITEM_BUFFER_LEN),
 		topKMap:                   make(map[string]map[string]*structures.Toper[structures.TopKRegister]),
 		k:                         Kconfig,
 		middlewareHandler:         middlewareHandler,
+		groupedPerClient:          structures.NewStoreGroupPerClient(),
 	}, nil
 }
 
@@ -137,7 +139,7 @@ func (t *GroupByTopKBestClients) Run() error {
 		return fmt.Errorf("failed to create exchange handler: %w", err)
 	}
 
-	t.exchangeHandlers.prevStageSubscription.StartConsuming(t.processDataMessage, t.errChan)
+	t.exchangeHandlers.prevStageSubscription.StartConsuming(t.groupByStore, t.errChan)
 	t.exchangeHandlers.eofSubscription.StartConsuming(t.processInboundEof, t.errChan)
 
 	for err := range t.errChan {
@@ -155,12 +157,12 @@ func (t *GroupByTopKBestClients) Run() error {
 	return nil
 }
 
-func (t *GroupByTopKBestClients) processDataMessage(message amqp.Delivery) error {
+func (t *GroupByTopKBestClients) groupByStore(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
-		return fmt.Errorf("failed to unmarshal message: %w", err)
+		return err
 	}
 
 	if msg.IsEof {
@@ -175,35 +177,23 @@ func (t *GroupByTopKBestClients) processDataMessage(message amqp.Delivery) error
 
 	t.mutex.Lock()
 	t.currentMessageProcessing = *msg
-	t.currentMessageProcessing.Payload = make(map[string][]string)
+	t.currentMessageProcessing.Payload = []string{}
+
+	t.groupedPerClient.Add(msg.ClientId, msg.Payload)
 	t.mutex.Unlock()
-
-	msgParsed := structures.NewStoreGroupFromMapString(msg.Payload)
-	allResultsForClient, storeId := t.getTopK(msgParsed)
-
-	t.mutex.Lock()
-	t.topKMap[msg.ClientId] = nil
-	t.mutex.Unlock()
-
-	msgToSend := middleware.NewMessageGrouped(msg.DataType, msg.ClientId, allResultsForClient, false)
-	msgToSendBytes, err := msgToSend.ToBytes()
-	if err != nil {
-		return err
-	}
-
-	t.exchangeHandlers.transactionsTopKPublishing.Send(msgToSendBytes)
 	answerMessage(ACK, message)
 
-	t.log.Infof("Final TopK results sent for store %s", storeId)
 	t.eofChan <- THERE_IS_PREVIOUS_MESSAGE
+
+	t.log.Info("Grouped message")
 	return nil
 }
 
-func (t *GroupByTopKBestClients) getTopK(msg structures.StoreGroup) (map[string][]string, string) {
+func (t *GroupByTopKBestClients) getTopK(msg *structures.StoreGroup) (map[string][]string, string) {
 	result := make(map[string][]string)
 	var returnStoreId string = ""
 
-	for storeId, users := range msg {
+	for storeId, users := range *msg {
 		if len(users) == 0 {
 			continue
 		}
@@ -223,80 +213,139 @@ func (t *GroupByTopKBestClients) getTopK(msg structures.StoreGroup) (map[string]
 		topKUsers := toper.GetTopK()
 		result[string(storeId)] = make([]string, 0, len(topKUsers))
 		for _, user := range topKUsers {
-			result[string(storeId)] = append(result[string(storeId)], user.String())
+			result[string(storeId)] = append(result[string(storeId)], fmt.Sprintf("%s", user.String()))
 		}
 		returnStoreId = string(storeId)
 	}
 	return result, returnStoreId
 }
 
-func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.MessageGrouped, originalMsgBytes []byte) {
-	clientId := originalMsg.ClientId
-	t.log.Infof("Received EOF message for client %s", clientId)
+func bytesToMB(bytes int) float64 {
+	const bytesInMB = 1024 * 1024 // 1 MB = 1024 * 1024 bytes
+	return float64(int64(bytes)) / float64(bytesInMB)
+}
 
-	totalOfEofs := t.topKCount - 1
+func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, t.id, t.id, false, nil)
+	msgBytes, err := eofMsg.ToBytes()
+	if err != nil {
+		t.log.Errorf("Failed to serialize message: %v", err)
+	}
 
-	if totalOfEofs == 0 {
+	t.exchangeHandlers.eofPublishing.Send(msgBytes)
+
+	totalEofs := t.topKCount - 1
+
+	if totalEofs == 0 {
 		t.log.Infof("No EOF coordination needed for %s", originalMsg.DataType)
 	} else {
 		t.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
 	}
 
-	t.exchangeHandlers.eofPublishing.Send(originalMsgBytes)
+	t.log.Infof("Consolidating partial results for %s", originalMsg.DataType)
 
-	for i := 0; i < totalOfEofs; i++ {
+	t.mutex.Lock()
+	clientStoreGroup := t.groupedPerClient.Get(originalMsg.ClientId)
+
+	t.groupedPerClient.Delete(originalMsg.ClientId)
+	t.mutex.Unlock()
+
+	myPayload, _ := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, clientStoreGroup.ToMapString(), false).ToBytes()
+	t.log.Infof("Partial grouping from %s has size: %.4fMB", t.id, bytesToMB(len(myPayload)))
+
+	/*
+	* Collect partial groupings from other nodes
+	 */
+	for i := 0; i < totalEofs; i++ {
 		t.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
-		<-t.eofIntercommunicationChan
+		partialGrouping := <-t.eofIntercommunicationChan
+		clientStoreGroup.Merge(partialGrouping)
 		t.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
 	}
 
-	t.exchangeHandlers.transactionsTopKPublishing.Send(originalMsgBytes)
+	/*
+	* Calculate TopK and send results
+	 */
+
+	allResultsForClient, _ := t.getTopK(&clientStoreGroup)
+
+	t.log.Infof("VALUES %v", allResultsForClient)
+
+	msgToSend := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, allResultsForClient, false)
+	msgToSendBytes, err := msgToSend.ToBytes()
+	if err != nil {
+		t.log.Errorf("Failed to serialize message: %v", err)
+		return
+	}
+
+	size := len(msgToSendBytes)
+	t.exchangeHandlers.transactionsTopKPublishing.Send(msgToSendBytes)
+	t.log.Infof("Final TopK results size: %.4fMB", bytesToMB(size))
+	t.log.Infof("Final TopK results sent")
+
+	/*
+	* Propagate EOF
+	 */
+
+	middleError := t.exchangeHandlers.transactionsTopKPublishing.Send(originalMsgBytes)
+	if middleError != middleware.MessageMiddlewareSuccess {
+		t.log.Errorf("problem while propagating EOF")
+	}
+
 	t.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
 }
 
-func (t *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error {
+func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error {
 	defer answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
-	t.log.Warningf("processInboundEof %s topK%s", msg.DataType, t.id)
+	g.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, g.id)
 
-	didSomebodyElseAcked := msg.Origin == t.id && msg.IsAck && msg.ImmediateSource != t.id
+	didSomebodyElseAcked := msg.Origin == g.id && msg.IsAck && msg.ImmediateSource != g.id
 	if didSomebodyElseAcked {
-		t.eofIntercommunicationChan <- ACTIVITY
+		size := len(msg.Payload)
+		g.log.Infof("Partial grouping from %s has size: %.4fMB", msg.ImmediateSource, bytesToMB(size))
+		partialGrouping := structures.NewStoreGroupFromMapString(msg.Payload)
+		g.eofIntercommunicationChan <- partialGrouping
 		return nil
 	}
 
-	isAckMine := msg.ImmediateSource == t.id
-	isAckForNotForMe := msg.IsAck && msg.Origin != t.id
+	isAckMine := msg.ImmediateSource == g.id
+	isAckForNotForMe := msg.IsAck && msg.Origin != g.id
 	if isAckMine || isAckForNotForMe {
 		answerMessage(ACK, message)
 		return nil
 	}
 
-	t.log.Warning("Lock")
-	t.mutex.Lock()
-	currentMessageProcessing := t.currentMessageProcessing
-	t.mutex.Unlock()
-	t.log.Warning("Unlock")
+	g.log.Warning("Lock")
+	g.mutex.Lock()
+	currentMessageProcessing := g.currentMessageProcessing
+	g.mutex.Unlock()
+	g.log.Warning("Unlock")
 
 	if currentMessageProcessing.IsFromSameStream(msg.DataType, msg.ClientId) {
-		t.log.Warningf("BEFORE INBOUND %s", msg.DataType)
-		<-t.eofChan
-		t.log.Warningf("AFTER INBOUND %s", msg.DataType)
+		g.log.Warningf("BEFORE INBOUND %s", msg.DataType)
+		<-g.eofChan
+		g.log.Warningf("AFTER INBOUND %s", msg.DataType)
 	}
 
-	msg.ImmediateSource = t.id
+	msg.ImmediateSource = g.id
 	msg.IsAck = true
+
+	g.mutex.Lock()
+	msg.Payload = g.groupedPerClient.Get(msg.ClientId).ToMapString()
+	g.mutex.Unlock()
+
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err
 	}
 
 	answerMessage(ACK, message)
-	t.exchangeHandlers.eofPublishing.Send(msgBytes)
+	g.exchangeHandlers.eofPublishing.Send(msgBytes)
 	return nil
 }
 
