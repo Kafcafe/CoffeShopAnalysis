@@ -158,10 +158,9 @@ func (t *GroupByTopKBestClients) Run() error {
 }
 
 func (t *GroupByTopKBestClients) groupByStore(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
@@ -303,10 +302,9 @@ func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.
 }
 
 func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 	g.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, g.id)
@@ -317,6 +315,7 @@ func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error 
 		g.log.Infof("Partial grouping from %s has size: %.4fMB", msg.ImmediateSource, bytesToMB(size))
 		partialGrouping := structures.NewStoreGroupFromMapString(msg.Payload)
 		g.eofIntercommunicationChan <- partialGrouping
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -348,6 +347,7 @@ func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error 
 
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 

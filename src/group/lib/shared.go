@@ -36,6 +36,7 @@ func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey str
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:
