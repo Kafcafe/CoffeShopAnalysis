@@ -38,6 +38,7 @@ func NewResultsChannels() ResultsChannels {
 }
 
 type QueryID int
+type DataType = string
 
 type ClientHandler struct {
 	protocol           *Protocol
@@ -49,6 +50,7 @@ type ClientHandler struct {
 	mtx                sync.Mutex
 	resultsChans       ResultsChannels
 	sentAllResultsChan chan int
+	emittedCount       map[DataType]int
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -72,6 +74,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		mtx:                sync.Mutex{},
 		resultsChans:       NewResultsChannels(),
 		sentAllResultsChan: make(chan int, 1),
+		emittedCount:       make(map[DataType]int),
 	}
 }
 
@@ -372,12 +375,21 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		return err
 	}
 
+	if _, exists := clh.emittedCount[dataType]; !exists {
+		clh.emittedCount[dataType] = 0
+	}
+
 	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof)
+	if isEof {
+		clh.log.Infof("Dispatching EOF for dataType %s with total emitted %d", dataType, clh.emittedCount[dataType])
+		msg.TotalEmitted = clh.emittedCount[dataType]
+	}
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err
 	}
 
+	clh.emittedCount[dataType] += 1
 	res := middleware.MessageMiddlewareSuccess
 	err = nil
 

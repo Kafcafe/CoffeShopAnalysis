@@ -127,7 +127,7 @@ func (g *GroupByYearmonthWorker) processInboundEof(message amqp.Delivery) error 
 	return nil
 }
 
-func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.Message) {
 	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false, nil)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
@@ -199,12 +199,17 @@ func (g *GroupByYearmonthWorker) initiateEofCoordination(originalMsg middleware.
 
 	g.log.Infof("Final results grouped and consolidated")
 
-	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(originalMsgBytes)
+	originalMsg.TotalEmitted = len(allGroupedByClientTopProfit) + len(allGroupedByClientBestSeller)
+	eofMessageBytes, err := originalMsg.ToBytes()
+	if err != nil {
+		g.log.Errorf("%v", err)
+	}
+	middleError := g.exchangeHandlers.transactionItemsGroupedByYearmonthPublishing.Send(eofMessageBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		g.log.Errorf("problem while propagating EOF")
 	}
 
-	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+	g.log.Warningf("Propagated EOF for %s to next pipeline stage. Total emitted: %d", originalMsg.DataType, originalMsg.TotalEmitted)
 }
 
 func (g *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
@@ -216,7 +221,7 @@ func (g *GroupByYearmonthWorker) groupByYearmonth(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		go g.initiateEofCoordination(*msg, message.Body)
+		go g.initiateEofCoordination(*msg)
 		answerMessage(ACK, message)
 		return nil
 	}
