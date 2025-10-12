@@ -30,3 +30,7 @@ func (cl *ConnectionLimit) Signal() {
 		cl.mtx.Unlock()
 	}
 }
+
+func (cl *ConnectionLimit) Shutdown() {
+	cl.mtx.Unlock()
+}
