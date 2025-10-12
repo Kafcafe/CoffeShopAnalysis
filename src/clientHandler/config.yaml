@@ -3,3 +3,5 @@ server:
   port: "12345"
 log:
   level: "INFO"
+conection:
+  limit: 5

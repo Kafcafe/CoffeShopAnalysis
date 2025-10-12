@@ -49,10 +49,11 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("ClientHandler up with configuration: ip: %s | port: %d | loglevel: %s",
+	logger.Infof("ClientHandler up with configuration: ip: %s | port: %d | loglevel: %s | limit: %d",
 		v.GetString("server.ip"),
 		v.GetInt("server.port"),
 		v.GetString("log.level"),
+		v.GetInt("conection.limit"),
 	)
 
 	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
@@ -90,6 +91,7 @@ func main() {
 		config.GetString("rabbitmq.pass"),
 		config.GetString("rabbitmq.host"),
 		config.GetInt("rabbitmq.port"),
+		config.GetInt("conection.limit"),
 	)
 
 	// Create acceptor without running it yet
