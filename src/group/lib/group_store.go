@@ -133,7 +133,7 @@ func (g *GroupByStoreWorker) processInboundEof(message amqp.Delivery) error {
 	return nil
 }
 
-func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Message) {
 	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false, nil)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
@@ -185,12 +185,17 @@ func (g *GroupByStoreWorker) initiateEofCoordination(originalMsg middleware.Mess
 	}
 	g.log.Infof("Final results grouped and consolidated")
 
-	middleError := g.exchangeHandlers.transactionsGroupedByStorePublishing.Send(originalMsgBytes)
+	originalMsg.TotalEmitted = len(allGroupedByClient)
+	eofMessageBytes, err := originalMsg.ToBytes()
+	if err != nil {
+		g.log.Errorf("%v", err)
+	}
+	middleError := g.exchangeHandlers.transactionsGroupedByStorePublishing.Send(eofMessageBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		g.log.Errorf("problem while propagating EOF")
 	}
 
-	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+	g.log.Warningf("Propagated EOF for %s to next pipeline stage. Total emitted: %d", originalMsg.DataType, originalMsg.TotalEmitted)
 }
 
 func (g *GroupByStoreWorker) groupByStore(message amqp.Delivery) error {
@@ -202,7 +207,7 @@ func (g *GroupByStoreWorker) groupByStore(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		go g.initiateEofCoordination(*msg, message.Body)
+		go g.initiateEofCoordination(*msg)
 		answerMessage(ACK, message)
 		return nil
 	}
