@@ -2,10 +2,9 @@ package structures
 
 type AllowedGroup interface {
 	AddBatch(records []string)
-	Add(record string) error
 	ToMapString() map[string][]string
 	Merge(other AllowedGroup)
-	GetMessageToSend() map[string][]string
+	GetMessageToSend() []map[string][]string
 	FromMapString(data map[string][]string) AllowedGroup
 }
 

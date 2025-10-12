@@ -21,16 +21,6 @@ type MiddlewareHandlers struct {
 	eofSub       middleware.MessageMiddlewareQueue
 }
 
-type GroupByConfig struct {
-	id           string
-	count        int
-	ofType       string
-	prevStageSub string
-	nextStagePub string
-	factory      func() structures.AllowedGroup
-	// messageCallback func(clientId string, payload []string) (grouped []string)
-}
-
 type GroupByGenericWorker struct {
 	log               *logging.Logger
 	middlewareHandler *middleware.MiddlewareHandler
@@ -185,19 +175,21 @@ func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Me
 	}
 
 	messageToSend := currentGroup.GetMessageToSend()
-	for key, records := range messageToSend {
-		singleYearMonthRecords := map[string][]string{key: records}
-		response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false)
-		responseBytes, err := response.ToBytes()
-		if err != nil {
-			g.log.Errorf("%v", err)
-		}
+	for _, messages := range messageToSend {
+		for key, records := range messages {
+			singleYearMonthRecords := map[string][]string{key: records}
+			response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false)
+			responseBytes, err := response.ToBytes()
+			if err != nil {
+				g.log.Errorf("%v", err)
+			}
 
-		g.log.Infof("Sent consolidated results for year-month top profit: %s", key)
+			g.log.Infof("Sent consolidated results for year-month top profit: %s", key)
 
-		middleError := g.exchangeHandlers.nextStagePub.Send(responseBytes)
-		if middleError != middleware.MessageMiddlewareSuccess {
-			g.log.Errorf("problem while sending message to %s", g.conf.nextStagePub)
+			middleError := g.exchangeHandlers.nextStagePub.Send(responseBytes)
+			if middleError != middleware.MessageMiddlewareSuccess {
+				g.log.Errorf("problem while sending message to %s", g.conf.nextStagePub)
+			}
 		}
 	}
 

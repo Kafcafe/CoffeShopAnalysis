@@ -3,6 +3,7 @@ package group
 import (
 	"common/middleware"
 	"fmt"
+	"group/structures"
 
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
@@ -17,6 +18,27 @@ const (
 
 type GroupByWorker interface {
 	Run() error
+}
+
+type GroupByConfig struct {
+	id           string
+	count        int
+	ofType       string
+	prevStageSub string
+	nextStagePub string
+	factory      func() structures.AllowedGroup
+	// messageCallback func(clientId string, payload []string) (grouped []string)
+}
+
+func GroupByYearMonthConfig(groupId string, groupCount int) GroupByConfig {
+	return GroupByConfig{
+		id:           groupId,
+		count:        groupCount,
+		ofType:       GROUP_TYPE_YEARMONTH,
+		prevStageSub: "transactions.items",
+		nextStagePub: "transactions.items.group.yearmonth",
+		factory:      func() structures.AllowedGroup { return structures.NewYearMonthGroup() },
+	}
 }
 
 func CreateGroupByWorker(groupType string,

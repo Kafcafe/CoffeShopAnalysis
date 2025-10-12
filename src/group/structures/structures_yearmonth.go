@@ -25,7 +25,7 @@ func NewYearMonthGroup() YearMonthGroup {
 	return make(YearMonthGroup)
 }
 
-func (g *YearMonthGroup) AddBatch(records []Record) {
+func (g YearMonthGroup) AddBatch(records []Record) {
 	for _, record := range records {
 		g.Add(record)
 	}
@@ -38,15 +38,15 @@ func sumItems(item1, item2 Item) Item {
 	}
 }
 
-func (g *YearMonthGroup) Add(record Record) error {
+func (g YearMonthGroup) Add(record Record) error {
 	parsedRecord, err := parseRecordForYearMonth(record)
 	if err != nil {
 		return err
 	}
 
-	_, exists := (*g)[parsedRecord.yearMonth]
+	_, exists := g[parsedRecord.yearMonth]
 	if !exists {
-		(*g)[parsedRecord.yearMonth] = make(map[ItemID]Item)
+		g[parsedRecord.yearMonth] = make(map[ItemID]Item)
 	}
 
 	item := Item{
@@ -54,11 +54,11 @@ func (g *YearMonthGroup) Add(record Record) error {
 		TotalProfit:   parsedRecord.Profit,
 	}
 
-	existingItem, exists := (*g)[parsedRecord.yearMonth][parsedRecord.ItemID]
+	existingItem, exists := g[parsedRecord.yearMonth][parsedRecord.ItemID]
 	if exists {
-		(*g)[parsedRecord.yearMonth][parsedRecord.ItemID] = sumItems(existingItem, item)
+		g[parsedRecord.yearMonth][parsedRecord.ItemID] = sumItems(existingItem, item)
 	} else {
-		(*g)[parsedRecord.yearMonth][parsedRecord.ItemID] = item
+		g[parsedRecord.yearMonth][parsedRecord.ItemID] = item
 	}
 
 	return nil
@@ -119,10 +119,8 @@ func (g YearMonthGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func NewYearMonthGroupFromMapString(m map[string][]string) YearMonthGroup {
-	g := make(YearMonthGroup)
-
-	for ymStr, itemStrs := range m {
+func (g YearMonthGroup) FromMapString(data map[string][]string) AllowedGroup {
+	for ymStr, itemStrs := range data {
 		ym := YearMonth(ymStr)
 		g[ym] = make(map[ItemID]Item)
 
@@ -149,25 +147,43 @@ func NewYearMonthGroupFromMapString(m map[string][]string) YearMonthGroup {
 	return g
 }
 
-// Merge merges the items from another YearMonthGroup into this one.
-func (g *YearMonthGroup) Merge(other YearMonthGroup) {
-	for ym, items := range other {
+func NewYearMonthGroupFromMapString(m map[string][]string) AllowedGroup {
+	g := make(YearMonthGroup)
+	return g.FromMapString(m)
+}
 
-		if _, exists := (*g)[ym]; !exists {
-			(*g)[ym] = make(map[ItemID]Item)
+// Merge merges the items from another YearMonthGroup into this one.
+func (g YearMonthGroup) Merge(other AllowedGroup) {
+	// TODO: ver si se puede hacer mas lindo :)
+	otherTyped, ok := other.(YearMonthGroup)
+	if !ok {
+		return
+	}
+	for ym, items := range otherTyped {
+
+		if _, exists := g[ym]; !exists {
+			g[ym] = make(map[ItemID]Item)
 		}
 
 		for itemId, item := range items {
-			existing, exists := (*g)[ym][itemId]
+			existing, exists := g[ym][itemId]
 
 			if exists {
-				(*g)[ym][itemId] = sumItems(existing, item)
+				g[ym][itemId] = sumItems(existing, item)
 			} else {
-				(*g)[ym][itemId] = item
+				g[ym][itemId] = item
 			}
 		}
 	}
 }
+
+func (g YearMonthGroup) GetMessageToSend() []map[string][]string {
+	messages := make([]map[string][]string, 0, 2)
+	messages = append(messages, g.GetTopProfit().ToMapString())
+	messages = append(messages, g.GetBestSeller().ToMapString())
+	return messages
+}
+
 func (g YearMonthGroup) GetTopProfit() YearMonthGroup {
 	result := NewYearMonthGroup()
 	for ym, items := range g {
