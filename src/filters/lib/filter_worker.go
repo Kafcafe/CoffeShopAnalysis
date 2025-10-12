@@ -88,7 +88,7 @@ func CreateFilterWorker(filterType string,
 	case FILTER_TYPE_AMOUNT:
 		config = FilterByAmountConfig(filterId, filterCount, amountConfig)
 	default:
-		return nil, fmt.Errorf("Unknown filter type: %s", filterType)
+		return nil, fmt.Errorf("unknown filter type: %s", filterType)
 	}
 
 	filterWorker, err := NewFilterGenericWorker(rabbitConf, config)

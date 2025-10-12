@@ -99,7 +99,7 @@ func (f *FilterGenericWorker) createExchangeHandlers() error {
 		f.log.Infof("Next stage publishing for datatype %s on routeKey %s", datatype, routeKey)
 		exchange, err := f.middlewareHandler.CreateDirectExchangeStandalone(routeKey)
 		if err != nil {
-			return fmt.Errorf("Error creating exchange handler for %s: %v", routeKey, err)
+			return fmt.Errorf("error creating exchange handler for %s: %v", routeKey, err)
 		}
 		nextStagePubs[datatype] = *exchange
 	}
