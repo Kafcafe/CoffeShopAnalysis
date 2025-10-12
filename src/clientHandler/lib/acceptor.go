@@ -21,10 +21,11 @@ type Acceptor struct {
 	config            AcceptorConfig
 	listener          net.Listener
 	isRunning         bool
-	currClient        *ClientHandler
+	currClient        map[ClientUuid]*ClientHandler
 	sigChan           chan os.Signal
 	log               *logging.Logger
 	middlewareHandler *middleware.MiddlewareHandler
+	limitHandler      *ConnectionLimit
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -75,10 +76,11 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 		config:            *acceptorConfig,
 		listener:          listener,
 		isRunning:         true,
-		currClient:        nil,
+		currClient:        make(map[ClientUuid]*ClientHandler),
 		sigChan:           make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
 		log:               log,
 		middlewareHandler: middlewareHandler,
+		limitHandler:      NewConnectionLimit(acceptorConfig.connectionLimit),
 	}
 
 	// Set up signal notification for graceful shutdown
@@ -188,7 +190,7 @@ func (a *Acceptor) Run() error {
 		a.log.Info("Waiting for a new client connection...")
 
 		/// In case the limit is reached, it will block here
-		// a.limitHandler.Wait()
+		a.limitHandler.Wait()
 		conn, err := a.listener.Accept()
 
 		if err != nil {
@@ -201,6 +203,7 @@ func (a *Acceptor) Run() error {
 		if err != nil {
 			a.log.Errorf("Error creating new client: %v", err)
 		}
+
 	}
 
 	return nil
@@ -217,13 +220,26 @@ func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	newClient := NewClientHandler(conn, newId, *exchangeHandlers)
+	newClient := NewClientHandler(conn, newId, *exchangeHandlers, a.limitHandler)
 
 	a.log.Infof("Assigned client id %s with short form %s", newClient, newId.Short)
 
-	err = newClient.Handle()
+	go newClient.Handle()
 
-	return err
+	a.removeClients()
+
+	a.currClient[newId] = newClient
+
+	return nil
+}
+
+func (a *Acceptor) removeClients() {
+	for id, client := range a.currClient {
+		if !client.IsRunning() {
+			a.log.Infof("Removing client %s", id.Short)
+			delete(a.currClient, id)
+		}
+	}
 }
 
 // Shutdown gracefully stops the acceptor, closing the listener and current client.
@@ -234,11 +250,11 @@ func (a *Acceptor) Shutdown() {
 		a.listener.Close()
 	}
 
-	// for _, client := range a.currClients {
-	// 	client.Shutdown()
-	// }
-
-	a.currClient.Shutdown()
+	for _, client := range a.currClient {
+		if client.IsRunning() {
+			client.Shutdown()
+		}
+	}
 
 	a.middlewareHandler.Close()
 
