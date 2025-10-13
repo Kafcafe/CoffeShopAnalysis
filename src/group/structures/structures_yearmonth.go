@@ -17,8 +17,6 @@ type Item struct {
 
 type ItemID string
 
-type GroupedPerClient map[ClientId]YearMonthGroup
-
 type YearMonthGroup map[YearMonth]map[ItemID]Item
 
 func NewYearMonthGroup() YearMonthGroup {
@@ -27,7 +25,7 @@ func NewYearMonthGroup() YearMonthGroup {
 
 func (g YearMonthGroup) AddBatch(records []Record) {
 	for _, record := range records {
-		g.Add(record)
+		g.add(record)
 	}
 }
 
@@ -38,7 +36,7 @@ func sumItems(item1, item2 Item) Item {
 	}
 }
 
-func (g YearMonthGroup) Add(record Record) error {
+func (g YearMonthGroup) add(record Record) error {
 	parsedRecord, err := parseRecordForYearMonth(record)
 	if err != nil {
 		return err
@@ -147,11 +145,6 @@ func (g YearMonthGroup) FromMapString(data map[string][]string) AllowedGroup {
 	return g
 }
 
-func NewYearMonthGroupFromMapString(m map[string][]string) AllowedGroup {
-	g := make(YearMonthGroup)
-	return g.FromMapString(m)
-}
-
 // Merge merges the items from another YearMonthGroup into this one.
 func (g YearMonthGroup) Merge(other AllowedGroup) {
 	// TODO: ver si se puede hacer mas lindo :)
@@ -179,12 +172,12 @@ func (g YearMonthGroup) Merge(other AllowedGroup) {
 
 func (g YearMonthGroup) GetMessageToSend() []map[string][]string {
 	messages := make([]map[string][]string, 0, 2)
-	messages = append(messages, g.GetTopProfit().ToMapString())
-	messages = append(messages, g.GetBestSeller().ToMapString())
+	messages = append(messages, g.getTopProfit().ToMapString())
+	messages = append(messages, g.getBestSeller().ToMapString())
 	return messages
 }
 
-func (g YearMonthGroup) GetTopProfit() YearMonthGroup {
+func (g YearMonthGroup) getTopProfit() YearMonthGroup {
 	result := NewYearMonthGroup()
 	for ym, items := range g {
 		if len(items) == 0 {
@@ -209,7 +202,7 @@ func (g YearMonthGroup) GetTopProfit() YearMonthGroup {
 	return result
 }
 
-func (g YearMonthGroup) GetBestSeller() YearMonthGroup {
+func (g YearMonthGroup) getBestSeller() YearMonthGroup {
 	result := NewYearMonthGroup()
 	for ym, items := range g {
 		if len(items) == 0 {
@@ -232,50 +225,4 @@ func (g YearMonthGroup) GetBestSeller() YearMonthGroup {
 		}
 	}
 	return result
-}
-
-func NewGroupedPerClient() GroupedPerClient {
-	return make(GroupedPerClient)
-}
-
-func (g *GroupedPerClient) Add(clientId string, records []Record) {
-	// If the client's group doesn't exist yet, initialize it
-	group, ok := (*g)[clientId]
-	if !ok {
-		group = NewYearMonthGroup()
-	}
-
-	// Use pointer receiver so AddBatch modifies the existing group
-	group.AddBatch(records)
-
-	// Store it back
-	(*g)[clientId] = group
-}
-
-func (g *GroupedPerClient) Get(clientId string) YearMonthGroup {
-	if group, ok := (*g)[clientId]; ok {
-		return group
-	}
-	// return an empty group (safe to use immediately)
-	return NewYearMonthGroup()
-}
-
-func (g *GroupedPerClient) Delete(clientId string) {
-	delete(*g, clientId)
-}
-
-func (g *GroupedPerClient) GetTopProfit(clientId string) YearMonthGroup {
-	if group, ok := (*g)[clientId]; ok {
-		return group.GetTopProfit()
-	}
-	// return an empty group (safe to use immediately)
-	return NewYearMonthGroup()
-}
-
-func (g *GroupedPerClient) GetBestSeller(clientId string) YearMonthGroup {
-	if group, ok := (*g)[clientId]; ok {
-		return group.GetBestSeller()
-	}
-	// return an empty group (safe to use immediately)
-	return NewYearMonthGroup()
 }

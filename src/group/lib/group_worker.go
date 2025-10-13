@@ -75,11 +75,6 @@ func CreateGroupByWorker(groupType string,
 		if err != nil {
 			return nil, err
 		}
-	case GROUP_TYPE_STORE:
-		groupByWorker, err = NewGroupByStoreWorker(rabbitConf, groupId, groupCount)
-		if err != nil {
-			return nil, err
-		}
 	case GROUP_TYPE_TOPK:
 		Kconfig := envConfig.GetInt("k")
 		logger.Infof("GroupBy type %s using k: %d", GROUP_TYPE_TOPK, Kconfig)
@@ -88,7 +83,7 @@ func CreateGroupByWorker(groupType string,
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("Unknown groupBy type: %s", groupType)
+		return nil, fmt.Errorf("unknown groupBy type: %s", groupType)
 	}
 
 	return &groupByWorker, nil
