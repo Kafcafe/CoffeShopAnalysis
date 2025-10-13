@@ -23,16 +23,6 @@ default: build
 all:
 
 # ==============================================================================
-# DEPENDENCIES & SETUP
-# ==============================================================================
-
-# Install and organize Go module dependencies
-# Runs go mod tidy to clean up dependencies and go mod vendor to create vendor directory
-deps:
-	go mod tidy
-	go mod vendor
-
-# ==============================================================================
 # DOCKER IMAGE BUILDING
 # ==============================================================================
 
