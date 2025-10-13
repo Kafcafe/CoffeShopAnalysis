@@ -110,7 +110,7 @@ func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.Middlewa
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
-	resultsSubscriptionRouteKey := fmt.Sprintf("results.%s", newId.Short)
+	resultsSubscriptionRouteKey := fmt.Sprintf("results.%s", newId.Full)
 	resultsSubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)

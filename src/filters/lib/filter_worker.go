@@ -57,13 +57,11 @@ func FilterByHourConfig(filterId string, filterCount int, hourConfig HourFilterC
 
 func FilterByAmountConfig(filterId string, filterCount int, amountConfig AmountFilterConfig) FilterConfig {
 	return FilterConfig{
-		id:           filterId,
-		ofType:       FILTER_TYPE_AMOUNT,
-		filtersCount: filterCount,
-		prevStageSub: "transactions.year-hour-filtered.all",
-		nextStagePubs: map[string]string{
-			"transactions": "results.q1",
-		},
+		id:            filterId,
+		ofType:        FILTER_TYPE_AMOUNT,
+		filtersCount:  filterCount,
+		prevStageSub:  "transactions.year-hour-filtered.all",
+		nextStagePubs: map[string]string{},
 		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
 			return filter.FilterByAmount(batch, amountConfig.MinAmount)
 		},
