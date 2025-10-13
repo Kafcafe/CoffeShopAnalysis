@@ -83,20 +83,22 @@ func (g *GroupByGenericWorker) handleSignal() {
 }
 
 func (g *GroupByGenericWorker) processInboundEof(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 	g.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, g.conf.id)
 
 	didSomebodyElseAcked := msg.Origin == g.conf.id && msg.IsAck && msg.ImmediateSource != g.conf.id
 	if didSomebodyElseAcked {
+		g.log.Infof("Somebody else acked for %s groupBy%s", msg.DataType, g.conf.id)
 		partialGrouping := g.conf.factory()
 		partialGrouping.FromMapString(msg.Payload)
+
 		g.log.Infof("%v", partialGrouping)
 		g.eofIntercommunicationChan <- partialGrouping
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -128,6 +130,7 @@ func (g *GroupByGenericWorker) processInboundEof(message amqp.Delivery) error {
 
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
@@ -175,6 +178,7 @@ func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Me
 	}
 
 	messageToSend := currentGroup.GetMessageToSend()
+	emitted := 0
 	for _, messages := range messageToSend {
 		for key, records := range messages {
 			singleYearMonthRecords := map[string][]string{key: records}
@@ -187,6 +191,7 @@ func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Me
 			g.log.Infof("Sent consolidated results for year-month top profit: %s", key)
 
 			middleError := g.exchangeHandlers.nextStagePub.Send(responseBytes)
+			emitted++
 			if middleError != middleware.MessageMiddlewareSuccess {
 				g.log.Errorf("problem while sending message to %s", g.conf.nextStagePub)
 			}
@@ -195,7 +200,7 @@ func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Me
 
 	g.log.Infof("Final results grouped and consolidated")
 
-	originalMsg.TotalEmitted = len(messageToSend)
+	originalMsg.TotalEmitted = emitted
 	eofMessageBytes, err := originalMsg.ToBytes()
 	if err != nil {
 		g.log.Errorf("%v", err)
@@ -241,47 +246,56 @@ func (g *GroupByGenericWorker) groupByYearmonth(message amqp.Delivery) error {
 
 func (g *GroupByGenericWorker) createExchangeHandlers() error {
 	// PREV STAGE SUB
+	g.log.Infof("Creating exchange handler for previous stage subscription: %s", g.conf.prevStageSub)
 	_, err := g.middlewareHandler.CreateDirectExchangeStandalone(g.conf.prevStageSub)
 	if err != nil {
 		return fmt.Errorf("error creating previous stage subscription exchange: %v", err)
 	}
 
 	// this name is just for identification purposes
+	g.log.Infof("Creating queue handler for previous stage subscription: %s", g.conf.prevStageSub)
 	prevStageQueueName := fmt.Sprintf("%s.%s", g.conf.prevStageSub, g.conf.ofType)
 	prevStageSub, err := g.middlewareHandler.CreateQueue(prevStageQueueName)
 	if err != nil {
 		return fmt.Errorf("error creating queue for previous stage: %v", err)
 	}
 
+	g.log.Infof("Binding queue handler for previous stage subscription: %s", g.conf.prevStageSub)
 	err = g.middlewareHandler.BindQueue(prevStageQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, g.conf.prevStageSub)
 	if err != nil {
 		return fmt.Errorf("error binding queue for previous stage: %v", err)
 	}
 
 	// NEXT STAGE PUB
+	g.log.Infof("Creating exchange handler for next stage publication: %s", g.conf.nextStagePub)
 	nextStagePub, err := g.middlewareHandler.CreateDirectExchangeStandalone(g.conf.nextStagePub)
 	if err != nil {
 		return fmt.Errorf("error creating exchange handler for transactions.items: %v", err)
 	}
 
 	// EOF PUB/SUB
+	g.log.Infof("Creating exchange and queue handlers for EOF coordination for groupBy %s", g.conf.ofType)
 	eofPubRouteKey := fmt.Sprintf("eof.group.%s", g.conf.ofType)
 	eofPub, err := g.middlewareHandler.CreateFanoutExchangeStandalone(eofPubRouteKey)
 	if err != nil {
 		return fmt.Errorf("error creating exchange handler for eof.group.yearmonth: %v", err)
 	}
 
+	// this name is just for identification purposes
+	g.log.Infof("Creating queue handler for EOF coordination for groupBy %s", g.conf.ofType)
 	eofSubQueueName := fmt.Sprintf("eof.group.%s.%s", g.conf.ofType, g.conf.id)
 	eofSub, err := g.middlewareHandler.CreateQueue(eofSubQueueName)
 	if err != nil {
 		return fmt.Errorf("error creating queue for eof.group.yearmonth: %v", err)
 	}
 
-	err = g.middlewareHandler.BindQueue(eofSubQueueName, middleware.EXCHANGE_NAME_FANOUT_TYPE, eofPubRouteKey)
+	g.log.Infof("Binding queue handler for EOF coordination for groupBy %s", g.conf.ofType)
+	err = g.middlewareHandler.BindQueue(eofSubQueueName, eofPubRouteKey, "")
 	if err != nil {
 		return fmt.Errorf("error binding queue for eof.group.yearmonth: %v", err)
 	}
 
+	g.log.Info("Exchange handlers successfully created")
 	g.exchangeHandlers = MiddlewareHandlers{
 		prevStageSub: *prevStageSub,
 		nextStagePub: *nextStagePub,
@@ -301,6 +315,7 @@ func (g *GroupByGenericWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
+	g.log.Infof("Starting to consume messages from %s", g.conf.prevStageSub)
 	g.exchangeHandlers.prevStageSub.StartConsuming(g.groupByYearmonth, g.errChan)
 	g.exchangeHandlers.eofSub.StartConsuming(g.processInboundEof, g.errChan)
 

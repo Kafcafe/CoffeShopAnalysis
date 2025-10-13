@@ -18,7 +18,7 @@ func NewSemesterGroup() SemesterGroup {
 	return make(SemesterGroup)
 }
 
-func (g *SemesterGroup) AddBatch(records []Record) {
+func (g SemesterGroup) AddBatch(records []Record) {
 	for _, record := range records {
 		g.Add(record)
 	}
@@ -67,29 +67,33 @@ func (g SemesterGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func (g *SemesterGroup) Merge(other SemesterGroup) {
-	for sem, stores := range other {
+func (g SemesterGroup) Merge(other AllowedGroup) {
+	otherTyped, ok := other.(SemesterGroup)
+	if !ok {
+		return
+	}
 
-		if _, exists := (*g)[sem]; !exists {
-			(*g)[sem] = make(map[StoreID]TPV)
+	// Merge the two maps
+	for sem, stores := range otherTyped {
+
+		if _, exists := g[sem]; !exists {
+			g[sem] = make(map[StoreID]TPV)
 		}
 
 		for storeId, tpv := range stores {
-			existing, exists := (*g)[sem][storeId]
+			existing, exists := g[sem][storeId]
 
 			if exists {
-				(*g)[sem][storeId] = sumTpv(existing, float64(tpv))
+				g[sem][storeId] = sumTpv(existing, float64(tpv))
 			} else {
-				(*g)[sem][storeId] = tpv
+				g[sem][storeId] = tpv
 			}
 		}
 	}
 }
 
-func NewSemesterGroupFromMapString(m map[string][]string) SemesterGroup {
-	g := make(SemesterGroup)
-
-	for semStr, storeStrs := range m {
+func (g SemesterGroup) FromMapString(data map[string][]string) AllowedGroup {
+	for semStr, storeStrs := range data {
 		sem := Semester(semStr)
 		g[sem] = make(map[StoreID]TPV)
 
@@ -108,6 +112,18 @@ func NewSemesterGroupFromMapString(m map[string][]string) SemesterGroup {
 			g[sem][storeId] = TPV(tpv)
 		}
 	}
+	return g
+}
+
+func (g SemesterGroup) GetMessageToSend() []map[string][]string {
+	messages := make([]map[string][]string, 0, 1)
+	messages = append(messages, g.ToMapString())
+	return messages
+}
+
+func NewSemesterGroupFromMapString(m map[string][]string) SemesterGroup {
+	g := make(SemesterGroup)
+	g.FromMapString(m)
 	return g
 }
 

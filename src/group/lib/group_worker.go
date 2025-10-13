@@ -27,7 +27,6 @@ type GroupByConfig struct {
 	prevStageSub string
 	nextStagePub string
 	factory      func() structures.AllowedGroup
-	// messageCallback func(clientId string, payload []string) (grouped []string)
 }
 
 func GroupByYearMonthConfig(groupId string, groupCount int) GroupByConfig {
@@ -38,6 +37,17 @@ func GroupByYearMonthConfig(groupId string, groupCount int) GroupByConfig {
 		prevStageSub: "transactions.items",
 		nextStagePub: "transactions.items.group.yearmonth",
 		factory:      func() structures.AllowedGroup { return structures.NewYearMonthGroup() },
+	}
+}
+
+func GroupBySemesterConfig(groupId string, groupCount int) GroupByConfig {
+	return GroupByConfig{
+		id:           groupId,
+		count:        groupCount,
+		ofType:       GROUP_TYPE_SEMESTER,
+		prevStageSub: "transactions.year-hour-filtered.all",
+		nextStagePub: "transactions.transactions.group.semester",
+		factory:      func() structures.AllowedGroup { return structures.NewSemesterGroup() },
 	}
 }
 
@@ -54,12 +64,14 @@ func CreateGroupByWorker(groupType string,
 
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:
-		groupByWorker, err = NewGroupByYearmonthWorker(rabbitConf, groupId, groupCount)
+		config := GroupByYearMonthConfig(groupId, groupCount)
+		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
 		}
 	case GROUP_TYPE_SEMESTER:
-		groupByWorker, err = NewGroupBySemesterWorker(rabbitConf, groupId, groupCount)
+		config := GroupBySemesterConfig(groupId, groupCount)
+		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
 		}
