@@ -31,7 +31,7 @@ type JoinGenericWorker struct {
 type JoinMiddlewareHandlers struct {
 	prevStageSub      middleware.MessageMiddlewareQueue
 	sideTableSub      middleware.MessageMiddlewareQueue
-	nextStagePub      middleware.MessageMiddlewareExchange
+	nextStagePubs     map[string]middleware.MessageMiddlewareExchange
 	broadcastCountPub middleware.MessageMiddlewareExchange
 	broadcastCountSub middleware.MessageMiddlewareQueue
 }
@@ -39,7 +39,9 @@ type JoinMiddlewareHandlers struct {
 func (mh *JoinMiddlewareHandlers) Shutdown() {
 	mh.prevStageSub.Close()
 	mh.sideTableSub.Close()
-	mh.nextStagePub.Close()
+	for _, nextStagePub := range mh.nextStagePubs {
+		nextStagePub.Close()
+	}
 	mh.broadcastCountPub.Close()
 	mh.broadcastCountSub.Close()
 }
@@ -124,10 +126,12 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 	}
 
 	// NEXT STAGE PUB
-	nextStagePub, err := j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.nextStagePub)
+	nextStagePubs := make(map[string]middleware.MessageMiddlewareExchange)
+	nextStagePub, err := j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.nextStagePubs[j.conf.ofType])
 	if err != nil {
 		return fmt.Errorf("error creating exchange handler for results.q2: %v", err)
 	}
+	nextStagePubs[j.conf.ofType] = *nextStagePub
 
 	// BROADCAST COUNT PUB/SUB
 	j.log.Infof("Setting up count PUB for filter %s", j.conf.id)
@@ -152,7 +156,75 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 	j.middlewareHandlers = JoinMiddlewareHandlers{
 		prevStageSub:      *prevStageSub,
 		sideTableSub:      *sideTableSub,
-		nextStagePub:      *nextStagePub,
+		nextStagePubs:     nextStagePubs,
+		broadcastCountPub: *broadcastCountPub,
+		broadcastCountSub: *broadcastCountSub,
+	}
+	return nil
+}
+
+func (j *JoinGenericWorker) createExchangeHandlersForFinalStage() error {
+	// PREV STAGE SUB
+	_, err := j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.prevStageSub)
+	if err != nil {
+		return fmt.Errorf("error creating exchange handler for results.q2: %v", err)
+	}
+
+	// this name is just for identification purposes
+	prevStageSubQueueName := j.conf.prevStageSub + "." + j.conf.ofType
+	prevStageSub, err := j.middlewareHandler.CreateQueue(prevStageSubQueueName)
+	if err != nil {
+		return fmt.Errorf("error creating queue handler for %s: %v", prevStageSubQueueName, err)
+	}
+
+	err = j.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, j.conf.prevStageSub)
+	if err != nil {
+		return fmt.Errorf("error preparing queue for transactions: %v", err)
+	}
+
+	// SIDE TABLE SUB
+	_, err = j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.sideTableSub)
+	if err != nil {
+		return fmt.Errorf("error creating exchange handler for %s: %v", j.conf.sideTableSub, err)
+	}
+
+	queueName := fmt.Sprintf("%s.%s.%s", j.conf.sideTableSub, j.conf.ofType, j.conf.id)
+	sideTableSub, err := j.middlewareHandler.CreateQueue(queueName)
+	if err != nil {
+		return fmt.Errorf("error creating queue handler for %s: %v", queueName, err)
+	}
+
+	err = j.middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, j.conf.sideTableSub)
+	if err != nil {
+		return fmt.Errorf("error preparing side table queue for %s: %v", j.conf.ofType, err)
+	}
+
+	// NEXT STAGE PUB
+
+	// BROADCAST COUNT PUB/SUB
+	j.log.Infof("Setting up count PUB for filter %s", j.conf.id)
+	broadcastCountPubRoutKey := fmt.Sprintf("filters.%s.count", j.conf.ofType)
+	broadcastCountPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastCountPubRoutKey)
+	if err != nil {
+		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastCountPubRoutKey, err)
+	}
+
+	j.log.Infof("Setting up count SUB for filter %s", j.conf.id)
+	broadcastCountSubQueueName := fmt.Sprintf("filters.%s.count.%s", j.conf.ofType, j.conf.id)
+	broadcastCountSub, err := j.middlewareHandler.CreateQueue(broadcastCountSubQueueName)
+	if err != nil {
+		return fmt.Errorf("error creating count queue for %s: %v", broadcastCountSubQueueName, err)
+	}
+	err = j.middlewareHandler.BindQueue(broadcastCountSubQueueName, broadcastCountPubRoutKey, "")
+
+	if err != nil {
+		return fmt.Errorf("error preparing count queue for %s: %v", j.conf.ofType, err)
+	}
+
+	j.middlewareHandlers = JoinMiddlewareHandlers{
+		prevStageSub:      *prevStageSub,
+		sideTableSub:      *sideTableSub,
+		nextStagePubs:     make(map[string]middleware.MessageMiddlewareExchange),
 		broadcastCountPub: *broadcastCountPub,
 		broadcastCountSub: *broadcastCountSub,
 	}
@@ -166,6 +238,15 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return err
 	}
 
+	switch j.conf.ofType {
+	case JOIN_ITEMS_TYPE:
+		msg.QueryId = 2
+	case JOIN_STORE_Q3_TYPE:
+		msg.QueryId = 3
+	case JOIN_USERS_TYPE:
+		msg.QueryId = 4
+	}
+
 	if !msg.IsEof {
 		j.log.Debugf("Received payload: %v", msg.Payload)
 		j.sideTable = j.conf.messageCallbackUpdateSideTable(j.sideTable, msg.Payload)
@@ -176,31 +257,39 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 
 	j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF", msg.DataType, j.conf.id)
 
-	sideTableMessage := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false)
-	err = j.sendNextStage(*sideTableMessage)
+	sideTableMessage := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false, msg.QueryId)
+	destinationRouteKey, err := j.sendNextStage(*sideTableMessage)
 	if err != nil {
 		answerMessage(NACK_REQUEUE, message)
 		return err
 	}
 
 	msg.TotalEmitted = 1
-	err = j.sendNextStage(*msg)
+	destinationRouteKey, err = j.sendNextStage(*msg)
 	if err != nil {
 		j.log.Errorf("Failed to send EOF to next stage: %v", err)
 		answerMessage(NACK_REQUEUE, message)
 		return err
 	}
-	j.log.Infof("Sent side table and EOF to next stage: %s", j.conf.nextStagePub)
+	j.log.Infof("Sent side table and EOF to next stage: %s", destinationRouteKey)
 	answerMessage(ACK, message)
 	return nil
 }
 
 func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
-
 	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
 		return err
+	}
+
+	switch j.conf.ofType {
+	case JOIN_ITEMS_TYPE:
+		msg.QueryId = 2
+	case JOIN_STORE_Q3_TYPE:
+		msg.QueryId = 3
+	case JOIN_USERS_TYPE:
+		msg.QueryId = 4
 	}
 
 	if msg.IsEof {
@@ -214,7 +303,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	joined := j.conf.messageCallback(NewJoiner(), j.sideTable, msg.Payload)
 	j.log.Infof("Joined %v items", len(joined))
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true)
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
 	err = j.sendProcessedMessage(msgProcessed)
 	if err != nil {
 		j.log.Errorf("Failed to send processed count message: %v", err)
@@ -222,8 +311,8 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return err
 	}
 
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, false)
-	err = j.sendNextStage(*response)
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, false, msg.QueryId)
+	destinationRouteKey, err := j.sendNextStage(*response)
 	if err != nil {
 		j.log.Errorf("Failed to send joined message to next stage: %v", err)
 		answerMessage(NACK_DISCARD, message)
@@ -231,7 +320,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	}
 
 	answerMessage(ACK, message)
-	j.log.Infof("Joined message and sent to next stage: %s", j.conf.nextStagePub)
+	j.log.Infof("Joined message and sent to next stage: %s", destinationRouteKey)
 	return nil
 }
 
@@ -250,14 +339,14 @@ func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg mi
 
 	// update emitted count
 	eofMsg.TotalEmitted = clientStats.GetEmitted(eofMsg.DataType)
-	err := j.sendNextStage(eofMsg)
+	destinationRouteKey, err := j.sendNextStage(eofMsg)
 	if err != nil {
 		j.log.Errorf("Failed to send EOF message to next stage: %v", err)
 		answerMessage(NACK_DISCARD, eofMessage)
 		return
 	}
 	answerMessage(ACK, eofMessage)
-	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
+	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s to %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, destinationRouteKey, eofMsg.TotalEmitted)
 }
 
 func (j *JoinGenericWorker) sendProcessedMessage(msgProcessed *middleware.MessageProcessed) error {
@@ -272,13 +361,38 @@ func (j *JoinGenericWorker) sendProcessedMessage(msgProcessed *middleware.Messag
 	return nil
 }
 
-func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) error {
+func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextStagePubRouteKey string, err error) {
 	msgBytes, err := msgToSend.ToBytes()
 	if err != nil {
-		return err
+		return "", err
 	}
-	j.middlewareHandlers.nextStagePub.Send(msgBytes)
-	return nil
+
+	var nextStagePub middleware.MessageMiddlewareExchange
+	var exists bool
+	var routeKey string
+
+	if j.conf.ofType == JOIN_STORE_TYPE {
+		nextStagePub, exists = j.middlewareHandlers.nextStagePubs[j.conf.ofType]
+		if !exists {
+			return "", fmt.Errorf("received unprocessabble message in sendNextStage of type %s", msgToSend.DataType)
+		}
+		routeKey = j.conf.nextStagePubs[j.conf.ofType]
+	} else {
+		nextStagePub, exists = j.middlewareHandlers.nextStagePubs[msgToSend.ClientId]
+		if !exists {
+			routeKey = fmt.Sprintf("results.%s", msgToSend.ClientId)
+			j.log.Infof("Next stage publishing for datatype %s on routeKey %s", msgToSend.DataType, routeKey)
+			exchange, err := j.middlewareHandler.CreateDirectExchangeStandalone(routeKey)
+			if err != nil {
+				return "", fmt.Errorf("error creating exchange handler for %s: %v", routeKey, err)
+			}
+			j.middlewareHandlers.nextStagePubs[msgToSend.ClientId] = *exchange
+			nextStagePub = *exchange
+		}
+	}
+
+	nextStagePub.Send(msgBytes)
+	return routeKey, nil
 }
 
 func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
@@ -338,9 +452,16 @@ func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
 func (j *JoinGenericWorker) Run() error {
 	go j.handleSignal()
 
-	err := j.createExchangeHandlers()
-	if err != nil {
-		return fmt.Errorf("failed to create exchange handlers: %v", err)
+	if j.conf.ofType == JOIN_STORE_TYPE {
+		err := j.createExchangeHandlers()
+		if err != nil {
+			return fmt.Errorf("failed to create exchange handlers: %v", err)
+		}
+	} else {
+		err := j.createExchangeHandlersForFinalStage()
+		if err != nil {
+			return fmt.Errorf("failed to create exchange handlers: %v", err)
+		}
 	}
 
 	j.log.Info("Waiting to receive side table...")
