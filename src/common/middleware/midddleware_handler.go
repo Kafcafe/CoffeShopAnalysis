@@ -35,6 +35,13 @@ func NewMiddlewareHandler(rabbitConn *RabbitConnection) (*MiddlewareHandler, err
 	}, nil
 }
 
+func (mh *MiddlewareHandler) CloseChannel() error {
+	if err := mh.Channel.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (mh *MiddlewareHandler) Close() error {
 	if err := mh.Channel.Close(); err != nil {
 		return err

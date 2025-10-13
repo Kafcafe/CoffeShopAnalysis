@@ -25,9 +25,9 @@ def _compare_sets(name, current_set, expected_set, sample_size=3):
     print()  # línea vacía para separación visual
 
 
-def compare_results_q1():
+def compare_results_q1(client_id):
     name = "results_q1"
-    current_results = "./results/results_q1.txt"
+    current_results = "./results/results_q1_2.txt"
     expected_results = "./scripts/expected_results/results_q1.csv"
 
     lines_current_results = set()
@@ -49,9 +49,9 @@ def compare_results_q1():
     _compare_sets(name, lines_current_results, lines_expected_results)
 
 
-def compare_results_q2_top_earners():
+def compare_results_q2_top_earners(client_id):
     name = "results_q2_top_earners"
-    current_results_path = "./results/results_q2.txt"
+    current_results_path = f"./results/results_q2_{client_id}.txt"
     expected_results_path = "./scripts/expected_results/results_q2_top_earners.csv"
 
     current_results = set()
@@ -73,9 +73,9 @@ def compare_results_q2_top_earners():
     _compare_sets(name, current_results, expected_results)
 
 
-def compare_results_q2_best_sellers():
+def compare_results_q2_best_sellers(client_id):
     name = "results_q2_best_sellers"
-    current_results_path = "./results/results_q2.txt"
+    current_results_path = f"./results/results_q2_{client_id}.txt"
     expected_results_path = "./scripts/expected_results/results_q2_best_sellers.csv"
 
     current_results = set()
@@ -97,9 +97,9 @@ def compare_results_q2_best_sellers():
     _compare_sets(name, current_results, expected_results)
 
 
-def compare_results_q3():
+def compare_results_q3(client_id):
     name = "results_q3"
-    current_results_path = "./results/results_q3.txt"
+    current_results_path = f"./results/results_q3_{client_id}.txt"
     expected_results_path = "./scripts/expected_results/results_q3.csv"
 
     def parse_line(line: str) -> str:
@@ -121,9 +121,9 @@ def compare_results_q3():
     _compare_sets(name, current_results, expected_results)
 
 
-def compare_results_q4():
+def compare_results_q4(client_id):
     name = "results_q4"
-    current_results_path = "./results/results_q4.txt"
+    current_results_path = f"./results/results_q4_{client_id}.txt"
     expected_results_path = "./scripts/expected_results/results_q4.csv"
 
     def parse_line(line: str) -> str:
@@ -147,8 +147,9 @@ def compare_results_q4():
     _compare_sets(name, current_results, expected_results)
 
 if __name__ == "__main__":
-    compare_results_q1()
-    compare_results_q2_top_earners()
-    compare_results_q2_best_sellers()
-    compare_results_q3()
-    compare_results_q4()
+    client_id = 2
+    compare_results_q1(client_id)
+    compare_results_q2_top_earners(client_id)
+    compare_results_q2_best_sellers(client_id)
+    compare_results_q3(client_id)
+    compare_results_q4(client_id)

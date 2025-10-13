@@ -18,14 +18,14 @@ const (
 )
 
 type Acceptor struct {
-	config            AcceptorConfig
-	listener          net.Listener
-	isRunning         bool
-	currClient        map[ClientUuid]*ClientHandler
-	sigChan           chan os.Signal
-	log               *logging.Logger
-	middlewareHandler *middleware.MiddlewareHandler
-	limitHandler      *ConnectionLimit
+	config       AcceptorConfig
+	listener     net.Listener
+	isRunning    bool
+	currClient   map[ClientUuid]*ClientHandler
+	sigChan      chan os.Signal
+	log          *logging.Logger
+	rabbitConn   *middleware.RabbitConnection
+	limitHandler *ConnectionLimit
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -64,23 +64,18 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
 
-	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create middleware handler: %v", err)
-	}
-
 	log.Info("Connection with RabbitMQ successfully established")
 	log.Infof("Server listening on address %s", listenAddr)
 
 	acceptor := &Acceptor{
-		config:            *acceptorConfig,
-		listener:          listener,
-		isRunning:         true,
-		currClient:        make(map[ClientUuid]*ClientHandler),
-		sigChan:           make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
-		log:               log,
-		middlewareHandler: middlewareHandler,
-		limitHandler:      NewConnectionLimit(acceptorConfig.connectionLimit),
+		config:       *acceptorConfig,
+		listener:     listener,
+		isRunning:    true,
+		currClient:   make(map[ClientUuid]*ClientHandler),
+		sigChan:      make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
+		log:          log,
+		limitHandler: NewConnectionLimit(acceptorConfig.connectionLimit),
+		rabbitConn:   rabbitConn,
 	}
 
 	// Set up signal notification for graceful shutdown
@@ -89,11 +84,11 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 	return acceptor, nil
 }
 
-func (a *Acceptor) createExchangeHandler(routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
+func (a *Acceptor) createExchangeHandler(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
 	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
-		return a.middlewareHandler.CreateDirectExchange(routeKey)
+		return middlewareHandler.CreateDirectExchange(routeKey)
 	}
-	return a.middlewareHandler.CreateTopicExchange(routeKey)
+	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
 type ExchangeHandlers struct {
@@ -118,51 +113,52 @@ type ExchangeHandlers struct {
 	resultsQ4Subscription middleware.MessageMiddlewareExchange
 }
 
-func (a *Acceptor) createExchangeHandlers() (*ExchangeHandlers, error) {
+func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.MiddlewareHandler) (*ExchangeHandlers, error) {
+
 	transactionsRouteKey := "transactions"
-	transactionsPublishingHandler, err := a.createExchangeHandler(transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsPublishingHandler, err := a.createExchangeHandler(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	resultsQ1SubscriptionRouteKey := "results.q1"
-	resultsQ1SubscriptionHandler, err := a.createExchangeHandler(resultsQ1SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsQ1SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ1SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	resultsQ2SubscriptionRouteKey := "results.q2"
-	resultsQ2SubscriptionHandler, err := a.createExchangeHandler(resultsQ2SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsQ2SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ2SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	resultsQ3SubscriptionRouteKey := "results.q3"
-	resultsQ3SubscriptionHandler, err := a.createExchangeHandler(resultsQ3SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsQ3SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ3SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	resultsQ4SubscriptionRouteKey := "results.q4"
-	resultsQ4SubscriptionHandler, err := a.createExchangeHandler(resultsQ4SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsQ4SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ4SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	menuItemsPublishingRouteKey := "transactions.items.menu.items"
-	menuItemsPublishingHandler, err := a.middlewareHandler.CreateDirectExchangeStandalone(menuItemsPublishingRouteKey)
+	menuItemsPublishingHandler, err := middlewareHandler.CreateDirectExchangeStandalone(menuItemsPublishingRouteKey)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for menu_items: %v", err)
 	}
 
 	storePublishingRouteKey := "transactions.store"
-	storePublishingHandler, err := a.middlewareHandler.CreateDirectExchangeStandalone(storePublishingRouteKey)
+	storePublishingHandler, err := middlewareHandler.CreateDirectExchangeStandalone(storePublishingRouteKey)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for store: %v", err)
 	}
 
 	usersPublishingRouteKey := "transactions.users"
-	usersPublishingHandler, err := a.middlewareHandler.CreateDirectExchangeStandalone(usersPublishingRouteKey)
+	usersPublishingHandler, err := middlewareHandler.CreateDirectExchangeStandalone(usersPublishingRouteKey)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for users: %v", err)
 	}
@@ -212,16 +208,22 @@ func (a *Acceptor) Run() error {
 
 func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 
+	middlewareHandler, err := middleware.NewMiddlewareHandler(a.rabbitConn)
+
+	if err != nil {
+		return fmt.Errorf("failed to create middleware handler: %v", err)
+	}
+
 	a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 	newId := NewClientUuid()
 
-	exchangeHandlers, err := a.createExchangeHandlers()
+	exchangeHandlers, err := a.createExchangeHandlers(middlewareHandler)
 
 	if err != nil {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	newClient := NewClientHandler(conn, newId, *exchangeHandlers, a.limitHandler)
+	newClient := NewClientHandler(conn, newId, *exchangeHandlers, a.limitHandler, middlewareHandler)
 
 	a.log.Infof("Assigned client id with short form %s", newId.Short)
 
@@ -257,7 +259,6 @@ func (a *Acceptor) Shutdown() {
 		}
 	}
 
-	a.middlewareHandler.Close()
-
+	a.rabbitConn.Close()
 	a.log.Info("Shutdown complete")
 }

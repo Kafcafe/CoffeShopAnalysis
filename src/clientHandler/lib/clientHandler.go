@@ -52,6 +52,7 @@ type ClientHandler struct {
 	sentAllResultsChan chan int
 	emittedCount       map[DataType]int
 	limitHandler       *ConnectionLimit
+	middlewareHandler  *middleware.MiddlewareHandler
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -60,7 +61,7 @@ type ClientHandler struct {
 //	conn: the network connection to handle
 //
 // Returns a pointer to the ClientHandler.
-func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers, limitRef *ConnectionLimit) *ClientHandler {
+func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers, limitRef *ConnectionLimit, middlewareHandler *middleware.MiddlewareHandler) *ClientHandler {
 	protocol := NewProtocol(conn)
 
 	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
@@ -77,6 +78,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		sentAllResultsChan: make(chan int, 1),
 		emittedCount:       make(map[DataType]int),
 		limitHandler:       limitRef,
+		middlewareHandler:  middlewareHandler,
 	}
 }
 
@@ -494,7 +496,8 @@ func (clh *ClientHandler) Shutdown() error {
 
 	clh.exchangeHandlers.transactionsPublishing.Close()
 	clh.exchangeHandlers.resultsQ1Subscription.Close()
-	clh.log.Info("Abouy to notify limit handler of disconnection")
+	clh.middlewareHandler.CloseChannel()
+	clh.log.Info("About to notify limit handler of disconnection")
 	clh.limitHandler.Signal()
 	return nil
 }
