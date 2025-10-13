@@ -74,7 +74,14 @@ func (c *Client) Run() ClientExecutionError {
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 
-	err := c.protocol.sendAmountOfTopics(len(listfiles))
+	err := c.protocol.rcvStart()
+
+	if err != nil {
+		c.log.Error("| action: Error receiving start from server: %v | result: error", err)
+		return err
+	}
+
+	err = c.protocol.sendAmountOfTopics(len(listfiles))
 
 	if err != nil {
 		c.log.Error("| action: Error sending amount of topics: %v | result: error", err)
