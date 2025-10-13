@@ -19,7 +19,7 @@ Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
 1. [Dependencies and Setup](#dependencies-and-setup)
 1. [Dataset](#dataset)
 1. [Commands](#commands)
-   1. [Run and Logs](#bRun-and-Logs)
+   1. [Run and Logs](#Run-and-Logs)
    1. [Module Testing](#Module-Testing)
    1. [End2End Testing](#End2End-Testing)
    1. [Cleanup Commands](#Cleanup-Commands)
