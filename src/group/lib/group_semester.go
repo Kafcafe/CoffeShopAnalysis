@@ -15,15 +15,16 @@ import (
 )
 
 type SemesterExchangeHandlers struct {
-	transactionsYearHourFilteredSubscription middleware.MessageMiddlewareExchange
-	resultsQ3Publishing                      middleware.MessageMiddlewareExchange
-	eofPublishing                            middleware.MessageMiddlewareExchange
-	eofSubscription                          middleware.MessageMiddlewareQueue
+	prevStageSubscription middleware.MessageMiddlewareQueue
+	nextStagePublishing   middleware.MessageMiddlewareExchange
+	eofPublishing         middleware.MessageMiddlewareExchange
+	eofSubscription       middleware.MessageMiddlewareQueue
 }
 
 type GroupBySemesterWorker struct {
 	log                       *logging.Logger
 	rabbitConn                *middleware.RabbitConnection
+	middlewareHandler         *middleware.MiddlewareHandler
 	sigChan                   chan os.Signal
 	isRunning                 bool
 	exchangeHandlers          SemesterExchangeHandlers
@@ -47,6 +48,11 @@ func NewGroupBySemesterWorker(rabbitConf middleware.RabbitConfig, groupById stri
 		return nil, fmt.Errorf("failed to connect to RabbitMQ: %v", err)
 	}
 
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %v", err)
+	}
+
 	log.Info("Connection with RabbitMQ successfully established")
 
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
@@ -55,6 +61,7 @@ func NewGroupBySemesterWorker(rabbitConf middleware.RabbitConfig, groupById stri
 	return &GroupBySemesterWorker{
 		log:                       log,
 		rabbitConn:                rabbitConn,
+		middlewareHandler:         middlewareHandler,
 		sigChan:                   sigChan,
 		isRunning:                 true,
 		errChan:                   make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
@@ -127,7 +134,7 @@ func (g *GroupBySemesterWorker) processInboundEof(message amqp.Delivery) error {
 	return nil
 }
 
-func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.Message, originalMsgBytes []byte) {
+func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.Message) {
 	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.id, g.id, false, nil)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
@@ -170,19 +177,24 @@ func (g *GroupBySemesterWorker) initiateEofCoordination(originalMsg middleware.M
 
 		g.log.Infof("Sent consolidated results for semester: %s", key)
 
-		middleError := g.exchangeHandlers.resultsQ3Publishing.Send(responseBytes)
+		middleError := g.exchangeHandlers.nextStagePublishing.Send(responseBytes)
 		if middleError != middleware.MessageMiddlewareSuccess {
-			g.log.Errorf("problem while sending message to resultsQ3Publishing")
+			g.log.Errorf("problem while sending message to nextStagePublishing")
 		}
 	}
 	g.log.Infof("Final results grouped and consolidated")
 
-	middleError := g.exchangeHandlers.resultsQ3Publishing.Send(originalMsgBytes)
+	originalMsg.TotalEmitted = len(allGroupedByClient)
+	eofMessageBytes, err := originalMsg.ToBytes()
+	if err != nil {
+		g.log.Errorf("%v", err)
+	}
+	middleError := g.exchangeHandlers.nextStagePublishing.Send(eofMessageBytes)
 	if middleError != middleware.MessageMiddlewareSuccess {
 		g.log.Errorf("problem while propagating EOF")
 	}
 
-	g.log.Warningf("Propagated EOF for %s to next pipeline stage", originalMsg.DataType)
+	g.log.Warningf("Propagated EOF for %s to next pipeline stage. Total emitted: %d", originalMsg.DataType, originalMsg.TotalEmitted)
 }
 
 func (g *GroupBySemesterWorker) groupBySemester(message amqp.Delivery) error {
@@ -194,7 +206,7 @@ func (g *GroupBySemesterWorker) groupBySemester(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		go g.initiateEofCoordination(*msg, message.Body)
+		go g.initiateEofCoordination(*msg)
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -218,16 +230,27 @@ func (g *GroupBySemesterWorker) groupBySemester(message amqp.Delivery) error {
 }
 
 func (f *GroupBySemesterWorker) createExchangeHandlers() error {
-	transactionsYearHourFilteredSubscriptionRouteyKey := "transactions.year-hour-filtered.q3"
-	transactionsYearHourFilteredSubscriptionHandler, err := createExchangeHandler(f.rabbitConn, transactionsYearHourFilteredSubscriptionRouteyKey, middleware.EXCHANGE_TYPE_DIRECT)
+	prevStageSub := "transactions.year-hour-filtered.all"
+	_, err := f.middlewareHandler.CreateDirectExchangeStandalone(prevStageSub)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for transactions.year-hour-filtered.q3: %v", err)
+		return fmt.Errorf("Error creating exchange handler for transactions.year-hour-filtered.all: %v", err)
 	}
 
-	resultsQ3Publishing := "results.q3"
-	resultsQ3PublishingHandler, err := createExchangeHandler(f.rabbitConn, resultsQ3Publishing, middleware.EXCHANGE_TYPE_DIRECT)
+	prevStageSubQueueName := prevStageSub + ".semester"
+	prevStageSubscription, err := f.middlewareHandler.CreateQueue(prevStageSubQueueName)
 	if err != nil {
-		return fmt.Errorf("Error creating exchange handler for results.q3: %v", err)
+		return fmt.Errorf("Error creating queue handler for %s: %v", prevStageSubQueueName, err)
+	}
+
+	err = f.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, prevStageSub)
+	if err != nil {
+		return fmt.Errorf("Error preparing queue for %s: %v", prevStageSubQueueName, err)
+	}
+
+	nextStagePublishing := "transactions.transactions.group.semester"
+	nextStagePublishingHandler, err := createExchangeHandler(f.rabbitConn, nextStagePublishing, middleware.EXCHANGE_TYPE_DIRECT)
+	if err != nil {
+		return fmt.Errorf("Error creating exchange handler for transactions.transactions.group.semester: %v", err)
 	}
 
 	eofPublishingRouteKey := fmt.Sprintf("eof.group.semester.%s", f.id)
@@ -242,10 +265,10 @@ func (f *GroupBySemesterWorker) createExchangeHandlers() error {
 	}
 
 	f.exchangeHandlers = SemesterExchangeHandlers{
-		transactionsYearHourFilteredSubscription: *transactionsYearHourFilteredSubscriptionHandler,
-		resultsQ3Publishing:                      *resultsQ3PublishingHandler,
-		eofPublishing:                            *eofPublishingHandler,
-		eofSubscription:                          *eofSubscription,
+		prevStageSubscription: *prevStageSubscription,
+		nextStagePublishing:   *nextStagePublishingHandler,
+		eofPublishing:         *eofPublishingHandler,
+		eofSubscription:       *eofSubscription,
 	}
 
 	return nil
@@ -260,7 +283,7 @@ func (g *GroupBySemesterWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	g.exchangeHandlers.transactionsYearHourFilteredSubscription.StartConsuming(g.groupBySemester, g.errChan)
+	g.exchangeHandlers.prevStageSubscription.StartConsuming(g.groupBySemester, g.errChan)
 	g.exchangeHandlers.eofSubscription.StartConsuming(g.processInboundEof, g.errChan)
 
 	for err := range g.errChan {

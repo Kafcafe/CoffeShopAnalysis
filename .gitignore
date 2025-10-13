@@ -46,3 +46,9 @@ scripts/__pycache__
 scripts/*.pyc
 results
 .fuse_hidden*
+.vscode
+
+venv/
+.venv/
+.pytest_cache/
+reduce_data_set/

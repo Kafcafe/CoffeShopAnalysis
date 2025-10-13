@@ -1,14 +1,13 @@
-package topk_test
+package datatypes
 
 import (
 	"testing"
-	heap "topk/lib"
 
 	"github.com/stretchr/testify/require"
 )
 
 func TestEmptyHeap(t *testing.T) {
-	h := heap.NewHeap(func(a, b int) int { return a - b })
+	h := NewHeap(func(a, b int) int { return a - b })
 	require.EqualValues(t, true, h.IsEmpty())
 	require.EqualValues(t, 0, h.Size())
 	require.Panics(t, func() { h.Top() })
@@ -16,7 +15,7 @@ func TestEmptyHeap(t *testing.T) {
 }
 
 func TestHeapPushPop(t *testing.T) {
-	h := heap.NewHeap(func(a, b int) int { return a - b })
+	h := NewHeap(func(a, b int) int { return a - b })
 	h.Push(5)
 
 	require.EqualValues(t, false, h.IsEmpty())
@@ -31,7 +30,7 @@ func TestHeapPushPop(t *testing.T) {
 }
 
 func TestManyelements(t *testing.T) {
-	h := heap.NewHeap(func(a, b int) int { return a - b })
+	h := NewHeap(func(a, b int) int { return a - b })
 	nums := []int{1, 2, 3, 4, 5, 6, 7, 8}
 	for _, n := range nums {
 		h.Push(n)
@@ -56,7 +55,7 @@ type Persona struct {
 }
 
 func TestHeapWithStructs(t *testing.T) {
-	h := heap.NewHeap(func(a, b Persona) int { return a.Age - b.Age })
+	h := NewHeap(func(a, b Persona) int { return a.Age - b.Age })
 	personas := []Persona{
 		{"Alice", 30},
 		{"Bob", 25},
@@ -75,7 +74,7 @@ func TestHeapWithStructs(t *testing.T) {
 }
 
 func TestVolumeTestHeap(t *testing.T) {
-	h := heap.NewHeap(func(a, b int) int { return a - b })
+	h := NewHeap(func(a, b int) int { return a - b })
 	n := 1000000
 	for i := 0; i < n; i++ {
 		h.Push(i)

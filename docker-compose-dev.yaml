@@ -50,18 +50,18 @@ services:
     client1:
         container_name: "client1"
         environment:
-          CLIENT_ID: "1"
+          CLIENT_ID: 1
           FILETYPES: "transactions,transaction_items,store,menu,users"
         depends_on:
           - client-handler
         networks:
           - analysis_net
         build:
-          context: ./src/client
-          dockerfile: Dockerfile
+          context: ./src/
+          dockerfile: client/Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
-          - ./src/client/results:/results
+          - ./results:/results
           - ./.data:/data
 
     filter-year1:
@@ -169,27 +169,6 @@ services:
         volumes:
           - ./src/group/config.yaml:/config.yaml 
 
-    group-store1:
-        container_name: "group-store1"
-        depends_on:
-          rabbitmq:
-            condition: service_healthy
-        networks:
-          - analysis_net
-        environment:
-          RABBITMQ_HOST: rabbitmq
-          RABBITMQ_PORT: 5672
-          RABBITMQ_USER: user
-          RABBITMQ_PASS: user
-          GROUP_TYPE: store
-          GROUP_ID: -store1
-          GROUP_COUNT: 1
-        build:
-          context: ./src/
-          dockerfile: group/Dockerfile
-        volumes:
-          - ./src/group/config.yaml:/config.yaml 
-
     join-items1:
         container_name: "join-items1"
         depends_on:
@@ -232,6 +211,27 @@ services:
         volumes:
           - ./src/join/config.yaml:/config.yaml 
 
+    join-store_q31:
+        container_name: "join-store_q31"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: store_q3
+          JOIN_ID: -store_q31
+          JOIN_COUNT: 1
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
+
     join-users:
         container_name: "join-users"
         depends_on:
@@ -253,8 +253,8 @@ services:
         volumes:
           - ./src/join/config.yaml:/config.yaml 
 
-    topk1:
-        container_name: "topk1"
+    group-topk1:
+        container_name: "group-topk1"
         depends_on:
           rabbitmq:
             condition: service_healthy
@@ -265,10 +265,11 @@ services:
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
-          TOPK_ID: 1
-          TOPK_COUNT: 1
+          GROUP_TYPE: topk
+          GROUP_ID: -topk1
+          GROUP_COUNT: 1
         build:
           context: ./src/
-          dockerfile: topk/Dockerfile
+          dockerfile: group/Dockerfile
         volumes:
-          - ./src/topk/config.yaml:/config.yaml
+          - ./src/group/config.yaml:/config.yaml 

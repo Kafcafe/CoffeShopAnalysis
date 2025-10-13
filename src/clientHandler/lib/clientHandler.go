@@ -3,7 +3,6 @@ package clientHandler
 import (
 	logger "common/logger"
 	"common/middleware"
-	"encoding/json"
 	"fmt"
 	"net"
 	"strings"
@@ -25,7 +24,7 @@ const (
 type ResultsChannels struct {
 	resultsQ1Chan chan middleware.Message
 	resultsQ2Chan chan middleware.Message
-	resultsQ3Chan chan middleware.MessageGrouped
+	resultsQ3Chan chan middleware.Message
 	resultsQ4Chan chan middleware.Message
 }
 
@@ -33,12 +32,13 @@ func NewResultsChannels() ResultsChannels {
 	return ResultsChannels{
 		resultsQ1Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 		resultsQ2Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-		resultsQ3Chan: make(chan middleware.MessageGrouped, RESULTS_CHANNEL_BUFFER_SIZE),
+		resultsQ3Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 		resultsQ4Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 	}
 }
 
 type QueryID int
+type DataType = string
 
 type ClientHandler struct {
 	protocol           *Protocol
@@ -50,6 +50,9 @@ type ClientHandler struct {
 	mtx                sync.Mutex
 	resultsChans       ResultsChannels
 	sentAllResultsChan chan int
+	emittedCount       map[DataType]int
+	limitHandler       *ConnectionLimit
+	middlewareHandler  *middleware.MiddlewareHandler
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -58,7 +61,7 @@ type ClientHandler struct {
 //	conn: the network connection to handle
 //
 // Returns a pointer to the ClientHandler.
-func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers) *ClientHandler {
+func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers, limitRef *ConnectionLimit, middlewareHandler *middleware.MiddlewareHandler) *ClientHandler {
 	protocol := NewProtocol(conn)
 
 	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
@@ -73,6 +76,9 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		mtx:                sync.Mutex{},
 		resultsChans:       NewResultsChannels(),
 		sentAllResultsChan: make(chan int, 1),
+		emittedCount:       make(map[DataType]int),
+		limitHandler:       limitRef,
+		middlewareHandler:  middlewareHandler,
 	}
 }
 
@@ -96,9 +102,9 @@ func (clh *ClientHandler) processResultsQ1(message amqp.Delivery) error {
 		return err
 	}
 
-	stringPayload := msg.Payload
+	// stringPayload := msg.Payload
 
-	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	// clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
 	clh.resultsChans.resultsQ1Chan <- *msg
@@ -141,13 +147,13 @@ func (clh *ClientHandler) processResultsQ2(message amqp.Delivery) error {
 func (clh *ClientHandler) processResultsQ3(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		return err
 	}
 
-	//stringPayload := msg.Payload
-	//clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	stringPayload := msg.Payload
+	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
 	clh.resultsChans.resultsQ3Chan <- *msg
@@ -224,13 +230,7 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 			if msg.IsEof {
 				eofFlags[3] = true
 			}
-			parsedPayload, err := json.Marshal(msg.Payload)
-			if err != nil {
-				clh.log.Errorf("Failed marshalling payload for query 3: %v", err)
-				continue
-			}
-			jsonString := string(parsedPayload)
-			if err := clh.protocol.SendResults(3, []string{jsonString}, msg.IsEof); err != nil {
+			if err := clh.protocol.SendResults(3, msg.Payload, msg.IsEof); err != nil {
 				clh.log.Errorf("Error sending result to client for query 3: %v", err)
 			}
 
@@ -273,8 +273,14 @@ func (clh *ClientHandler) launchResultsProcessing() {
 // Returns an error if any step fails.
 func (clh *ClientHandler) Handle() error {
 	clh.log.Info("Handling client connection")
-
+	defer clh.Shutdown()
 	// Receive the number of data types to process
+	err := clh.protocol.sendStart()
+
+	if err != nil {
+		return fmt.Errorf("error sending start signal to client: %v", err)
+	}
+
 	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
 	if err != nil {
 		return fmt.Errorf("error receiving amount of dataTypes: %v", err)
@@ -296,6 +302,7 @@ func (clh *ClientHandler) Handle() error {
 
 	<-clh.sentAllResultsChan
 	clh.log.Infof("Finished sending results to client")
+
 	return nil
 }
 
@@ -379,12 +386,21 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		return err
 	}
 
+	if _, exists := clh.emittedCount[dataType]; !exists {
+		clh.emittedCount[dataType] = 0
+	}
+
 	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof)
+	if isEof {
+		clh.log.Infof("Dispatching EOF for dataType %s with total emitted %d", dataType, clh.emittedCount[dataType])
+		msg.TotalEmitted = clh.emittedCount[dataType]
+	}
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err
 	}
 
+	clh.emittedCount[dataType] += 1
 	res := middleware.MessageMiddlewareSuccess
 	err = nil
 
@@ -461,9 +477,17 @@ func (clh *ClientHandler) SendResult() error {
 	return nil
 }
 
+func (clh *ClientHandler) IsRunning() bool {
+	return clh.isRunning
+}
+
 // Shutdown closes the protocol connection.
 // Returns an error if closing fails.
 func (clh *ClientHandler) Shutdown() error {
+	if !clh.isRunning {
+		return nil
+	}
+
 	clh.isRunning = false
 
 	if clh.protocol != nil {
@@ -472,5 +496,8 @@ func (clh *ClientHandler) Shutdown() error {
 
 	clh.exchangeHandlers.transactionsPublishing.Close()
 	clh.exchangeHandlers.resultsQ1Subscription.Close()
+	clh.middlewareHandler.CloseChannel()
+	clh.log.Info("About to notify limit handler of disconnection")
+	clh.limitHandler.Signal()
 	return nil
 }

@@ -91,7 +91,7 @@ func main() {
 	groupCount := config.GetInt("group.count")
 	groupType := config.GetString("group.type")
 
-	groupByWorker, err := group.CreateGroupByWorker(groupType, rabbitConf, groupId, groupCount)
+	groupByWorker, err := group.CreateGroupByWorker(groupType, rabbitConf, groupId, groupCount, config, logger)
 	if err != nil {
 		logger.Errorf("Failed creating new groupBy worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)

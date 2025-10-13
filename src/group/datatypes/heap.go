@@ -1,9 +1,9 @@
-package topk
+package datatypes
 
-type heap[T comparable] struct {
+type Heap[T comparable] struct {
 	amount   int
 	data     []T
-	comparer func(T, T) int
+	Comparer func(T, T) int
 }
 
 const (
@@ -12,29 +12,29 @@ const (
 	Error         = "Heap is empty"
 )
 
-func NewHeap[T comparable](comparer func(T, T) int) *heap[T] {
-	heap := new(heap[T])
+func NewHeap[T comparable](comparer func(T, T) int) *Heap[T] {
+	heap := new(Heap[T])
 	heap.data = make([]T, InitialSize)
-	heap.comparer = comparer
+	heap.Comparer = comparer
 	return heap
 }
 
-func (h *heap[T]) IsEmpty() bool {
+func (h *Heap[T]) IsEmpty() bool {
 	return h.Size() == 0
 }
 
-func (h *heap[T]) Size() int {
+func (h *Heap[T]) Size() int {
 	return h.amount
 }
 
-func (h *heap[T]) Top() T {
+func (h *Heap[T]) Top() T {
 	if h.IsEmpty() {
 		panic(Error)
 	}
 	return h.data[0]
 }
 
-func (h *heap[T]) Pop() T {
+func (h *Heap[T]) Pop() T {
 	if h.IsEmpty() {
 		panic(Error)
 	}
@@ -47,24 +47,24 @@ func (h *heap[T]) Pop() T {
 	return returnData
 }
 
-func (h *heap[T]) Push(value T) {
+func (h *Heap[T]) Push(value T) {
 	h.redimensionIfNeeded()
 	h.data[h.amount] = value
 	h.upHeap(h.amount)
 	h.amount++
 }
 
-func (h *heap[T]) upHeap(currentPost int) {
+func (h *Heap[T]) upHeap(currentPost int) {
 	parentPos := mod((currentPost - 1) / 2)
 
-	if parentPos == currentPost || h.comparer(h.data[currentPost], h.data[parentPos]) <= 0 {
+	if parentPos == currentPost || h.Comparer(h.data[currentPost], h.data[parentPos]) <= 0 {
 		return
 	}
 	h.swap(currentPost, parentPos)
 	h.upHeap(parentPos)
 }
 
-func (h *heap[T]) downHeap(currentPos int) {
+func (h *Heap[T]) downHeap(currentPos int) {
 	leftChildPos := currentPos*2 + 1
 	rightChildPos := currentPos*2 + 2
 
@@ -79,15 +79,15 @@ func (h *heap[T]) downHeap(currentPos int) {
 	}
 }
 
-func (h *heap[T]) swapAndDownHeap(greater, currentPos int) {
+func (h *Heap[T]) swapAndDownHeap(greater, currentPos int) {
 
-	if h.comparer(h.data[greater], h.data[currentPos]) > 0 {
+	if h.Comparer(h.data[greater], h.data[currentPos]) > 0 {
 		h.swap(currentPos, greater)
 		h.downHeap(greater)
 	}
 }
 
-func (h *heap[T]) redimensionIfNeeded() {
+func (h *Heap[T]) redimensionIfNeeded() {
 	if h.amount == cap(h.data) || len(h.data) == h.amount {
 		newData := make([]T, cap(h.data)*ScalingFactor)
 		copy(newData, h.data)
@@ -103,12 +103,12 @@ func (h *heap[T]) redimensionIfNeeded() {
 	}
 }
 
-func (h *heap[T]) swap(i, j int) {
+func (h *Heap[T]) swap(i, j int) {
 	h.data[i], h.data[j] = h.data[j], h.data[i]
 }
 
-func (h *heap[T]) max(pos1, pos2 int) int {
-	if h.comparer(h.data[pos1], h.data[pos2]) > 0 {
+func (h *Heap[T]) max(pos1, pos2 int) int {
+	if h.Comparer(h.data[pos1], h.data[pos2]) > 0 {
 		return pos1
 	}
 	return pos2
