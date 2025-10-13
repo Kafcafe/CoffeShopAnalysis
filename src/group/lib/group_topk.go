@@ -100,8 +100,6 @@ func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
 		return fmt.Errorf("Error preparing queue for %s: %v", prevStageSubQueueName, err)
 	}
 
-	prepareInputQueues(t.rabbitConn, "store")
-
 	transactionsTopKPublishingRouteKey := "transactions.transactions.topk"
 	transactionsTopKPublishingHandler, err := createExchangeHandler(t.rabbitConn, transactionsTopKPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
@@ -158,10 +156,9 @@ func (t *GroupByTopKBestClients) Run() error {
 }
 
 func (t *GroupByTopKBestClients) groupByStore(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
@@ -226,7 +223,7 @@ func bytesToMB(bytes int) float64 {
 }
 
 func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.Message) {
-	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, t.id, t.id, false, nil)
+	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, t.id, t.id, false, nil, originalMsg.QueryId)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
 		t.log.Errorf("Failed to serialize message: %v", err)
@@ -250,7 +247,7 @@ func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.
 	t.groupedPerClient.Delete(originalMsg.ClientId)
 	t.mutex.Unlock()
 
-	myPayload, _ := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, clientStoreGroup.ToMapString(), false).ToBytes()
+	myPayload, _ := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, clientStoreGroup.ToMapString(), false, originalMsg.QueryId).ToBytes()
 	t.log.Infof("Partial grouping from %s has size: %.4fMB", t.id, bytesToMB(len(myPayload)))
 
 	/*
@@ -271,7 +268,7 @@ func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.
 
 	t.log.Infof("VALUES %v", allResultsForClient)
 
-	msgToSend := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, allResultsForClient, false)
+	msgToSend := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, allResultsForClient, false, originalMsg.QueryId)
 	msgToSendBytes, err := msgToSend.ToBytes()
 	if err != nil {
 		t.log.Errorf("Failed to serialize message: %v", err)
@@ -303,10 +300,9 @@ func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.
 }
 
 func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error {
-	defer answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 	g.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, g.id)
@@ -317,6 +313,7 @@ func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error 
 		g.log.Infof("Partial grouping from %s has size: %.4fMB", msg.ImmediateSource, bytesToMB(size))
 		partialGrouping := structures.NewStoreGroupFromMapString(msg.Payload)
 		g.eofIntercommunicationChan <- partialGrouping
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -348,6 +345,7 @@ func (g *GroupByTopKBestClients) processInboundEof(message amqp.Delivery) error 
 
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 

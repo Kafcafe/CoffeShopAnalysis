@@ -27,7 +27,7 @@ def _compare_sets(name, current_set, expected_set, sample_size=3):
 
 def compare_results_q1(client_id):
     name = "results_q1"
-    current_results = "./results/results_q1_2.txt"
+    current_results = f"./results/results_q1_{client_id}.txt"
     expected_results = "./scripts/expected_results/results_q1.csv"
 
     lines_current_results = set()
@@ -147,7 +147,7 @@ def compare_results_q4(client_id):
     _compare_sets(name, current_results, expected_results)
 
 if __name__ == "__main__":
-    client_id = 2
+    client_id = 1
     compare_results_q1(client_id)
     compare_results_q2_top_earners(client_id)
     compare_results_q2_best_sellers(client_id)

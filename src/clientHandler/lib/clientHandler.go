@@ -5,7 +5,6 @@ import (
 	"common/middleware"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 
 	"github.com/op/go-logging"
@@ -21,21 +20,21 @@ const (
 	NACK_DISCARD = 2
 )
 
-type ResultsChannels struct {
-	resultsQ1Chan chan middleware.Message
-	resultsQ2Chan chan middleware.Message
-	resultsQ3Chan chan middleware.Message
-	resultsQ4Chan chan middleware.Message
-}
+// type ResultsChannels struct {
+// 	resultsQ1Chan chan middleware.Message
+// 	resultsQ2Chan chan middleware.Message
+// 	resultsQ3Chan chan middleware.Message
+// 	resultsQ4Chan chan middleware.Message
+// }
 
-func NewResultsChannels() ResultsChannels {
-	return ResultsChannels{
-		resultsQ1Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-		resultsQ2Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-		resultsQ3Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-		resultsQ4Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-	}
-}
+// func NewResultsChannels() ResultsChannels {
+// 	return ResultsChannels{
+// 		resultsQ1Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 		resultsQ2Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 		resultsQ3Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 		resultsQ4Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 	}
+// }
 
 type QueryID int
 type DataType = string
@@ -48,7 +47,7 @@ type ClientHandler struct {
 	errChan            chan middleware.MessageMiddlewareError
 	isRunning          bool
 	mtx                sync.Mutex
-	resultsChans       ResultsChannels
+	resultsChan        chan middleware.Message
 	sentAllResultsChan chan int
 	emittedCount       map[DataType]int
 	limitHandler       *ConnectionLimit
@@ -74,7 +73,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		errChan:            make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 		isRunning:          true,
 		mtx:                sync.Mutex{},
-		resultsChans:       NewResultsChannels(),
+		resultsChan:        make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
 		sentAllResultsChan: make(chan int, 1),
 		emittedCount:       make(map[DataType]int),
 		limitHandler:       limitRef,
@@ -94,81 +93,81 @@ func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 
 var nums int = 0
 
-func (clh *ClientHandler) processResultsQ1(message amqp.Delivery) error {
-	defer clh.answerMessage(NACK_DISCARD, message)
+// func (clh *ClientHandler) processResultsQ1(message amqp.Delivery) error {
+// 	defer clh.answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewMessageFromBytes(message.Body)
-	if err != nil {
-		return err
-	}
+// 	msg, err := middleware.NewMessageFromBytes(message.Body)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	// stringPayload := msg.Payload
+// 	// stringPayload := msg.Payload
 
-	// clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
-	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+// 	// clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+// 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
-	clh.resultsChans.resultsQ1Chan <- *msg
+// 	clh.resultsChans.resultsQ1Chan <- *msg
 
-	if msg.IsEof {
-		clh.log.Info("Received EOF message for result")
-	} else {
-		clh.log.Debugf("Received result message: %v", msg.Payload)
-	}
+// 	if msg.IsEof {
+// 		clh.log.Info("Received EOF message for result")
+// 	} else {
+// 		clh.log.Debugf("Received result message: %v", msg.Payload)
+// 	}
 
-	clh.answerMessage(ACK, message)
-	return nil
-}
+// 	clh.answerMessage(ACK, message)
+// 	return nil
+// }
 
-func (clh *ClientHandler) processResultsQ2(message amqp.Delivery) error {
-	defer clh.answerMessage(NACK_DISCARD, message)
+// func (clh *ClientHandler) processResultsQ2(message amqp.Delivery) error {
+// 	defer clh.answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewMessageFromBytes(message.Body)
-	if err != nil {
-		return err
-	}
+// 	msg, err := middleware.NewMessageFromBytes(message.Body)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	stringPayload := msg.Payload
+// 	stringPayload := msg.Payload
 
-	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
-	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+// 	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+// 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
-	clh.resultsChans.resultsQ2Chan <- *msg
+// 	clh.resultsChans.resultsQ2Chan <- *msg
 
-	if msg.IsEof {
-		clh.log.Info("Received EOF message for result")
-	} else {
-		clh.log.Debugf("Received result message: %v", msg.Payload)
-	}
+// 	if msg.IsEof {
+// 		clh.log.Info("Received EOF message for result")
+// 	} else {
+// 		clh.log.Debugf("Received result message: %v", msg.Payload)
+// 	}
 
-	clh.answerMessage(ACK, message)
-	return nil
-}
+// 	clh.answerMessage(ACK, message)
+// 	return nil
+// }
 
-func (clh *ClientHandler) processResultsQ3(message amqp.Delivery) error {
-	defer clh.answerMessage(NACK_DISCARD, message)
+// func (clh *ClientHandler) processResultsQ3(message amqp.Delivery) error {
+// 	defer clh.answerMessage(NACK_DISCARD, message)
 
-	msg, err := middleware.NewMessageFromBytes(message.Body)
-	if err != nil {
-		return err
-	}
+// 	msg, err := middleware.NewMessageFromBytes(message.Body)
+// 	if err != nil {
+// 		return err
+// 	}
 
-	stringPayload := msg.Payload
-	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
-	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+// 	stringPayload := msg.Payload
+// 	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+// 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
-	clh.resultsChans.resultsQ3Chan <- *msg
+// 	clh.resultsChans.resultsQ3Chan <- *msg
 
-	if msg.IsEof {
-		clh.log.Info("Received EOF message for result")
-	} else {
-		clh.log.Debugf("Received result message: %v", msg.Payload)
-	}
+// 	if msg.IsEof {
+// 		clh.log.Info("Received EOF message for result")
+// 	} else {
+// 		clh.log.Debugf("Received result message: %v", msg.Payload)
+// 	}
 
-	clh.answerMessage(ACK, message)
-	return nil
-}
+// 	clh.answerMessage(ACK, message)
+// 	return nil
+// }
 
-func (clh *ClientHandler) processResultsQ4(message amqp.Delivery) error {
+func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
@@ -180,7 +179,7 @@ func (clh *ClientHandler) processResultsQ4(message amqp.Delivery) error {
 	//clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
-	clh.resultsChans.resultsQ4Chan <- *msg
+	clh.resultsChan <- *msg
 
 	if msg.IsEof {
 		clh.log.Info("Received EOF message for result")
@@ -209,48 +208,28 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 			return
 		}
 
-		select {
-		case msg := <-clh.resultsChans.resultsQ1Chan:
-			if msg.IsEof {
-				eofFlags[1] = true
-			}
-			if err := clh.protocol.SendResults(1, msg.Payload, msg.IsEof); err != nil {
-				clh.log.Errorf("Error sending result to client for query 1: %v", err)
-			}
+		msg := <-clh.resultsChan
 
-		case msg := <-clh.resultsChans.resultsQ2Chan:
-			if msg.IsEof {
-				eofFlags[2] = true
-			}
-			if err := clh.protocol.SendResults(2, msg.Payload, msg.IsEof); err != nil {
-				clh.log.Errorf("Error sending result to client for query 2: %v", err)
-			}
+		queryId := msg.QueryId
 
-		case msg := <-clh.resultsChans.resultsQ3Chan:
-			if msg.IsEof {
-				eofFlags[3] = true
-			}
-			if err := clh.protocol.SendResults(3, msg.Payload, msg.IsEof); err != nil {
-				clh.log.Errorf("Error sending result to client for query 3: %v", err)
-			}
+		if queryId <= 0 || queryId > 4 {
+			clh.log.Warningf("Unrecognized queryId")
+			continue
+		}
 
-		case msg := <-clh.resultsChans.resultsQ4Chan:
-			if msg.IsEof {
-				eofFlags[4] = true
-			}
-			if err := clh.protocol.SendResults(4, msg.Payload, msg.IsEof); err != nil {
-				clh.log.Errorf("Error sending result to client for query 4: %v", err)
-			}
+		if msg.IsEof {
+			eofFlags[queryId] = true
+		}
+
+		if err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof); err != nil {
+			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
 		}
 	}
 }
 
 func (clh *ClientHandler) launchResultsProcessing() {
 	go clh.launchCentralResultDispatching()
-	clh.exchangeHandlers.resultsQ1Subscription.StartConsuming(clh.processResultsQ1, clh.errChan)
-	clh.exchangeHandlers.resultsQ2Subscription.StartConsuming(clh.processResultsQ2, clh.errChan)
-	clh.exchangeHandlers.resultsQ3Subscription.StartConsuming(clh.processResultsQ3, clh.errChan)
-	clh.exchangeHandlers.resultsQ4Subscription.StartConsuming(clh.processResultsQ4, clh.errChan)
+	clh.exchangeHandlers.resultsSubscription.StartConsuming(clh.processResults, clh.errChan)
 
 	for err := range clh.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -263,10 +242,7 @@ func (clh *ClientHandler) launchResultsProcessing() {
 		}
 	}
 
-	clh.exchangeHandlers.resultsQ1Subscription.Close()
-	clh.exchangeHandlers.resultsQ2Subscription.Close()
-	clh.exchangeHandlers.resultsQ3Subscription.Close()
-	clh.exchangeHandlers.resultsQ4Subscription.Close()
+	clh.exchangeHandlers.resultsSubscription.Close()
 }
 
 // Handle processes the client connection by receiving and handling data types and files.
@@ -390,7 +366,7 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		clh.emittedCount[dataType] = 0
 	}
 
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof)
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof, middleware.QUERY_ID_NOT_SET)
 	if isEof {
 		clh.log.Infof("Dispatching EOF for dataType %s with total emitted %d", dataType, clh.emittedCount[dataType])
 		msg.TotalEmitted = clh.emittedCount[dataType]
@@ -495,7 +471,7 @@ func (clh *ClientHandler) Shutdown() error {
 	}
 
 	clh.exchangeHandlers.transactionsPublishing.Close()
-	clh.exchangeHandlers.resultsQ1Subscription.Close()
+	clh.exchangeHandlers.resultsSubscription.Close()
 	clh.middlewareHandler.CloseChannel()
 	clh.log.Info("About to notify limit handler of disconnection")
 	clh.limitHandler.Signal()
