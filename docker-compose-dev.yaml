@@ -51,7 +51,7 @@ services:
         container_name: "client1"
         environment:
           CLIENT_ID: 1
-          FILETYPES: "transactions,transaction_items,store,menu,users"
+          FILETYPES: "store,menu,transactions,transaction_items,users"
         depends_on:
           - client-handler
         networks:
