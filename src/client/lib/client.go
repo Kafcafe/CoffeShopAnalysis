@@ -77,31 +77,31 @@ func (c *Client) Run() ClientExecutionError {
 	err := c.protocol.rcvStart()
 
 	if err != nil {
-		c.log.Error("| action: Error receiving start from server: %v | result: error", err)
+		c.log.Errorf("| action: Error receiving start from server: %v | result: error", err)
 		return err
 	}
 
 	err = c.protocol.sendAmountOfTopics(len(listfiles))
 
 	if err != nil {
-		c.log.Error("| action: Error sending amount of topics: %v | result: error", err)
+		c.log.Errorf("| action: Error sending amount of topics: %v | result: error", err)
 		return err
 	}
 
 	for _, pattern := range listfiles {
 		files, err := c.GetFilesWithPattern(pattern, fileHandler)
 		if err != nil {
-			c.log.Error("| action: Error getting files: %v | result: error", err)
+			c.log.Errorf("| action: Error getting files: %v | result: error", err)
 			return err
 		}
 
 		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
-			c.log.Error("| action: Error sending files topic: %v | result: error", err)
+			c.log.Errorf("| action: Error sending files topic: %v | result: error", err)
 			return err
 		}
 
 		if err = c.ProcessFileList(files, pattern); err != nil {
-			c.log.Error("| action: Error processing file list: %v | result: error", err)
+			c.log.Errorf("| action: Error processing file list: %v | result: error", err)
 			return err
 		}
 	}
@@ -116,7 +116,7 @@ func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string,
 	files, err := fh.GetFilesWithPattern(pattern)
 
 	if err != nil {
-		c.log.Error("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
+		c.log.Errorf("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
 		return nil, err
 	}
 
@@ -145,7 +145,7 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		err := c.protocol.finishBatch()
 
 		if err != nil {
-			c.log.Error("| action: Error finishing batch for file %s: %v | result: error", file, err)
+			c.log.Errorf("| action: Error finishing batch for file %s: %v | result: error", file, err)
 			return err
 		}
 
@@ -189,7 +189,7 @@ func (c *Client) ProcessResults() error {
 		query, lines, finish, err, finishedAll := c.protocol.rcvResults()
 
 		if err != nil {
-			c.log.Error("action: Error receiving results: %v, result: error", err)
+			c.log.Errorf("action: Error receiving results: %v, result: error", err)
 		}
 
 		if finish && !finishedAll {
