@@ -166,6 +166,15 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return err
 	}
 
+	switch j.conf.ofType {
+	case JOIN_ITEMS_TYPE:
+		msg.QueryId = 2
+	case JOIN_STORE_Q3_TYPE:
+		msg.QueryId = 3
+	case JOIN_USERS_TYPE:
+		msg.QueryId = 4
+	}
+
 	if !msg.IsEof {
 		j.log.Debugf("Received payload: %v", msg.Payload)
 		j.sideTable = j.conf.messageCallbackUpdateSideTable(j.sideTable, msg.Payload)
@@ -176,7 +185,7 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 
 	j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF", msg.DataType, j.conf.id)
 
-	sideTableMessage := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false)
+	sideTableMessage := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false, msg.QueryId)
 	err = j.sendNextStage(*sideTableMessage)
 	if err != nil {
 		answerMessage(NACK_REQUEUE, message)
@@ -196,11 +205,19 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 }
 
 func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
-
 	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
 		return err
+	}
+
+	switch j.conf.ofType {
+	case JOIN_ITEMS_TYPE:
+		msg.QueryId = 2
+	case JOIN_STORE_Q3_TYPE:
+		msg.QueryId = 3
+	case JOIN_USERS_TYPE:
+		msg.QueryId = 4
 	}
 
 	if msg.IsEof {
@@ -214,7 +231,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	joined := j.conf.messageCallback(NewJoiner(), j.sideTable, msg.Payload)
 	j.log.Infof("Joined %v items", len(joined))
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true)
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
 	err = j.sendProcessedMessage(msgProcessed)
 	if err != nil {
 		j.log.Errorf("Failed to send processed count message: %v", err)
@@ -222,7 +239,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return err
 	}
 
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, false)
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, false, msg.QueryId)
 	err = j.sendNextStage(*response)
 	if err != nil {
 		j.log.Errorf("Failed to send joined message to next stage: %v", err)

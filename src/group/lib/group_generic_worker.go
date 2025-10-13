@@ -140,7 +140,7 @@ func (g *GroupByGenericWorker) processInboundEof(message amqp.Delivery) error {
 }
 
 func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Message) {
-	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.conf.id, g.conf.id, false, nil)
+	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.conf.id, g.conf.id, false, nil, originalMsg.QueryId)
 	msgBytes, err := eofMsg.ToBytes()
 	if err != nil {
 		g.log.Errorf("Failed to serialize message: %v", err)
@@ -182,7 +182,7 @@ func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Me
 	for _, messages := range messageToSend {
 		for key, records := range messages {
 			singleYearMonthRecords := map[string][]string{key: records}
-			response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false)
+			response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false, originalMsg.QueryId)
 			responseBytes, err := response.ToBytes()
 			if err != nil {
 				g.log.Errorf("%v", err)

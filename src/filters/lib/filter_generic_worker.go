@@ -151,6 +151,10 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return err
 	}
 
+	if f.conf.ofType == FILTER_TYPE_AMOUNT {
+		msg.QueryId = 1
+	}
+
 	if msg.IsEof {
 		clientStats := f.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
@@ -160,7 +164,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 
 	filteredBatch := f.conf.messageCallback(&f.filter, msg.Payload)
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0)
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
 	err = f.sendProcessedMessage(msgProcessed)
 	if err != nil {
 		f.log.Errorf("Failed to send processed count message: %v", err)
@@ -174,7 +178,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return nil
 	}
 
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch, false)
+	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch, false, msg.QueryId)
 	err = f.sendNextStage(*response)
 	if err != nil {
 		f.log.Errorf("Failed to send message to next stage: %v", err)
