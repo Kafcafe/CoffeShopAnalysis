@@ -22,19 +22,19 @@ type JoinWorkerConfig struct {
 	ofType                         string
 	prevStageSub                   string
 	sideTableSub                   string
-	nextStagePub                   string
+	nextStagePubs                  map[string]string
 	messageCallback                func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string)
 	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
 }
 
 func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
 	return JoinWorkerConfig{
-		id:           joinId,
-		count:        joinCount,
-		ofType:       JOIN_ITEMS_TYPE,
-		prevStageSub: "transactions.items.group.yearmonth",
-		sideTableSub: "transactions.items.menu.items",
-		nextStagePub: "results.q2",
+		id:            joinId,
+		count:         joinCount,
+		ofType:        JOIN_ITEMS_TYPE,
+		prevStageSub:  "transactions.items.group.yearmonth",
+		sideTableSub:  "transactions.items.menu.items",
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
 		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
 			flattenedItems := make([]string, 0)
 			for yearMonth, items := range payload {
@@ -54,7 +54,9 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 		ofType:       "store",
 		prevStageSub: "transactions.transactions.topk",
 		sideTableSub: "transactions.store",
-		nextStagePub: "transactions.transactions.join.store",
+		nextStagePubs: map[string]string{
+			JOIN_STORE_TYPE: "transactions.transactions.join.store",
+		},
 		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
 			flattenedStores := make([]string, 0)
 			for store, users := range payload {
@@ -69,12 +71,12 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 
 func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
 	return JoinWorkerConfig{
-		id:           joinId,
-		count:        joinCount,
-		ofType:       "store_q3",
-		prevStageSub: "transactions.transactions.group.semester",
-		sideTableSub: "transactions.store",
-		nextStagePub: "results.q3",
+		id:            joinId,
+		count:         joinCount,
+		ofType:        "store_q3",
+		prevStageSub:  "transactions.transactions.group.semester",
+		sideTableSub:  "transactions.store",
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
 		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
 			flattenedStores := make([]string, 0)
 			for semester, storesAndTPV := range payload {
@@ -94,7 +96,7 @@ func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
 		ofType:                         "users",
 		prevStageSub:                   "transactions.users", // TODO: change when defined
 		sideTableSub:                   "transactions.transactions.join.store",
-		nextStagePub:                   "results.q4",
+		nextStagePubs:                  map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
 		messageCallbackUpdateSideTable: UpdatedSideTableWithUsers,
 	}
 }

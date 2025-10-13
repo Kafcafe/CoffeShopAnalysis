@@ -100,8 +100,6 @@ func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
 		return fmt.Errorf("Error preparing queue for %s: %v", prevStageSubQueueName, err)
 	}
 
-	prepareInputQueues(t.rabbitConn, "store")
-
 	transactionsTopKPublishingRouteKey := "transactions.transactions.topk"
 	transactionsTopKPublishingHandler, err := createExchangeHandler(t.rabbitConn, transactionsTopKPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {

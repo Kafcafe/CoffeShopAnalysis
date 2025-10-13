@@ -61,7 +61,7 @@ func FilterByAmountConfig(filterId string, filterCount int, amountConfig AmountF
 		ofType:        FILTER_TYPE_AMOUNT,
 		filtersCount:  filterCount,
 		prevStageSub:  "transactions.year-hour-filtered.all",
-		nextStagePubs: map[string]string{},
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
 		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
 			return filter.FilterByAmount(batch, amountConfig.MinAmount)
 		},
