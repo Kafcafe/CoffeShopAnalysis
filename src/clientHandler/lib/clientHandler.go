@@ -100,9 +100,9 @@ func (clh *ClientHandler) processResultsQ1(message amqp.Delivery) error {
 		return err
 	}
 
-	stringPayload := msg.Payload
+	// stringPayload := msg.Payload
 
-	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	// clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
 	clh.resultsChans.resultsQ1Chan <- *msg
@@ -271,8 +271,14 @@ func (clh *ClientHandler) launchResultsProcessing() {
 // Returns an error if any step fails.
 func (clh *ClientHandler) Handle() error {
 	clh.log.Info("Handling client connection")
-
+	defer clh.Shutdown()
 	// Receive the number of data types to process
+	err := clh.protocol.sendStart()
+
+	if err != nil {
+		return fmt.Errorf("error sending start signal to client: %v", err)
+	}
+
 	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
 	if err != nil {
 		return fmt.Errorf("error receiving amount of dataTypes: %v", err)
@@ -294,6 +300,7 @@ func (clh *ClientHandler) Handle() error {
 
 	<-clh.sentAllResultsChan
 	clh.log.Infof("Finished sending results to client")
+
 	return nil
 }
 
@@ -475,6 +482,10 @@ func (clh *ClientHandler) IsRunning() bool {
 // Shutdown closes the protocol connection.
 // Returns an error if closing fails.
 func (clh *ClientHandler) Shutdown() error {
+	if !clh.isRunning {
+		return nil
+	}
+
 	clh.isRunning = false
 
 	if clh.protocol != nil {
@@ -483,6 +494,7 @@ func (clh *ClientHandler) Shutdown() error {
 
 	clh.exchangeHandlers.transactionsPublishing.Close()
 	clh.exchangeHandlers.resultsQ1Subscription.Close()
+	clh.log.Info("Abouy to notify limit handler of disconnection")
 	clh.limitHandler.Signal()
 	return nil
 }

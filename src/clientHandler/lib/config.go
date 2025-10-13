@@ -25,6 +25,6 @@ func NewAcceptorConfig(ip string, port int, rabbitUser, rabbitPassword, rabbitHo
 		rabbitPassword:  rabbitPassword,
 		rabbitHost:      rabbitHost,
 		rabbitPort:      rabbitPort,
-		connectionLimit: 5,
+		connectionLimit: limit,
 	}
 }

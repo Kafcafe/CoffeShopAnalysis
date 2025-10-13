@@ -190,11 +190,12 @@ func (a *Acceptor) Run() error {
 		a.log.Info("Waiting for a new client connection...")
 
 		/// In case the limit is reached, it will block here
+
 		a.limitHandler.Wait()
 		conn, err := a.listener.Accept()
 
 		if err != nil {
-			a.log.Warningf("Failed to accept connection: %v", err)
+			a.log.Warningf("Failed 2o accept connection: %v", err)
 			return nil
 		}
 
@@ -222,7 +223,7 @@ func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 
 	newClient := NewClientHandler(conn, newId, *exchangeHandlers, a.limitHandler)
 
-	a.log.Infof("Assigned client id %s with short form %s", newClient, newId.Short)
+	a.log.Infof("Assigned client id with short form %s", newId.Short)
 
 	go newClient.Handle()
 
