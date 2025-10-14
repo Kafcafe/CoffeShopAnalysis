@@ -86,6 +86,18 @@ func (m *MessageMiddlewareQueue) Close() (middlewareError MessageMiddlewareError
 	if m.channel == nil || m.channel.IsClosed() {
 		return MessageMiddlewareSuccess
 	}
+	err := m.channel.Close()
+	if err != nil {
+		return MessageMiddlewareCloseError
+	}
+
+	return MessageMiddlewareSuccess
+}
+
+func (m *MessageMiddlewareQueue) Delete() (middlewareError MessageMiddlewareError) {
+	if m.channel == nil || m.channel.IsClosed() {
+		return MessageMiddlewareSuccess
+	}
 	_, err := m.channel.QueueDelete(
 		m.queueName, // queue name
 		false,       // ifUnused

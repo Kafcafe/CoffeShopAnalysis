@@ -365,7 +365,7 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 	}
 	// Stop consuming and delete ephemeral queue
 	queue.StopConsuming()
-	queue.Close()
+	queue.Delete()
 	g.log.Infof("All partial results received for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 	delete(g.gatherResultsChans, eofMsg.ClientId)
 }
