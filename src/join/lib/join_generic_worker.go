@@ -54,7 +54,7 @@ func (j *JoinGenericWorker) handleSignal() {
 }
 
 func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) (*JoinGenericWorker, error) {
-	log := logger.GetLoggerWithPrefix("[JOINER-ITEMS-" + config.id + "] ")
+	log := logger.GetLoggerWithPrefix("[JOINER-" + config.id + "] ")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
 

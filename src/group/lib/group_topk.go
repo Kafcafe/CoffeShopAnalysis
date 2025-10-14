@@ -101,7 +101,7 @@ func (t *GroupByTopKBestClients) createTopKExchangeHandler() error {
 	}
 
 	transactionsTopKPublishingRouteKey := "transactions.transactions.topk"
-	transactionsTopKPublishingHandler, err := createExchangeHandler(t.rabbitConn, transactionsTopKPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsTopKPublishingHandler, err := createExchangeHandlerStandalone(t.rabbitConn, transactionsTopKPublishingRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return fmt.Errorf("Error creating exchange handler for transactions.transactions.topk: %v", err)
 	}
@@ -265,8 +265,6 @@ func (t *GroupByTopKBestClients) initiateEofCoordination(originalMsg middleware.
 	 */
 
 	allResultsForClient, _ := t.getTopK(&clientStoreGroup)
-
-	t.log.Infof("VALUES %v", allResultsForClient)
 
 	msgToSend := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, allResultsForClient, false, originalMsg.QueryId)
 	msgToSendBytes, err := msgToSend.ToBytes()
