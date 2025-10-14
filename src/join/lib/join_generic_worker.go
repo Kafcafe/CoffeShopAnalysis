@@ -134,15 +134,15 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 	nextStagePubs[j.conf.ofType] = *nextStagePub
 
 	// BROADCAST COUNT PUB/SUB
-	j.log.Infof("Setting up count PUB for filter %s", j.conf.id)
-	broadcastCountPubRoutKey := fmt.Sprintf("filters.%s.count", j.conf.ofType)
+	j.log.Infof("Setting up count PUB for join %s", j.conf.id)
+	broadcastCountPubRoutKey := fmt.Sprintf("join.%s.count", j.conf.ofType)
 	broadcastCountPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastCountPubRoutKey)
 	if err != nil {
 		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastCountPubRoutKey, err)
 	}
 
-	j.log.Infof("Setting up count SUB for filter %s", j.conf.id)
-	broadcastCountSubQueueName := fmt.Sprintf("filters.%s.count.%s", j.conf.ofType, j.conf.id)
+	j.log.Infof("Setting up count SUB for join %s", j.conf.id)
+	broadcastCountSubQueueName := fmt.Sprintf("join.%s.count.%s", j.conf.ofType, j.conf.id)
 	broadcastCountSub, err := j.middlewareHandler.CreateQueue(broadcastCountSubQueueName)
 	if err != nil {
 		return fmt.Errorf("error creating count queue for %s: %v", broadcastCountSubQueueName, err)
@@ -202,15 +202,15 @@ func (j *JoinGenericWorker) createExchangeHandlersForFinalStage() error {
 	// NEXT STAGE PUB
 
 	// BROADCAST COUNT PUB/SUB
-	j.log.Infof("Setting up count PUB for filter %s", j.conf.id)
-	broadcastCountPubRoutKey := fmt.Sprintf("filters.%s.count", j.conf.ofType)
+	j.log.Infof("Setting up count PUB for join %s", j.conf.id)
+	broadcastCountPubRoutKey := fmt.Sprintf("join.%s.count", j.conf.ofType)
 	broadcastCountPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastCountPubRoutKey)
 	if err != nil {
 		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastCountPubRoutKey, err)
 	}
 
-	j.log.Infof("Setting up count SUB for filter %s", j.conf.id)
-	broadcastCountSubQueueName := fmt.Sprintf("filters.%s.count.%s", j.conf.ofType, j.conf.id)
+	j.log.Infof("Setting up count SUB for join %s", j.conf.id)
+	broadcastCountSubQueueName := fmt.Sprintf("join.%s.count.%s", j.conf.ofType, j.conf.id)
 	broadcastCountSub, err := j.middlewareHandler.CreateQueue(broadcastCountSubQueueName)
 	if err != nil {
 		return fmt.Errorf("error creating count queue for %s: %v", broadcastCountSubQueueName, err)
