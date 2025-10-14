@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -22,7 +23,8 @@ type JoinGenericWorker struct {
 	middlewareHandlers JoinMiddlewareHandlers
 	errChan            chan middleware.MessageMiddlewareError
 
-	clientsStats map[string]*middleware.ClientStats
+	clientStatsMutex sync.Mutex
+	clientsStats     map[string]*middleware.ClientStats
 
 	sideTable         []string
 	sideTableReceived chan int
@@ -82,7 +84,8 @@ func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) 
 		conf:    config,
 		errChan: make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 
-		clientsStats: make(map[string]*middleware.ClientStats),
+		clientStatsMutex: sync.Mutex{},
+		clientsStats:     make(map[string]*middleware.ClientStats),
 
 		sideTable:         make([]string, 0),
 		sideTableReceived: make(chan int, SINGLE_ITEM_BUFFER_LEN),
@@ -293,8 +296,10 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
+		j.clientStatsMutex.Lock()
 		clientStats := j.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
+		j.clientStatsMutex.Unlock()
 		go j.handleEofMessage(message, *msg.ToMessage())
 		return nil
 	}
@@ -325,7 +330,9 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 }
 
 func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
+	j.clientStatsMutex.Lock()
 	clientStats := j.getClientStats(eofMsg.ClientId)
+	j.clientStatsMutex.Unlock()
 
 	j.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
@@ -431,6 +438,8 @@ func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
 		return err
 	}
 
+	j.clientStatsMutex.Lock()
+	defer j.clientStatsMutex.Unlock()
 	clientStats := j.getClientStats(msg.ClientId)
 
 	clientStats.AddProcessed(msg.DataType)
