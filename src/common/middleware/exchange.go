@@ -81,10 +81,13 @@ func (m *MessageMiddlewareExchange) Close() (middlewareError MessageMiddlewareEr
 	if m.channel == nil || m.channel.IsClosed() {
 		return MessageMiddlewareSuccess
 	}
-	err := m.channel.Close()
+	err := m.channel.ExchangeDelete(
+		m.exchangeName, // exchange name
+		false,          // ifUnused
+		false,          // noWait
+	)
 	if err != nil {
 		return MessageMiddlewareCloseError
 	}
-
 	return MessageMiddlewareSuccess
 }
