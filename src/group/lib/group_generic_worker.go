@@ -265,7 +265,10 @@ func (g *GroupByGenericWorker) sendNextStage(msgToSend middleware.MessageGrouped
 	if err != nil {
 		return err
 	}
-	g.exchangeHandlers.nextStagePub.Send(msgBytes)
+	sendErr := g.exchangeHandlers.nextStagePub.Send(msgBytes)
+	if sendErr != 0 {
+		return fmt.Errorf("error sending message to next stage: %d", sendErr)
+	}
 	return nil
 }
 
@@ -337,7 +340,7 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 		answerMessage(NACK_REQUEUE, eofMessage)
 		return
 	}
-	g.log.Infof("Requesting results from queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
+	g.log.Infof("Requesting results to receive in queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
 	requestMsg := middleware.NewMessageResultsRequest(g.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
 	requestBytes, err := requestMsg.ToBytes()
 	if err != nil {
@@ -352,18 +355,19 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 	// Create channel to gather results
 	g.gatherResultsChans[eofMsg.ClientId] = make(chan int, countToWaitResults)
 	// Consume from ephemeral queue
-	g.exchangeHandlers.broadcastResultsRequestSub.StartConsuming(g.gatherAndMergePartialResults, g.errChan)
+	g.log.Infof("Consuming results from queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
+	queue.StartConsuming(g.gatherAndMergePartialResults, g.errChan)
 
 	for i := range countToWaitResults {
+		g.log.Infof("Waiting for partial results %d/%d for client %s and dataType %s", i+1, countToWaitResults, eofMsg.ClientId, eofMsg.DataType)
 		<-g.gatherResultsChans[eofMsg.ClientId]
-		g.log.Infof("Received partial results %d/%d for client %s and dataType %s", i+1, g.conf.count, eofMsg.ClientId, eofMsg.DataType)
+		g.log.Infof("Received partial results %d/%d for client %s and dataType %s", i+1, countToWaitResults, eofMsg.ClientId, eofMsg.DataType)
 	}
 	// Stop consuming and delete ephemeral queue
-	g.exchangeHandlers.broadcastResultsRequestSub.StopConsuming()
+	queue.StopConsuming()
 	queue.Close()
 	g.log.Infof("All partial results received for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 	delete(g.gatherResultsChans, eofMsg.ClientId)
-
 }
 
 func (g *GroupByGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eofMsg middleware.Message, clientStats *middleware.ClientStats) {
@@ -544,14 +548,15 @@ func (g *GroupByGenericWorker) gatherAndSendPartialResults(message amqp.Delivery
 	g.mutex.Unlock()
 
 	// IF WE WANT TO BATCH RESULTS, WE CAN DO IT HERE
-	messageToSend := middleware.NewMessageGrouped(msg.DataType, msg.ClientId, currentGroup.ToMapString(), false, 0)
+	partialResults := currentGroup.ToMapString()
+	messageToSend := middleware.NewMessageGrouped(msg.DataType, msg.ClientId, partialResults, false, 0)
 	responseBytes, err := messageToSend.ToBytes()
 	if err != nil {
 		g.log.Errorf("%v", err)
 		answerMessage(NACK_DISCARD, message)
 		return err
 	}
-	g.log.Infof("Sending partial results to %s", msg.QueueName)
+	g.log.Infof("Sending partial results to %s: %v", msg.QueueName, partialResults)
 
 	// SEND TO REQUESTOR
 	middleError := g.SendToQueue(msg.QueueName, responseBytes)
@@ -560,11 +565,13 @@ func (g *GroupByGenericWorker) gatherAndSendPartialResults(message amqp.Delivery
 		return fmt.Errorf("problem while sending message to %s", msg.QueueName)
 	}
 
+	g.log.Infof("Partial results sent to %s", msg.QueueName)
 	// DELETE AFTER SENDING
 	// At this point, client has finished, results have been sent to the requester, so we can delete the stored group
 	g.mutex.Lock()
 	g.group.Delete(msg.ClientId)
 	g.mutex.Unlock()
+	g.log.Infof("Deleted stored group for client %s", msg.ClientId)
 
 	answerMessage(ACK, message)
 	return nil
