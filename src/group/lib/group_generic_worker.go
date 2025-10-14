@@ -35,11 +35,7 @@ type GroupByGenericWorker struct {
 
 	conf GroupByConfig
 
-	// currentMessageProcessing  middleware.Message
 	mutex sync.Mutex
-	// eofChan                   chan int
-	eofIntercommunicationChan chan structures.AllowedGroup
-	// groupedPerClient          structures.GroupedPerClient
 	group structures.GrouperPerClient[structures.AllowedGroup]
 	// new eof
 	clientsStats       map[ClientId]*middleware.ClientStats
@@ -75,9 +71,7 @@ func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByCon
 		conf:              conf,
 
 		mutex: sync.Mutex{},
-		// eofChan:                   make(chan int, SINGLE_ITEM_BUFFER_LEN),
-		eofIntercommunicationChan: make(chan structures.AllowedGroup, SINGLE_ITEM_BUFFER_LEN),
-		group:                     structures.NewGrouperPerClient[structures.AllowedGroup](),
+		group: structures.NewGrouperPerClient[structures.AllowedGroup](),
 
 		clientsStats:       make(map[ClientId]*middleware.ClientStats),
 		gatherResultsChans: make(map[ClientId]chan int),
@@ -90,137 +84,6 @@ func (g *GroupByGenericWorker) handleSignal() {
 	g.log.Info("Handling signal")
 	g.Shutdown()
 }
-
-// func (g *GroupByGenericWorker) processInboundEof(message amqp.Delivery) error {
-// 	msg, err := middleware.NewEofMessageGroupedFromBytes(message.Body)
-// 	if err != nil {
-// 		answerMessage(NACK_DISCARD, message)
-// 		return err
-// 	}
-// 	g.log.Warningf("processInboundEof %s groupBy%s", msg.DataType, g.conf.id)
-
-// 	didSomebodyElseAcked := msg.Origin == g.conf.id && msg.IsAck && msg.ImmediateSource != g.conf.id
-// 	if didSomebodyElseAcked {
-// 		g.log.Infof("Somebody else acked for %s groupBy%s", msg.DataType, g.conf.id)
-// 		partialGrouping := g.conf.factory()
-// 		partialGrouping.FromMapString(msg.Payload)
-
-// 		g.log.Infof("%v", partialGrouping)
-// 		g.eofIntercommunicationChan <- partialGrouping
-// 		answerMessage(ACK, message)
-// 		return nil
-// 	}
-
-// 	isAckMine := msg.ImmediateSource == g.conf.id
-// 	isAckForNotForMe := msg.IsAck && msg.Origin != g.conf.id
-// 	if isAckMine || isAckForNotForMe {
-// 		answerMessage(ACK, message)
-// 		return nil
-// 	}
-
-// 	g.log.Warning("Lock")
-// 	g.mutex.Lock()
-// 	currentMessageProcessing := g.currentMessageProcessing
-// 	g.mutex.Unlock()
-// 	g.log.Warning("Unlock")
-
-// 	if currentMessageProcessing.IsFromSameStream(msg.DataType, msg.ClientId) {
-// 		g.log.Warningf("BEFORE INBOUND %s", msg.DataType)
-// 		<-g.eofChan
-// 		g.log.Warningf("AFTER INBOUND %s", msg.DataType)
-// 	}
-
-// 	msg.ImmediateSource = g.conf.id
-// 	msg.IsAck = true
-
-// 	g.mutex.Lock()
-// 	msg.Payload = g.group.ToMapString(msg.ClientId)
-// 	g.mutex.Unlock()
-
-// 	msgBytes, err := msg.ToBytes()
-// 	if err != nil {
-// 		answerMessage(NACK_DISCARD, message)
-// 		return err
-// 	}
-
-// 	answerMessage(ACK, message)
-// 	g.exchangeHandlers.eofPub.Send(msgBytes)
-// 	return nil
-// }
-
-// func (g *GroupByGenericWorker) initiateEofCoordination(originalMsg middleware.Message) {
-// 	eofMsg := middleware.NewEofMessageGrouped(originalMsg.DataType, originalMsg.ClientId, g.conf.id, g.conf.id, false, nil, originalMsg.QueryId)
-// 	msgBytes, err := eofMsg.ToBytes()
-// 	if err != nil {
-// 		g.log.Errorf("Failed to serialize message: %v", err)
-// 	}
-
-// 	g.exchangeHandlers.eofPub.Send(msgBytes)
-
-// 	totalEofs := g.conf.count - 1
-
-// 	if totalEofs == 0 {
-// 		g.log.Infof("No EOF coordination needed for %s", originalMsg.DataType)
-// 	} else {
-// 		g.log.Infof("Coordinating EOF for %s", originalMsg.DataType)
-// 	}
-
-// 	g.log.Infof("Consolidating partial results for %s", originalMsg.DataType)
-
-// 	g.mutex.Lock()
-// 	currentGroup := g.group.Get(originalMsg.ClientId, g.conf.factory)
-// 	g.group.Delete(originalMsg.ClientId)
-// 	g.mutex.Unlock()
-
-// 	for i := 0; i < totalEofs; i++ {
-// 		g.log.Warningf("BEFORE %d %s", i, originalMsg.DataType)
-
-// 		partialGrouping := <-g.eofIntercommunicationChan
-
-// 		g.log.Infof("%v", partialGrouping)
-// 		g.log.Infof("%v", currentGroup)
-
-// 		currentGroup.Merge(partialGrouping)
-
-// 		g.log.Infof("%v", currentGroup)
-// 		g.log.Warningf("AFTER %d %s", i, originalMsg.DataType)
-// 	}
-
-// 	messageToSend := currentGroup.GetMessageToSend()
-// 	emitted := 0
-// 	for _, messages := range messageToSend {
-// 		for key, records := range messages {
-// 			singleYearMonthRecords := map[string][]string{key: records}
-// 			response := middleware.NewMessageGrouped(originalMsg.DataType, originalMsg.ClientId, singleYearMonthRecords, false, originalMsg.QueryId)
-// 			responseBytes, err := response.ToBytes()
-// 			if err != nil {
-// 				g.log.Errorf("%v", err)
-// 			}
-
-// 			g.log.Infof("Sent consolidated results for year-month top profit: %s", key)
-
-// 			middleError := g.exchangeHandlers.nextStagePub.Send(responseBytes)
-// 			emitted++
-// 			if middleError != middleware.MessageMiddlewareSuccess {
-// 				g.log.Errorf("problem while sending message to %s", g.conf.nextStagePub)
-// 			}
-// 		}
-// 	}
-
-// 	g.log.Infof("Final results grouped and consolidated")
-
-// 	originalMsg.TotalEmitted = emitted
-// 	eofMessageBytes, err := originalMsg.ToBytes()
-// 	if err != nil {
-// 		g.log.Errorf("%v", err)
-// 	}
-// 	middleError := g.exchangeHandlers.nextStagePub.Send(eofMessageBytes)
-// 	if middleError != middleware.MessageMiddlewareSuccess {
-// 		g.log.Errorf("problem while propagating EOF")
-// 	}
-
-// 	g.log.Warningf("Propagated EOF for %s to next pipeline stage. Total emitted: %d", originalMsg.DataType, originalMsg.TotalEmitted)
-// }
 
 func (g *GroupByGenericWorker) getClientStats(clientId ClientId) *middleware.ClientStats {
 	if _, exists := g.clientsStats[clientId]; !exists {
