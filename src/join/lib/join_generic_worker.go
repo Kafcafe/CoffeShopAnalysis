@@ -26,14 +26,13 @@ type JoinGenericWorker struct {
 	middlewareHandlers JoinMiddlewareHandlers
 	errChan            chan middleware.MessageMiddlewareError
 
-	clientStatsMutex sync.Mutex
-	clientsStats     map[string]*middleware.ClientStats
+	mutex        sync.Mutex
+	clientsStats map[string]*middleware.ClientStats
 
 	sideTable         map[ClientId][]string
 	sideTableReceived chan int
 
 	gatherResultsChans map[ClientId]chan int // to signal when a result has been gathered
-	resultsMutex       sync.Mutex
 }
 
 type JoinMiddlewareHandlers struct {
@@ -92,8 +91,8 @@ func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) 
 		conf:    config,
 		errChan: make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 
-		clientStatsMutex: sync.Mutex{},
-		clientsStats:     make(map[string]*middleware.ClientStats),
+		mutex:        sync.Mutex{},
+		clientsStats: make(map[string]*middleware.ClientStats),
 
 		sideTable:         map[string][]string{},
 		sideTableReceived: make(chan int, SINGLE_ITEM_BUFFER_LEN),
@@ -277,14 +276,14 @@ func (j *JoinGenericWorker) gatherAndMergePartialResults(message amqp.Delivery) 
 
 	otherResults := msg.Payload
 
-	j.resultsMutex.Lock()
+	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
 	if !exists {
 		j.sideTable[msg.ClientId] = []string{}
 	}
 
 	j.sideTable[msg.ClientId] = append(j.parseOnlyAlreadyJoinedLines(j.sideTable[msg.ClientId]), otherResults...)
-	j.resultsMutex.Unlock()
+	j.mutex.Unlock()
 
 	j.log.Infof("Partial results merged for client %s and dataType %s", msg.ClientId, msg.DataType)
 	// Signal that a result has been gathered
@@ -344,12 +343,12 @@ func (j *JoinGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eo
 	j.gatherOtherPartialResults(eofMessage, eofMsg)
 
 	// SEND RESULTS
-	j.resultsMutex.Lock()
+	j.mutex.Lock()
 	currentResults, exists := j.sideTable[eofMsg.ClientId]
 	if !exists {
 		j.sideTable[eofMsg.ClientId] = []string{}
 	}
-	j.resultsMutex.Unlock()
+	j.mutex.Unlock()
 
 	response := middleware.NewMessage(eofMsg.DataType, eofMsg.ClientId, currentResults, false, eofMsg.QueryId)
 
@@ -359,7 +358,7 @@ func (j *JoinGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eo
 		return
 	}
 	j.log.Infof("Sent consolidated results: %s", destinationRouteKey)
-	emitted := 2
+	emitted := 1
 
 	// update emitted count and send eof
 	eofMsg.TotalEmitted = emitted
@@ -374,15 +373,15 @@ func (j *JoinGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eo
 	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
 	// DELETE AFTER SENDING
-	j.resultsMutex.Lock()
+	j.mutex.Lock()
 	delete(j.sideTable, eofMsg.ClientId)
-	j.resultsMutex.Unlock()
+	j.mutex.Unlock()
 }
 
 func (j *JoinGenericWorker) handleEofMessageForJoinerUsers(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	j.clientStatsMutex.Lock()
+	j.mutex.Lock()
 	clientStats := j.getClientStats(eofMsg.ClientId)
-	j.clientStatsMutex.Unlock()
+	j.mutex.Unlock()
 
 	j.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
@@ -394,31 +393,6 @@ func (j *JoinGenericWorker) handleEofMessageForJoinerUsers(eofMessage amqp.Deliv
 
 	j.log.Infof("Initiating gathering results and sending EOF for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 	j.gatherResultsAndSendEof(eofMessage, eofMsg, clientStats)
-
-	// Send final results that don't need to be consolidated
-
-	// j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF", eofMsg.DataType, j.conf.id)
-
-	// sideTableMessage := middleware.NewMessage(eofMsg.DataType, eofMsg.ClientId, j.sideTable[eofMsg.ClientId], false, eofMsg.QueryId)
-	// destinationRouteKey, err := j.sendNextStage(*sideTableMessage)
-	// if err != nil {
-	// 	answerMessage(NACK_REQUEUE, eofMessage)
-	// 	j.log.Errorf("Failed to send results to next stage: %v", err)
-	// 	return
-	// }
-
-	// j.log.Infof("Sent side table to next stage: %s", destinationRouteKey)
-
-	// // update emitted count
-	// eofMsg.TotalEmitted = clientStats.GetEmitted(eofMsg.DataType)
-	// destinationRouteKeyEof, err := j.sendNextStage(eofMsg)
-	// if err != nil {
-	// 	j.log.Errorf("Failed to send EOF message to next stage: %v", err)
-	// 	answerMessage(NACK_DISCARD, eofMessage)
-	// 	return
-	// }
-	// answerMessage(ACK, eofMessage)
-	// j.log.Infof("Sent EOF message to next stage for client %s and dataType %s to %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, destinationRouteKeyEof, eofMsg.TotalEmitted)
 }
 
 func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
@@ -428,25 +402,30 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return err
 	}
 
+	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
 	if !exists {
 		j.sideTable[msg.ClientId] = []string{}
 	}
+	j.mutex.Unlock()
 
 	// Given this method is used only on the Users Joiner
 	msg.QueryId = 4
 
 	if msg.IsEof {
-		j.clientStatsMutex.Lock()
+		j.mutex.Lock()
 		clientStats := j.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
-		j.clientStatsMutex.Unlock()
+		j.mutex.Unlock()
 		go j.handleEofMessageForJoinerUsers(message, *msg)
 		return nil
 	}
 
 	j.log.Debugf("Received payload: %v", msg.Payload)
+	j.mutex.Lock()
 	j.sideTable[msg.ClientId] = j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
+	j.mutex.Unlock()
+
 	answerMessage(ACK, message)
 	j.log.Debug("Partially updated side table")
 
@@ -468,10 +447,12 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return err
 	}
 
+	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
 	if !exists {
 		j.sideTable[msg.ClientId] = []string{}
 	}
+	j.mutex.Unlock()
 
 	switch j.conf.ofType {
 	case JOIN_ITEMS_TYPE:
@@ -483,10 +464,10 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		j.clientStatsMutex.Lock()
+		j.mutex.Lock()
 		clientStats := j.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
-		j.clientStatsMutex.Unlock()
+		j.mutex.Unlock()
 		go j.handleEofMessage(message, *msg.ToMessage())
 		return nil
 	}
@@ -517,9 +498,9 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 }
 
 func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	j.clientStatsMutex.Lock()
+	j.mutex.Lock()
 	clientStats := j.getClientStats(eofMsg.ClientId)
-	j.clientStatsMutex.Unlock()
+	j.mutex.Unlock()
 
 	j.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
@@ -597,10 +578,12 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		return err
 	}
 
+	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
 	if !exists {
 		j.sideTable[msg.ClientId] = []string{}
 	}
+	j.mutex.Unlock()
 
 	if msg.IsEof {
 		j.log.Infof("Received EOF for %s. Ready to Join.", j.conf.ofType)
@@ -609,7 +592,9 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		return nil
 	}
 
+	j.mutex.Lock()
 	j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
+	j.mutex.Unlock()
 
 	j.log.Infof("Side table size: %d", len(j.sideTable[msg.ClientId]))
 	answerMessage(ACK, message)
@@ -630,8 +615,7 @@ func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
 		return err
 	}
 
-	j.clientStatsMutex.Lock()
-	defer j.clientStatsMutex.Unlock()
+	j.mutex.Lock()
 	clientStats := j.getClientStats(msg.ClientId)
 
 	clientStats.AddProcessed(msg.DataType)
@@ -646,6 +630,8 @@ func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
 			clientStats.SendEofChan(msg.DataType)
 		}
 	}
+
+	j.mutex.Unlock()
 
 	answerMessage(ACK, message)
 	return nil
@@ -692,13 +678,13 @@ func (j *JoinGenericWorker) gatherAndSendPartialResults(message amqp.Delivery) e
 		return nil
 	}
 
-	j.resultsMutex.Lock()
+	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
 	if !exists {
 		j.sideTable[msg.ClientId] = []string{}
 	}
 	partialResults := j.parseOnlyAlreadyJoinedLines(j.sideTable[msg.ClientId])
-	j.resultsMutex.Unlock()
+	j.mutex.Unlock()
 
 	messageToSend := middleware.NewMessage(msg.DataType, msg.ClientId, partialResults, false, 0)
 	responseBytes, err := messageToSend.ToBytes()
@@ -719,9 +705,9 @@ func (j *JoinGenericWorker) gatherAndSendPartialResults(message amqp.Delivery) e
 	j.log.Infof("Partial results successfully sent to %s", msg.QueueName)
 	// DELETE AFTER SENDING
 	// At this point, client has finished, results have been sent to the requester, so we can delete the stored group
-	j.resultsMutex.Lock()
+	j.mutex.Lock()
 	delete(j.sideTable, msg.ClientId)
-	j.resultsMutex.Unlock()
+	j.mutex.Unlock()
 	j.log.Infof("Deleted stored sideTable for client %s", msg.ClientId)
 
 	answerMessage(ACK, message)
