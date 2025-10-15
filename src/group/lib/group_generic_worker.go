@@ -43,7 +43,7 @@ type GroupByGenericWorker struct {
 }
 
 func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByConfig) (*GroupByGenericWorker, error) {
-	log := logger.GetLoggerWithPrefix("[GROUP-GEN]")
+	log := logger.GetLoggerWithPrefix("[GROUP-" + conf.id + "] ")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
 
@@ -145,7 +145,9 @@ func (g *GroupByGenericWorker) sendEofNextStage(msgToSend middleware.Message) er
 }
 
 func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
+	g.mutex.Lock()
 	clientStats := g.getClientStats(eofMsg.ClientId)
+	g.mutex.Lock()
 
 	g.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
@@ -376,6 +378,8 @@ func (g *GroupByGenericWorker) processedCountMessage(message amqp.Delivery) erro
 		return err
 	}
 
+	g.mutex.Lock()
+	defer g.mutex.Unlock()
 	clientStats := g.getClientStats(msg.ClientId)
 
 	clientStats.AddProcessed(msg.DataType)
