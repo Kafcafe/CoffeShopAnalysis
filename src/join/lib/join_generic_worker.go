@@ -26,7 +26,7 @@ type JoinGenericWorker struct {
 	clientStatsMutex sync.Mutex
 	clientsStats     map[string]*middleware.ClientStats
 
-	sideTable         []string
+	sideTable         map[string][]string
 	sideTableReceived chan int
 }
 
@@ -87,7 +87,7 @@ func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) 
 		clientStatsMutex: sync.Mutex{},
 		clientsStats:     make(map[string]*middleware.ClientStats),
 
-		sideTable:         make([]string, 0),
+		sideTable:         map[string][]string{},
 		sideTableReceived: make(chan int, SINGLE_ITEM_BUFFER_LEN),
 	}, nil
 }
@@ -241,18 +241,17 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return err
 	}
 
-	switch j.conf.ofType {
-	case JOIN_ITEMS_TYPE:
-		msg.QueryId = 2
-	case JOIN_STORE_Q3_TYPE:
-		msg.QueryId = 3
-	case JOIN_USERS_TYPE:
-		msg.QueryId = 4
+	_, exists := j.sideTable[msg.ClientId]
+	if !exists {
+		j.sideTable[msg.ClientId] = []string{}
 	}
+
+	// Given this method is used only on the Users Joiner
+	msg.QueryId = 4
 
 	if !msg.IsEof {
 		j.log.Debugf("Received payload: %v", msg.Payload)
-		j.sideTable = j.conf.messageCallbackUpdateSideTable(j.sideTable, msg.Payload)
+		j.sideTable[msg.ClientId] = j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
 		answerMessage(ACK, message)
 		j.log.Debug("Partially updated side table")
 		return nil
@@ -260,7 +259,7 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 
 	j.log.Infof("Received EOF for %s join%s. Sending joined table and EOF", msg.DataType, j.conf.id)
 
-	sideTableMessage := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable, false, msg.QueryId)
+	sideTableMessage := middleware.NewMessage(msg.DataType, msg.ClientId, j.sideTable[msg.ClientId], false, msg.QueryId)
 	destinationRouteKey, err := j.sendNextStage(*sideTableMessage)
 	if err != nil {
 		answerMessage(NACK_REQUEUE, message)
@@ -286,6 +285,11 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return err
 	}
 
+	_, exists := j.sideTable[msg.ClientId]
+	if !exists {
+		j.sideTable[msg.ClientId] = []string{}
+	}
+
 	switch j.conf.ofType {
 	case JOIN_ITEMS_TYPE:
 		msg.QueryId = 2
@@ -305,7 +309,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	}
 
 	j.log.Debugf("Received payload: %v", msg.Payload)
-	joined := j.conf.messageCallback(NewJoiner(), j.sideTable, msg.Payload)
+	joined := j.conf.messageCallback(NewJoiner(), j.sideTable[msg.ClientId], msg.Payload)
 	j.log.Infof("Joined %v items", len(joined))
 
 	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
@@ -402,12 +406,17 @@ func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextSta
 	return routeKey, nil
 }
 
-func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
+func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
 		return err
+	}
+
+	_, exists := j.sideTable[msg.ClientId]
+	if !exists {
+		j.sideTable[msg.ClientId] = []string{}
 	}
 
 	if msg.IsEof {
@@ -417,9 +426,9 @@ func (j *JoinGenericWorker) storeSideTable(message amqp.Delivery) error {
 		return nil
 	}
 
-	j.sideTable = append(j.sideTable, msg.Payload...)
+	j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
 
-	j.log.Infof("Side table size: %d", len(j.sideTable))
+	j.log.Infof("Side table size: %d", len(j.sideTable[msg.ClientId]))
 	answerMessage(ACK, message)
 	return nil
 }
@@ -474,7 +483,7 @@ func (j *JoinGenericWorker) Run() error {
 	}
 
 	j.log.Info("Waiting to receive side table...")
-	j.middlewareHandlers.sideTableSub.StartConsuming(j.storeSideTable, j.errChan)
+	j.middlewareHandlers.sideTableSub.StartConsuming(j.saveSideTable, j.errChan)
 	<-j.sideTableReceived
 
 	if !j.isRunning {

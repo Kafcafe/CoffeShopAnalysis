@@ -94,14 +94,14 @@ func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
 		id:                             joinId,
 		count:                          joinCount,
 		ofType:                         "users",
-		prevStageSub:                   "transactions.users", // TODO: change when defined
+		prevStageSub:                   "transactions.users",
 		sideTableSub:                   "transactions.transactions.join.store",
 		nextStagePubs:                  map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
 		messageCallbackUpdateSideTable: UpdatedSideTableWithUsers,
 	}
 }
 
-func CreateJoinItemsWorker(joinItemsType string,
+func CreateJoinerWorker(joinItemsType string,
 	rabbitConf middleware.RabbitConfig,
 	joinerId string,
 	joinerCount int,
@@ -136,7 +136,7 @@ func CreateJoinItemsWorker(joinItemsType string,
 			return nil, err
 		}
 	default:
-		return nil, fmt.Errorf("Unknown joinItems type: %s", joinItemsType)
+		return nil, fmt.Errorf("Unknown joiner type: %s", joinItemsType)
 	}
 
 	return &joinItemsWorker, nil
