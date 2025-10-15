@@ -4,27 +4,32 @@ import (
 	"fmt"
 	"os"
 	"strings"
+	"time"
+
+	logger "common/logger"
 
 	client "github.com/Kafcafe/CoffeShopAnalysis/client/lib"
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
 )
 
-var log = logging.MustGetLogger("log")
+const (
+	SUCCESS_EXIT_CODE       = 0
+	STARTUP_ERROR_EXIT_CODE = 1
+)
 
 func InitConfig() (*viper.Viper, error) {
 	v := viper.New()
 
 	// Configure viper to read env variables with the CLI_ prefix
 	v.AutomaticEnv()
-	v.SetEnvPrefix("cli")
+
 	// Use a replacer to replace env variables underscores with points. This let us
 	// use nested configurations in the config file and at the same time define
 	// env variables for the nested configurations
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 
 	// Add env variables supported
-	v.BindEnv("id")
 	v.BindEnv("log", "level")
 	v.BindEnv("batch", "maxAmount")
 	v.BindEnv("datapath", "folder")
@@ -40,33 +45,11 @@ func InitConfig() (*viper.Viper, error) {
 	return v, nil
 }
 
-// InitLogger Receives the log level to be set in go-logging as a string. This method
-// parses the string and set the level to the logger. If the level string is not
-// valid an error is returned
-func InitLogger(logLevel string) error {
-	baseBackend := logging.NewLogBackend(os.Stdout, "", 0)
-	format := logging.MustStringFormatter(
-		`%{time:2006-01-02 15:04:05.000} %{level:.5s} %{message}`,
-	)
-	backendFormatter := logging.NewBackendFormatter(baseBackend, format)
-
-	backendLeveled := logging.AddModuleLevel(backendFormatter)
-	logLevelCode, err := logging.LogLevel(logLevel)
-	if err != nil {
-		return err
-	}
-	backendLeveled.SetLevel(logLevelCode, "")
-
-	// Set the backends to be used.
-	logging.SetBackend(backendLeveled)
-	return nil
-}
-
 // PrintConfig Print all the configuration parameters of the program.
 // For debugging purposes only
-func PrintConfig(v *viper.Viper) {
-	log.Infof("action: config | result: success | client_id: %s | server_address: %s | log_level: %s | batch_max_amount: %s | datapath_folder: %s",
-		v.GetString("id"),
+func PrintConfig(v *viper.Viper, logger *logging.Logger) {
+	logger.Infof("action: config | result: success | client_id: %s | server_address: %s | log_level: %s | batch_max_amount: %s | datapath_folder: %s",
+		v.GetString("client.id"),
 		v.GetString("server.address"),
 		v.GetString("log.level"),
 		v.GetString("batch.maxAmount"),
@@ -75,38 +58,51 @@ func PrintConfig(v *viper.Viper) {
 }
 
 func main() {
-	v, err := InitConfig()
+	config, err := InitConfig()
 	if err != nil {
-		log.Criticalf("%s", err)
+		fmt.Printf("action: init configs | result: error | Error initializing configuration: %v\n", err)
+		return
 	}
 
-	if err := InitLogger(v.GetString("log.level")); err != nil {
-		log.Criticalf("%s", err)
+	err = logger.InitGlobalLogger(config.GetString("log.level"))
+	if err != nil {
+		fmt.Printf("action: init logger | result: error | Error initializing logger: %v\n", err)
+		return
 	}
 
-	PrintConfig(v)
+	logger := logger.GetLoggerWithPrefix("[MAIN]")
 
-	log.Infof("Client %s started", v.GetString("id"))
+	PrintConfig(config, logger)
+
+	clientId := config.GetString("client.id")
+	logger.Infof("Client %s started", clientId)
+
+	filetypes := config.GetString("filetypes")
 
 	clientConfig := client.NewClientConfig(
-		v.GetString("server.address"),
-		v.GetString("datapath.folder"),
-		v.GetInt("batch.maxAmount"),
+		config.GetString("server.address"),
+		config.GetString("datapath.folder"),
+		config.GetInt("batch.maxAmount"),
 	)
 
-	client := client.NewClient(clientConfig)
+	client := client.NewClient(clientConfig, clientId, filetypes)
 
 	if client == nil {
-		log.Criticalf("Client could not be created")
-		os.Exit(1)
+		logger.Criticalf("| action: create client | result: error | client_id: %s | Client could not be created", clientId)
+		os.Exit(STARTUP_ERROR_EXIT_CODE)
 	}
+
+	start := time.Now()
 
 	if err := client.Run(); err != nil {
-		log.Criticalf("Client execution failed: %s", err)
-		os.Exit(1)
+		logger.Criticalf("| action: run client | result: error | client_id: %s | Client execution failed: %s", clientId, err)
+		os.Exit(STARTUP_ERROR_EXIT_CODE)
 	}
 
-	log.Infof("Client %s finished", v.GetString("id"))
-	os.Exit(0)
+	elapsed := time.Since(start)
 
+	logger.Infof("| action: finish | result: success | client_id: %s | Client %s finished", clientId, clientId)
+	logger.Infof("| action: log execution time | client_id: %s | Execution took %s\n", clientId, elapsed)
+
+	os.Exit(SUCCESS_EXIT_CODE)
 }

@@ -1,7 +1,11 @@
-package topk
+package structures
+
+import (
+	heap "group/datatypes"
+)
 
 type Toper[T comparable] struct {
-	heap *heap[T]
+	heap *heap.Heap[T]
 	k    int
 }
 
@@ -11,7 +15,7 @@ func NewToper[T comparable](k int, comparer func(T, T) int) *Toper[T] {
 	}
 
 	return &Toper[T]{
-		heap: NewHeap(comparer),
+		heap: heap.NewHeap(comparer),
 		k:    k,
 	}
 }
@@ -32,7 +36,7 @@ func (t *Toper[T]) Add(value T) {
 		return
 	}
 
-	if t.heap.comparer(value, t.heap.Top()) < 0 {
+	if t.heap.Comparer(value, t.heap.Top()) < 0 {
 		t.heap.Pop()
 		t.heap.Push(value)
 	}

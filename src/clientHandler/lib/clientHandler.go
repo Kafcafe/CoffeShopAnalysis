@@ -5,7 +5,6 @@ import (
 	"common/middleware"
 	"fmt"
 	"net"
-	"strings"
 	"sync"
 
 	"github.com/op/go-logging"
@@ -13,21 +12,46 @@ import (
 )
 
 const (
-	ERROR_CHANNEL_BUFFER_SIZE = 20
+	ERROR_CHANNEL_BUFFER_SIZE   = 20
+	RESULTS_CHANNEL_BUFFER_SIZE = 10
 
 	ACK          = 0
 	NACK_REQUEUE = 1
 	NACK_DISCARD = 2
 )
 
+// type ResultsChannels struct {
+// 	resultsQ1Chan chan middleware.Message
+// 	resultsQ2Chan chan middleware.Message
+// 	resultsQ3Chan chan middleware.Message
+// 	resultsQ4Chan chan middleware.Message
+// }
+
+// func NewResultsChannels() ResultsChannels {
+// 	return ResultsChannels{
+// 		resultsQ1Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 		resultsQ2Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 		resultsQ3Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 		resultsQ4Chan: make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+// 	}
+// }
+
+type QueryID int
+type DataType = string
+
 type ClientHandler struct {
-	protocol         *Protocol
-	log              *logging.Logger
-	ClientId         ClientUuid
-	exchangeHandlers ExchangeHandlers
-	errChan          chan middleware.MessageMiddlewareError
-	isRunning        bool
-	mtx              sync.Mutex
+	protocol           *Protocol
+	log                *logging.Logger
+	ClientId           ClientUuid
+	exchangeHandlers   ExchangeHandlers
+	errChan            chan middleware.MessageMiddlewareError
+	isRunning          bool
+	mtx                sync.Mutex
+	resultsChan        chan middleware.Message
+	sentAllResultsChan chan int
+	emittedCount       map[DataType]int
+	limitHandler       *ConnectionLimit
+	middlewareHandler  *middleware.MiddlewareHandler
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -36,19 +60,24 @@ type ClientHandler struct {
 //	conn: the network connection to handle
 //
 // Returns a pointer to the ClientHandler.
-func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers) *ClientHandler {
+func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers, limitRef *ConnectionLimit, middlewareHandler *middleware.MiddlewareHandler) *ClientHandler {
 	protocol := NewProtocol(conn)
 
 	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
 
 	return &ClientHandler{
-		protocol:         protocol,
-		log:              logger.GetLoggerWithPrefix(loggerPrefix),
-		ClientId:         clientId,
-		exchangeHandlers: exchangeHandlers,
-		errChan:          make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
-		isRunning:        true,
-		mtx:              sync.Mutex{},
+		protocol:           protocol,
+		log:                logger.GetLoggerWithPrefix(loggerPrefix),
+		ClientId:           clientId,
+		exchangeHandlers:   exchangeHandlers,
+		errChan:            make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		isRunning:          true,
+		mtx:                sync.Mutex{},
+		resultsChan:        make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+		sentAllResultsChan: make(chan int, 1),
+		emittedCount:       make(map[DataType]int),
+		limitHandler:       limitRef,
+		middlewareHandler:  middlewareHandler,
 	}
 }
 
@@ -64,6 +93,80 @@ func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 
 var nums int = 0
 
+// func (clh *ClientHandler) processResultsQ1(message amqp.Delivery) error {
+// 	defer clh.answerMessage(NACK_DISCARD, message)
+
+// 	msg, err := middleware.NewMessageFromBytes(message.Body)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	// stringPayload := msg.Payload
+
+// 	// clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+// 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+
+// 	clh.resultsChans.resultsQ1Chan <- *msg
+
+// 	if msg.IsEof {
+// 		clh.log.Info("Received EOF message for result")
+// 	} else {
+// 		clh.log.Debugf("Received result message: %v", msg.Payload)
+// 	}
+
+// 	clh.answerMessage(ACK, message)
+// 	return nil
+// }
+
+// func (clh *ClientHandler) processResultsQ2(message amqp.Delivery) error {
+// 	defer clh.answerMessage(NACK_DISCARD, message)
+
+// 	msg, err := middleware.NewMessageFromBytes(message.Body)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	stringPayload := msg.Payload
+
+// 	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+// 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+
+// 	clh.resultsChans.resultsQ2Chan <- *msg
+
+// 	if msg.IsEof {
+// 		clh.log.Info("Received EOF message for result")
+// 	} else {
+// 		clh.log.Debugf("Received result message: %v", msg.Payload)
+// 	}
+
+// 	clh.answerMessage(ACK, message)
+// 	return nil
+// }
+
+// func (clh *ClientHandler) processResultsQ3(message amqp.Delivery) error {
+// 	defer clh.answerMessage(NACK_DISCARD, message)
+
+// 	msg, err := middleware.NewMessageFromBytes(message.Body)
+// 	if err != nil {
+// 		return err
+// 	}
+
+// 	stringPayload := msg.Payload
+// 	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+// 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+
+// 	clh.resultsChans.resultsQ3Chan <- *msg
+
+// 	if msg.IsEof {
+// 		clh.log.Info("Received EOF message for result")
+// 	} else {
+// 		clh.log.Debugf("Received result message: %v", msg.Payload)
+// 	}
+
+// 	clh.answerMessage(ACK, message)
+// 	return nil
+// }
+
 func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
@@ -72,41 +175,61 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 		return err
 	}
 
-	stringPayload := msg.Payload
-
-	clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
+	//stringPayload := msg.Payload
+	//clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
 
-	clh.mtx.Lock()
-	err = clh.protocol.SendResults(1, stringPayload, msg.IsEof)
-	clh.mtx.Unlock()
-
-	clh.log.Debug("Sent results to client")
-
-	if err != nil {
-		clh.log.Errorf("Error sending results to client: %v", err)
-		return err
-	}
+	clh.resultsChan <- *msg
 
 	if msg.IsEof {
-		clh.answerMessage(ACK, message)
 		clh.log.Info("Received EOF message for result")
-		return nil
+	} else {
+		clh.log.Debugf("Received result message: %v", msg.Payload)
 	}
-
-	clh.log.Debugf("Received result message: %v", msg.Payload)
-
-	if nums%1000 == 0 || nums > 11000 {
-		clh.log.Infof("nums: %d", nums)
-	}
-	nums += len(msg.Payload)
 
 	clh.answerMessage(ACK, message)
 	return nil
 }
 
+func (clh *ClientHandler) launchCentralResultDispatching() {
+	// Track EOF for each query
+	eofFlags := map[int]bool{
+		1: false,
+		2: false,
+		3: false,
+		4: false,
+	}
+
+	for {
+		// If all channels flagged EOF -> break out
+		if eofFlags[1] && eofFlags[2] && eofFlags[3] && eofFlags[4] {
+			clh.log.Infof("All queries EOF received, shutting down dispatcher")
+			clh.sentAllResultsChan <- 0
+			return
+		}
+
+		msg := <-clh.resultsChan
+
+		queryId := msg.QueryId
+
+		if queryId <= 0 || queryId > 4 {
+			clh.log.Warningf("Unrecognized queryId")
+			continue
+		}
+
+		if msg.IsEof {
+			eofFlags[queryId] = true
+		}
+
+		if err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof); err != nil {
+			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+		}
+	}
+}
+
 func (clh *ClientHandler) launchResultsProcessing() {
-	clh.exchangeHandlers.resultsQ1Subscription.StartConsuming(clh.processResults, clh.errChan)
+	go clh.launchCentralResultDispatching()
+	clh.exchangeHandlers.resultsSubscription.StartConsuming(clh.processResults, clh.errChan)
 
 	for err := range clh.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
@@ -119,15 +242,21 @@ func (clh *ClientHandler) launchResultsProcessing() {
 		}
 	}
 
-	clh.exchangeHandlers.resultsQ1Subscription.Close()
+	clh.exchangeHandlers.resultsSubscription.Close()
 }
 
 // Handle processes the client connection by receiving and handling data types and files.
 // Returns an error if any step fails.
 func (clh *ClientHandler) Handle() error {
 	clh.log.Info("Handling client connection")
-
+	defer clh.Shutdown()
 	// Receive the number of data types to process
+	err := clh.protocol.sendStart()
+
+	if err != nil {
+		return fmt.Errorf("error sending start signal to client: %v", err)
+	}
+
 	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
 	if err != nil {
 		return fmt.Errorf("error receiving amount of dataTypes: %v", err)
@@ -146,6 +275,9 @@ func (clh *ClientHandler) Handle() error {
 
 		clh.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
 	}
+
+	<-clh.sentAllResultsChan
+	clh.log.Infof("Finished sending results to client")
 
 	return nil
 }
@@ -212,9 +344,15 @@ func (clh *ClientHandler) cleanBatch(dataType string, batch []string) (cleanBatc
 		return cleanTransactions(batch)
 	case "transaction_items":
 		return cleanTransactionItems(batch)
+	case "menu":
+		return cleanMenuItems(batch)
+	case "store":
+		return cleanStores(batch)
+	case "users":
+		return cleanUsers(batch)
 	default:
-		clh.log.Infof("Dispatch for %s dataType not available", dataType)
-		return []string{}, nil
+		clh.log.Infof("Batch clean for %s dataType not available", dataType)
+		return batch, nil
 	}
 }
 
@@ -224,12 +362,21 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		return err
 	}
 
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof)
+	if _, exists := clh.emittedCount[dataType]; !exists {
+		clh.emittedCount[dataType] = 0
+	}
+
+	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof, middleware.QUERY_ID_NOT_SET)
+	if isEof {
+		clh.log.Infof("Dispatching EOF for dataType %s with total emitted %d", dataType, clh.emittedCount[dataType])
+		msg.TotalEmitted = clh.emittedCount[dataType]
+	}
 	msgBytes, err := msg.ToBytes()
 	if err != nil {
 		return err
 	}
 
+	clh.emittedCount[dataType] += 1
 	res := middleware.MessageMiddlewareSuccess
 	err = nil
 
@@ -239,6 +386,15 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
 	case "transaction_items":
 		res = clh.exchangeHandlers.transactionsPublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	case "menu":
+		res = clh.exchangeHandlers.menuItemsPublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	case "store":
+		res = clh.exchangeHandlers.storePublishing.Send(msgBytes)
+		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
+	case "users":
+		res = clh.exchangeHandlers.usersPublishing.Send(msgBytes)
 		err = fmt.Errorf("problem while sending batch of dataType %s", dataType)
 	default:
 		clh.log.Infof("Dispatch for %s dataType not available", dataType)
@@ -297,9 +453,17 @@ func (clh *ClientHandler) SendResult() error {
 	return nil
 }
 
+func (clh *ClientHandler) IsRunning() bool {
+	return clh.isRunning
+}
+
 // Shutdown closes the protocol connection.
 // Returns an error if closing fails.
 func (clh *ClientHandler) Shutdown() error {
+	if !clh.isRunning {
+		return nil
+	}
+
 	clh.isRunning = false
 
 	if clh.protocol != nil {
@@ -307,6 +471,9 @@ func (clh *ClientHandler) Shutdown() error {
 	}
 
 	clh.exchangeHandlers.transactionsPublishing.Close()
-	clh.exchangeHandlers.resultsQ1Subscription.Close()
+	clh.exchangeHandlers.resultsSubscription.Close()
+	clh.middlewareHandler.CloseChannel()
+	clh.log.Info("About to notify limit handler of disconnection")
+	clh.limitHandler.Signal()
 	return nil
 }

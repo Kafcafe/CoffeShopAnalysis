@@ -1,9 +1,12 @@
 package client
 
 import (
+	logger "common/logger"
 	"encoding/binary"
 	"fmt"
 	"net"
+
+	"github.com/op/go-logging"
 )
 
 const (
@@ -12,18 +15,21 @@ const (
 	MoreBatches   = 0x03
 	FinishedQuery = 0x04
 	NotFinished   = 0x05
+	Start         = 0x06
 
 	SIZEOF_UINT32 = 4
 	SIZEOF_UINT8  = 1
 )
 
 type Protocol struct {
-	serverAddress string
-	conn          net.Conn
+	serverAddress      string
+	conn               net.Conn
+	finishedAllQueries map[int]bool
+	log                *logging.Logger
 }
 
 func NewProtocol(serverAddress string) (*Protocol, error) {
-
+	logger := logger.GetLoggerWithPrefix("[PROTO]")
 	conn, err := net.Dial("tcp", serverAddress)
 
 	if err != nil {
@@ -33,6 +39,13 @@ func NewProtocol(serverAddress string) (*Protocol, error) {
 	return &Protocol{
 		serverAddress: serverAddress,
 		conn:          conn,
+		finishedAllQueries: map[int]bool{
+			1: false,
+			2: false,
+			3: false,
+			4: false,
+		},
+		log: logger,
 	}, nil
 }
 
@@ -70,7 +83,7 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 
 	opCode := []byte{MoreBatches}
 
-	log.Debug("[PROTOCOL] Sending more batches code")
+	p.log.Debug("[PROTOCOL] Sending more batches code")
 	if err := p.sendAll(opCode); err != nil {
 		return err
 	}
@@ -78,7 +91,7 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	dataLen := uint32(len(batch.Items))
 	lenBytes := p.htonsUint32(dataLen)
 
-	log.Debug("[PROTOCOL] Sending batch data", lenBytes)
+	p.log.Debug("[PROTOCOL] Sending batch data", lenBytes)
 	if err := p.sendAll(lenBytes); err != nil {
 		return err
 	}
@@ -86,78 +99,83 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	for _, item := range batch.Items {
 
 		itemLenBytes := p.htonsUint32(uint32(len(item)))
-		log.Debug("[PROTOCOL] Sending item of length ", itemLenBytes)
+		p.log.Debug("[PROTOCOL] Sending item of length ", itemLenBytes)
 		if err := p.sendAll(itemLenBytes); err != nil {
 			return err
 		}
 
-		log.Debug("[PROTOCOL] Sending item data")
+		p.log.Debug("[PROTOCOL] Sending item data")
 		if err := p.sendAll([]byte(item)); err != nil {
 			return err
 		}
 	}
 
-	log.Debug("[PROTOCOL] Batch sent successfully")
+	p.log.Debug("[PROTOCOL] Batch sent successfully")
 	return nil
 }
 
-func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, err error) {
-	log.Debug("[CLIENT-P] Receiving results...")
+func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, err error, finishedAll bool) {
+	p.log.Debug("[CLIENT-P] Receiving results...")
 	QNumber := make([]byte, SIZEOF_UINT32)
 	if err := p.receiveAll(QNumber); err != nil {
-		log.Error("Error receiving QNumber: %v", err)
-		return 0, nil, true, err
+		p.log.Error("Error receiving QNumber: %v", err)
+		return 0, nil, true, err, false
 	}
 
 	qNumber := p.ntohsUint32(QNumber)
-	log.Debug("Received QNumber: ", qNumber)
+	p.log.Debug("Received QNumber: ", qNumber)
 
 	finishQuery := make([]byte, SIZEOF_UINT8)
 
 	if err := p.receiveAll(finishQuery); err != nil {
-		log.Error("Error sending FinishedQuery code: %v", err)
-		return 0, nil, true, err
+		p.log.Error("Error sending FinishedQuery code: %v", err)
+		return 0, nil, true, err, false
 	}
 
 	if finishQuery[0] == FinishedQuery {
-		log.Debug("[CLIENT-P] | action: receive query end | query:", qNumber)
-		return qNumber, nil, true, nil
+		p.finishedAllQueries[int(qNumber)] = true
+		p.log.Debug("[CLIENT-P] | action: receive query end | query:", qNumber)
+
+		if p.finishedAllQueries[1] && p.finishedAllQueries[2] && p.finishedAllQueries[3] && p.finishedAllQueries[4] {
+			return qNumber, nil, true, nil, true
+		}
+		return qNumber, nil, true, nil, false
 	}
 
 	totalLines := make([]byte, 4)
 
 	if err := p.receiveAll(totalLines); err != nil {
-		log.Error("Error receiving totalLines: %v", err)
-		return 0, nil, true, err
+		p.log.Error("Error receiving totalLines: %v", err)
+		return 0, nil, true, err, false
 	}
 
 	totalLinesBytes := int(p.ntohsUint32(totalLines))
-	log.Debug("[CLIENT-P] Received totalLines: ", totalLinesBytes)
+	p.log.Debug("[CLIENT-P] Received totalLines: ", totalLinesBytes)
 
 	lines = make([]string, totalLinesBytes)
 
 	for i := 0; i < totalLinesBytes; i++ {
 		lineLen := make([]byte, SIZEOF_UINT32)
 		if err := p.receiveAll(lineLen); err != nil {
-			log.Error("Error receiving line length: %v", err)
-			return 0, nil, true, err
+			p.log.Error("Error receiving line length: %v", err)
+			return 0, nil, true, err, false
 		}
 
 		lineLenBytes := int(p.ntohsUint32(lineLen))
-		log.Debug("Received line length: ", lineLenBytes)
+		p.log.Debug("Received line length: ", lineLenBytes)
 
 		lineData := make([]byte, lineLenBytes)
 		if err := p.receiveAll(lineData); err != nil {
-			log.Error("Error receiving line data: %v", err)
-			return 0, nil, true, err
+			p.log.Error("Error receiving line data: %v", err)
+			return 0, nil, true, err, false
 		}
 		lines[i] = string(lineData)
-		log.Debug("Received line data: ", string(lineData))
+		p.log.Debug("Received line data: ", string(lineData))
 	}
 
-	log.Debug("Finished receiving all lines for query ", qNumber)
+	p.log.Debug("Finished receiving all lines for query ", qNumber)
 
-	return qNumber, lines, false, nil
+	return qNumber, lines, false, nil, false
 }
 
 // func (p *Protocol) receivedConfirmation() error {
@@ -184,6 +202,22 @@ func (p *Protocol) finishBatch() error {
 
 func (p *Protocol) FinishSendingFilesOf(pattern string) error {
 	// Implement finish sending files logic here
+	return nil
+}
+
+func (p *Protocol) rcvStart() error {
+	start := make([]byte, SIZEOF_UINT8)
+
+	p.log.Debug("rcv start code")
+	if err := p.receiveAll(start); err != nil {
+		return err
+	}
+	startCode := start[0]
+
+	if startCode != Start {
+		return fmt.Errorf("invalid start code received")
+	}
+
 	return nil
 }
 

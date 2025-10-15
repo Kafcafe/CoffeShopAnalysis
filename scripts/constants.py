@@ -107,17 +107,18 @@ CLIENTS_TEMPLATE = """
     client{id}:
         container_name: "client{id}"
         environment:
-          CLIENT_ID: "{id}"
-          FILETYPES: "transactions,transaction_items,stores,menu,users"
+          CLIENT_ID: {id}
+          FILETYPES: "store,menu,transactions,transaction_items,users"
         depends_on:
           - client-handler
         networks:
           - analysis_net
         build:
-          context: ./src/client
-          dockerfile: Dockerfile
+          context: ./src/
+          dockerfile: client/Dockerfile
         volumes:
           - ./src/client/config.yaml:/config.yaml
+          - ./results:/results
           - ./.data:/data
 """
 
@@ -142,4 +143,27 @@ GROUP_TEMPLATE = """
           dockerfile: group/Dockerfile
         volumes:
           - ./src/group/config.yaml:/config.yaml 
+"""
+
+JOIN_TEMPLATE = """
+    join{id}:
+        container_name: "join{id}"
+        depends_on:
+          rabbitmq:
+            condition: service_healthy
+        networks:
+          - analysis_net
+        environment:
+          RABBITMQ_HOST: rabbitmq
+          RABBITMQ_PORT: 5672
+          RABBITMQ_USER: user
+          RABBITMQ_PASS: user
+          JOIN_TYPE: {join_type}
+          JOIN_ID: {id}
+          JOIN_COUNT: {join_count}
+        build:
+          context: ./src/
+          dockerfile: join/Dockerfile
+        volumes:
+          - ./src/join/config.yaml:/config.yaml 
 """

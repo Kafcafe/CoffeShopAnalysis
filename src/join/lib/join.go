@@ -1,7 +1,6 @@
 package join
 
 import (
-	"fmt"
 	"strings"
 )
 
@@ -31,7 +30,7 @@ func (j *Join) JoinByIndex(rightTable []string, leftTable []string, rightIndex, 
 	}
 
 	itemMap := j.generateMapItemsByIndex(rightTable, rightIndex, rightIdIndex)
-	fmt.Println(itemMap)
+
 	for _, lItem := range leftTable {
 		fields := strings.Split(lItem, ",")
 		if len(fields) <= leftIndex {
@@ -44,8 +43,9 @@ func (j *Join) JoinByIndex(rightTable []string, leftTable []string, rightIndex, 
 			continue
 		}
 
-		joinedItem := strings.Join(fields[:leftIndex], ",") + "," + itemName + "," + strings.Join(fields[leftIndex+1:], ",")
-		joinedItems = append(joinedItems, joinedItem)
+		newFields := append([]string{}, fields...)
+		newFields[leftIndex] = itemName
+		joinedItems = append(joinedItems, strings.Join(newFields, ","))
 	}
 	return joinedItems
 }
@@ -65,4 +65,36 @@ func (j *Join) generateMapItemsByIndex(items []string, index, idIndex int) map[s
 		mapItems[id] = name
 	}
 	return mapItems
+}
+
+func UpdatedSideTableWithUsers(sideTable []string, payload []string) []string {
+	// Index rápido para buscar userId → birthdate en el payload
+	payloadMap := make(map[string]string, len(payload))
+	for _, user := range payload {
+		parts := strings.SplitN(user, ",", 2)
+		if len(parts) == 2 {
+			userId, birthdate := parts[0], parts[1]
+			payloadMap[userId] = birthdate
+		}
+	}
+
+	// Recorremos sideTable directamente y reemplazamos en orden
+	updated := make([]string, len(sideTable))
+	for i, entry := range sideTable {
+		parts := strings.SplitN(entry, ",", 2)
+		if len(parts) != 2 {
+			updated[i] = entry
+			continue
+		}
+		store, second := parts[0], parts[1]
+
+		// si "second" es un userId y aparece en el payload, lo reemplazamos
+		if birthdate, ok := payloadMap[second]; ok && !strings.Contains(second, "-") {
+			updated[i] = store + "," + birthdate
+		} else {
+			updated[i] = entry
+		}
+	}
+
+	return updated
 }

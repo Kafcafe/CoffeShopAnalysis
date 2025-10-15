@@ -36,6 +36,7 @@ func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey str
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:
@@ -50,6 +51,11 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 	}
 
 	// Declare and bind for Query 1
+	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_TOPIC_TYPE, middleware.EXCHANGE_TYPE_TOPIC)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange in prepareEofQueue: %v", err)
+	}
+
 	queueName := fmt.Sprintf("eof.group.%s.%s", filterType, filterId)
 	_, err = middlewareHandler.DeclareQueue(queueName)
 	if err != nil {
@@ -62,4 +68,24 @@ func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string,
 	}
 
 	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
+}
+
+func prepareInputQueues(rabbitConn *middleware.RabbitConnection, groupType string) error {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+	// Declare and bind for Query 1
+	routeKey := fmt.Sprintf("transactions.transactions.%s", groupType)
+	_, err = middlewareHandler.DeclareQueue(routeKey)
+	if err != nil {
+		return fmt.Errorf("failed to declare queue %s: %v", routeKey, err)
+	}
+
+	err = middlewareHandler.BindQueue(routeKey, middleware.EXCHANGE_NAME_TOPIC_TYPE, "transactions.transactions.all")
+	if err != nil {
+		return fmt.Errorf("failed to bind queue to exchange: %v", err)
+	}
+
+	return nil
 }

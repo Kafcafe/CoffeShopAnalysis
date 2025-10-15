@@ -15,6 +15,59 @@ type FilterWorker interface {
 	Run() error
 }
 
+type FilterConfig struct {
+	id              string
+	ofType          string
+	filtersCount    int
+	prevStageSub    string
+	nextStagePubs   map[string]string // dataType -> routeKey
+	messageCallback func(filter *Filter, batch []string) (filteredBatch []string)
+}
+
+func FilterByYearConfig(filterId string, filterCount int, config YearFilterConfig) FilterConfig {
+	return FilterConfig{
+		id:           filterId,
+		ofType:       FILTER_TYPE_YEAR,
+		filtersCount: filterCount,
+		prevStageSub: "transactions",
+		nextStagePubs: map[string]string{
+			"transactions":      "transactions.transactions.all",
+			"transaction_items": "transactions.items",
+		},
+		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
+			return filter.FilterByYear(batch, config.FromYear, config.ToYear)
+		},
+	}
+}
+
+func FilterByHourConfig(filterId string, filterCount int, hourConfig HourFilterConfig) FilterConfig {
+	return FilterConfig{
+		id:           filterId,
+		ofType:       FILTER_TYPE_HOUR,
+		filtersCount: filterCount,
+		prevStageSub: "transactions.transactions.all",
+		nextStagePubs: map[string]string{
+			"transactions": "transactions.year-hour-filtered.all",
+		},
+		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
+			return filter.FilterByHour(batch, hourConfig.FromHour, hourConfig.ToHour)
+		},
+	}
+}
+
+func FilterByAmountConfig(filterId string, filterCount int, amountConfig AmountFilterConfig) FilterConfig {
+	return FilterConfig{
+		id:            filterId,
+		ofType:        FILTER_TYPE_AMOUNT,
+		filtersCount:  filterCount,
+		prevStageSub:  "transactions.year-hour-filtered.all",
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
+		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
+			return filter.FilterByAmount(batch, amountConfig.MinAmount)
+		},
+	}
+}
+
 func CreateFilterWorker(filterType string,
 	rabbitConf middleware.RabbitConfig,
 	yearConfig YearFilterConfig,
@@ -22,30 +75,24 @@ func CreateFilterWorker(filterType string,
 	amountConfig AmountFilterConfig,
 	filterId string,
 	filterCount int,
-) (*FilterWorker, error) {
-
-	var filterWorker FilterWorker
-	var err error
+) (*FilterGenericWorker, error) {
+	var config FilterConfig
 
 	switch filterType {
 	case FILTER_TYPE_YEAR:
-		filterWorker, err = NewFilterByYearWorker(rabbitConf, yearConfig, filterId, filterCount)
-		if err != nil {
-			return nil, err
-		}
+		config = FilterByYearConfig(filterId, filterCount, yearConfig)
 	case FILTER_TYPE_HOUR:
-		filterWorker, err = NewFilterByHourWorker(rabbitConf, hourConfig, filterId, filterCount)
-		if err != nil {
-			return nil, err
-		}
+		config = FilterByHourConfig(filterId, filterCount, hourConfig)
 	case FILTER_TYPE_AMOUNT:
-		filterWorker, err = NewFilterByAmountWorker(rabbitConf, amountConfig, filterId, filterCount)
-		if err != nil {
-			return nil, err
-		}
+		config = FilterByAmountConfig(filterId, filterCount, amountConfig)
 	default:
-		return nil, fmt.Errorf("Unknown filter type: %s", filterType)
+		return nil, fmt.Errorf("unknown filter type: %s", filterType)
 	}
 
-	return &filterWorker, nil
+	filterWorker, err := NewFilterGenericWorker(rabbitConf, config)
+	if err != nil {
+		return nil, err
+	}
+
+	return filterWorker, nil
 }

@@ -1,18 +1,23 @@
 package client
 
 import (
+	logger "common/logger"
 	"fmt"
 	"os"
 	"strings"
+
+	"github.com/op/go-logging"
 )
 
 type FileHandler struct {
 	folderPath string
+	log        *logging.Logger
 }
 
 func NewFileHandler(folderPath string) *FileHandler {
 	return &FileHandler{
 		folderPath: folderPath,
+		log:        logger.GetLoggerWithPrefix("[FILE-HANDL]"),
 	}
 }
 
@@ -37,7 +42,7 @@ func (fh *FileHandler) GetFilesWithPattern(pattern string) ([]string, error) {
 	}
 
 	if len(matchedFiles) == 0 {
-		log.Critical("No files matched the given pattern")
+		fh.log.Critical("No files matched the given pattern")
 		return nil, fmt.Errorf("no files matched the given pattern")
 	}
 

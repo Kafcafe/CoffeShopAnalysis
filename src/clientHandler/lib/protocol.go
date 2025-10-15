@@ -19,6 +19,7 @@ const (
 	MoreBatches   = 0x03
 	FinishedQuery = 0x04
 	NotFinished   = 0x05
+	Start         = 0x06
 
 	SIZEOF_UINT32 = 4
 	SIZEOF_UINT8  = 1
@@ -211,6 +212,15 @@ func (p *Protocol) SendResults(query uint32, results []string, isEof bool) error
 
 	return nil
 
+}
+
+func (p *Protocol) sendStart() error {
+	start := []byte{Start}
+	if err := p.sendAll(start); err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (p *Protocol) sendLines(lines []string) error {

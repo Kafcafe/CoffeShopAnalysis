@@ -1,0 +1,1 @@
+python3 ./scripts/compare_results.py

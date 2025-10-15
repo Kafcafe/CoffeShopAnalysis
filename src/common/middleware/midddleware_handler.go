@@ -35,6 +35,13 @@ func NewMiddlewareHandler(rabbitConn *RabbitConnection) (*MiddlewareHandler, err
 	}, nil
 }
 
+func (mh *MiddlewareHandler) CloseChannel() error {
+	if err := mh.Channel.Close(); err != nil {
+		return err
+	}
+	return nil
+}
+
 func (mh *MiddlewareHandler) Close() error {
 	if err := mh.Channel.Close(); err != nil {
 		return err
@@ -110,6 +117,29 @@ func (mh *MiddlewareHandler) CreateFanoutExchange(routeKey string) (*MessageMidd
 func (mh *MiddlewareHandler) CreateTopicExchangeStandalone(routeKey string) (*MessageMiddlewareExchange, error) {
 	exchangeName := EXCHANGE_NAME_TOPIC_TYPE
 	exchangeType := EXCHANGE_TYPE_TOPIC
+
+	err := mh.DeclareExchange(exchangeName, exchangeType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange: %v", err)
+	}
+
+	return NewMessageMiddlewareExchange(exchangeName, routeKey, mh.Channel, nil), nil
+}
+
+func (mh *MiddlewareHandler) CreateFanoutExchangeStandalone(exchangeName string) (*MessageMiddlewareExchange, error) {
+	exchangeType := EXCHANGE_TYPE_FANOUT
+
+	err := mh.DeclareExchange(exchangeName, exchangeType)
+	if err != nil {
+		return nil, fmt.Errorf("failed to declare exchange: %v", err)
+	}
+
+	return NewMessageMiddlewareExchange(exchangeName, "", mh.Channel, nil), nil
+}
+
+func (mh *MiddlewareHandler) CreateDirectExchangeStandalone(routeKey string) (*MessageMiddlewareExchange, error) {
+	exchangeName := EXCHANGE_NAME_DIRECT_TYPE
+	exchangeType := EXCHANGE_TYPE_DIRECT
 
 	err := mh.DeclareExchange(exchangeName, exchangeType)
 	if err != nil {

@@ -242,3 +242,88 @@ func TestJoinWithUsers(t *testing.T) {
 	joinByIndex := joiner.JoinByIndex(Users, TransactionsCleaned, 1, 0, 3)
 	require.Equal(t, JoinUsers, joinByIndex, "Joined users with transactions do not match expected results")
 }
+
+func TestUpdatedSideTableWithUsers(t *testing.T) {
+	t.Run("empty payload → returns sideTable unchanged", func(t *testing.T) {
+		sideTable := []string{"1,2000-01-01", "2,3"}
+		payload := []string{}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		require.Equal(t, sideTable, got)
+	})
+
+	t.Run("empty sideTable → result is empty", func(t *testing.T) {
+		sideTable := []string{}
+		payload := []string{"1,2000-01-01"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		require.Empty(t, got)
+	})
+
+	t.Run("only birthdates in sideTable → unchanged", func(t *testing.T) {
+		sideTable := []string{"1,2000-01-01", "2,1995-05-10"}
+		payload := []string{"1,2000-01-01", "2,1995-05-10"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		require.Equal(t, sideTable, got)
+	})
+
+	t.Run("userIds in sideTable are updated from payload", func(t *testing.T) {
+		sideTable := []string{"storeA,1", "storeB,2"}
+		payload := []string{"1,2000-01-01", "2,1995-05-10"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		expected := []string{"storeA,2000-01-01", "storeB,1995-05-10"}
+		require.Equal(t, expected, got)
+	})
+
+	t.Run("missing userIds in payload → some remain unmapped", func(t *testing.T) {
+		sideTable := []string{"storeA,1", "storeB,2", "storeC,3"}
+		payload := []string{"1,2000-01-01"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		expected := []string{"storeA,2000-01-01", "storeB,2", "storeC,3"}
+		require.Equal(t, expected, got)
+	})
+
+	t.Run("mixed birthdates and userIds", func(t *testing.T) {
+		sideTable := []string{"storeA,1", "storeB,1999-12-31", "storeC,2"}
+		payload := []string{"1,2000-01-01"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		expected := []string{
+			"storeA,2000-01-01", // userId 1 replaced
+			"storeB,1999-12-31", // birthdate already present
+			"storeC,2",          // userId 2 missing from payload
+		}
+		require.Equal(t, expected, got)
+	})
+
+	// 🔽 Duplicate scenarios to ensure result size is preserved
+
+	t.Run("duplicate userIds in sideTable → all updated", func(t *testing.T) {
+		sideTable := []string{"storeA,1", "storeB,1"}
+		payload := []string{"1,2000-01-01"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		expected := []string{"storeA,2000-01-01", "storeB,2000-01-01"}
+		require.Equal(t, expected, got)
+	})
+
+	t.Run("duplicate birthdates in sideTable → preserved", func(t *testing.T) {
+		sideTable := []string{"storeA,2000-01-01", "storeB,2000-01-01"}
+		payload := []string{}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		expected := []string{"storeA,2000-01-01", "storeB,2000-01-01"}
+		require.Equal(t, expected, got)
+	})
+
+	t.Run("mix of duplicate userIds and birthdates", func(t *testing.T) {
+		sideTable := []string{
+			"storeA,1",
+			"storeB,1",
+			"storeC,2000-01-01",
+		}
+		payload := []string{"1,2000-01-01"}
+		got := join.UpdatedSideTableWithUsers(sideTable, payload)
+		expected := []string{
+			"storeA,2000-01-01",
+			"storeB,2000-01-01",
+			"storeC,2000-01-01", // unchanged, already birthdate
+		}
+		require.Equal(t, expected, got)
+	})
+}

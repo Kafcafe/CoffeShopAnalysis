@@ -47,3 +47,11 @@ scripts/*.pyc
 results
 
 testData/
+.fuse_hidden*
+.vscode
+
+venv/
+.venv/
+.pytest_cache/
+reduce_data_set/
+>>>>>>> 5ba29915d6f9298047e7900bb7c37e69ac988622
