@@ -181,13 +181,67 @@ You will boot the whole system and check the live tail of logs coming from the `
 
 **Note**: Python testing commands are used for full client execution end-to-end tests.
 
-#### Example on how to test the system, run these commands in order:
+`make pytest-verbose` runs a series of tests that exercise the system end2end, regenerating the `docker-compose.yaml` files to try different node and client combinations. The tests are:
 
-```shell
-./scripts/gen.sh docker-compose-dev.yaml 1 1 1 1 1 1 1 1 1
+- `test_server_with_one_node_each`: 1 client, 1 node in each pipeline stage
+- `test_server_with_two_nodes_each_full`: 1 client, 2 nodes in each pipeline stage
+- `test_two_clients_one_each`: 2 clients, 1 node in each pipeline stage
+- `test_three`: 3 clients, 3 nodes in each pipeline stage
+- `test_five`: 5 clients, 5 nodes in each pipeline stage
+
+First of all you need to have the dataset in a directory called `testData` in the root of the project. Eventually, the real client results are compared against the expected results for that dataset, which is composed of ~30% of the entire dataset, composed of the next files:
+
+```text
+.
+├── menu_items.csv
+├── payment_methods.csv
+├── stores.csv
+├── transaction_items_202401.csv
+├── transaction_items_202402.csv
+├── transaction_items_202403.csv
+├── transaction_items_202404.csv
+├── transaction_items_202501.csv
+├── transaction_items_202502.csv
+├── transaction_items_202503.csv
+├── transaction_items_202504.csv
+├── transactions_202401.csv
+├── transactions_202402.csv
+├── transactions_202403.csv
+├── transactions_202404.csv
+├── transactions_202501.csv
+├── transactions_202502.csv
+├── transactions_202503.csv
+├── transactions_202504.csv
+├── users_202307.csv
+├── users_202308.csv
+├── users_202309.csv
+├── users_202310.csv
+├── users_202311.csv
+├── users_202312.csv
+├── users_202401.csv
+├── users_202402.csv
+├── users_202403.csv
+├── users_202404.csv
+├── users_202405.csv
+├── users_202406.csv
+├── users_202407.csv
+├── users_202408.csv
+├── users_202409.csv
+├── users_202410.csv
+├── users_202411.csv
+├── users_202412.csv
+├── users_202501.csv
+├── users_202502.csv
+├── users_202503.csv
+├── users_202504.csv
+├── users_202505.csv
+├── users_202506.csv
+└── vouchers.csv
 ```
 
-> (or any other node number combination)
+The exected results are located at `./tests/expected_results`.
+
+#### Example on how to test the system, run these commands in order:
 
 ```shell
 make init-env
@@ -197,11 +251,21 @@ make init-env
 make activate-env
 ```
 
+It will prompt you to run:
+
+```shell
+source .venv/bin/activate
+```
+
+```shell
+export REPO_PATH=$(pwd)
+```
+
 ```shell
 make pytest-verbose
 ```
 
-The tests run on **the reduced dataset**, so it may take around 2 minutes to complete execution. The results taken directly from the clients' files output are compared to the expected results for these tests.
+The tests run on **the ~30% dataset**, so it may take a while for all the tests to finish. The results taken directly from the clients' files output are compared to the expected results for these tests.
 
 ### Cleanup Commands
 

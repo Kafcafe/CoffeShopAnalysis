@@ -187,7 +187,9 @@ func (f *FilterGenericWorker) sendProcessedMessage(msgProcessed *middleware.Mess
 	if err != nil {
 		return err
 	}
+	f.clientsStatsMutex.Lock()
 	sendErr := f.middlewareHandlers.broadcastCountPub.Send(msgProcessedBytes)
+	f.clientsStatsMutex.Unlock()
 	if sendErr != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("failed to send processed count message: %v", sendErr)
 	}
@@ -206,6 +208,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
+		f.log.Infof("Waiting for EOF Lock for client %s", msg.ClientId)
 		f.clientsStatsMutex.Lock()
 		clientStats := f.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
@@ -218,7 +221,6 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessage of type " + f.conf.ofType)
-		answerMessage(ACK, message)
 
 		msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
 		err = f.sendProcessedMessage(msgProcessed)
@@ -227,7 +229,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 			answerMessage(NACK_REQUEUE, message)
 			return err
 		}
-
+		answerMessage(ACK, message)
 		return nil
 	}
 
@@ -239,8 +241,6 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return err
 	}
 
-	answerMessage(ACK, message)
-
 	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
 	err = f.sendProcessedMessage(msgProcessed)
 	if err != nil {
@@ -249,6 +249,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return err
 	}
 
+	answerMessage(ACK, message)
 	f.log.Infof("Filtered message and sent filterMessage batch")
 	return nil
 }
@@ -280,7 +281,9 @@ func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error 
 	if err != nil {
 		return err
 	}
+	f.clientsStatsMutex.Lock()
 	nextStagePub.Send(msgBytes)
+	f.clientsStatsMutex.Unlock()
 	return nil
 }
 
@@ -330,7 +333,6 @@ func (f *FilterGenericWorker) processedCountMessage(message amqp.Delivery) error
 	}
 
 	f.clientsStatsMutex.Lock()
-	defer f.clientsStatsMutex.Unlock()
 	clientStats := f.getClientStats(msg.ClientId)
 
 	clientStats.AddProcessed(msg.DataType)
@@ -345,7 +347,7 @@ func (f *FilterGenericWorker) processedCountMessage(message amqp.Delivery) error
 			clientStats.SendEofChan(msg.DataType)
 		}
 	}
-
+	f.clientsStatsMutex.Unlock()
 	answerMessage(ACK, message)
 	return nil
 }

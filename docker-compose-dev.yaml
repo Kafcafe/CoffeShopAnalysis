@@ -18,6 +18,8 @@ services:
           - "15672:15672"
         networks:
           - analysis_net
+        volumes:
+          - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
         environment:
           RABBITMQ_DEFAULT_USER: user
           RABBITMQ_DEFAULT_PASS: user
@@ -62,7 +64,7 @@ services:
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
-          - ./../data/kaggle_datos_reducidos_suelto:/data
+          - ./testData2:/data
 
     client2:
         container_name: "client2"
@@ -79,7 +81,24 @@ services:
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
-          - ./../data/kaggle_datos_reducidos_suelto:/data
+          - ./testData2:/data
+
+    client3:
+        container_name: "client3"
+        environment:
+          CLIENT_ID: 3
+          FILETYPES: "store,menu,transactions,transaction_items,users"
+        depends_on:
+          - client-handler
+        networks:
+          - analysis_net
+        build:
+          context: ./src/
+          dockerfile: client/Dockerfile
+        volumes:
+          - ./src/client/config.yaml:/config.yaml
+          - ./results:/results
+          - ./testData2:/data
 
     filter-year1:
         container_name: "filter-year1"

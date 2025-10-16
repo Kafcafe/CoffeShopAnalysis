@@ -76,6 +76,8 @@ func (c *Client) Run() ClientExecutionError {
 
 	err := c.protocol.rcvStart()
 
+	err = c.protocol.sendClientId(c.Id)
+
 	if err != nil {
 		c.log.Errorf("| action: Error receiving start from server: %v | result: error", err)
 		return err

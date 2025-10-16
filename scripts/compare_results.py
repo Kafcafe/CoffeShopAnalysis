@@ -1,3 +1,5 @@
+import sys
+
 def _compare_sets(name, current_set, expected_set, sample_size=3):
     """
     Compara dos conjuntos de resultados e imprime un resumen con ejemplos de diferencias.
@@ -35,7 +37,7 @@ def compare_results_q1(client_id):
 
     with open(current_results, "r", encoding="utf-8") as f:
         for line in f:
-            id, store, _, amount, date = line.strip().split(',')
+            id, amount = line.strip().split(',')
             formatted = f"{id},{float(amount):.1f}"
             lines_current_results.add(formatted)
     
@@ -48,54 +50,24 @@ def compare_results_q1(client_id):
 
     _compare_sets(name, lines_current_results, lines_expected_results)
 
-
-def compare_results_q2_top_earners(client_id):
-    name = "results_q2_top_earners"
-    current_results_path = f"./results/results_q2_{client_id}.txt"
-    expected_results_path = "./scripts/expected_results/results_q2_top_earners.csv"
-
-    current_results = set()
-    expected_results = set()
-    
-    with open(current_results_path, 'r') as file:
-        for line in file:
-            yearMonth, item, qty, profit = line.strip().split(',')
-            if not float(profit) > 0:
-                continue
-            current_results.add(f"{yearMonth},{item},{float(profit):.2f}")
-
-    with open(expected_results_path, 'r') as file:
-        next(file)
-        for line in file:
-            yearMonth, item, profit = line.strip().split(',')
-            expected_results.add(f"{yearMonth},{item},{float(profit):.2f}")
-
-    _compare_sets(name, current_results, expected_results)
-
-
-def compare_results_q2_best_sellers(client_id):
+def compare_results_q2(client_id):
     name = "results_q2_best_sellers"
     current_results_path = f"./results/results_q2_{client_id}.txt"
-    expected_results_path = "./scripts/expected_results/results_q2_best_sellers.csv"
+    expected_results_path = "./scripts/expected_results/results_q2.csv"
 
     current_results = set()
     expected_results = set()
     
     with open(current_results_path, 'r') as file:
         for line in file:
-            yearMonth, item, qty, profit = line.strip().split(',')
-            if not int(qty) > 0:
-                continue
-            current_results.add(f"{yearMonth},{item},{qty}")
+            current_results.add(line.strip())
 
     with open(expected_results_path, 'r') as file:
-        next(file)
         for line in file:
-            yearMonth, item, qty = line.strip().split(',')
-            expected_results.add(f"{yearMonth},{item},{qty}")
+            expected_results.add(line.strip())
 
     _compare_sets(name, current_results, expected_results)
-
+    
 
 def compare_results_q3(client_id):
     name = "results_q3"
@@ -147,9 +119,9 @@ def compare_results_q4(client_id):
     _compare_sets(name, current_results, expected_results)
 
 if __name__ == "__main__":
-    client_id = 1
+    client_id = sys.argv[1] if len(sys.argv) > 1 else 1
+    print(f"Comparando resultados para client_id {client_id}")
     compare_results_q1(client_id)
-    compare_results_q2_top_earners(client_id)
-    compare_results_q2_best_sellers(client_id)
+    compare_results_q2(client_id)
     compare_results_q3(client_id)
     compare_results_q4(client_id)

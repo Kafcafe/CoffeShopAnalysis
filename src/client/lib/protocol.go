@@ -192,6 +192,21 @@ func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, e
 // 	return nil
 // }
 
+func (p *Protocol) sendClientId(id string) error {
+	dataLen := uint32(len(id))
+	lenBytes := p.htonsUint32(dataLen)
+
+	if err := p.sendAll(lenBytes); err != nil {
+		return err
+	}
+
+	if err := p.sendAll([]byte(id)); err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (p *Protocol) finishBatch() error {
 	code := []byte{EndOfBatch}
 	if err := p.sendAll(code); err != nil {
