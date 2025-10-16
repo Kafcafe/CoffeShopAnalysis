@@ -216,17 +216,18 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 
 	filteredBatch := f.conf.messageCallback(&f.filter, msg.Payload)
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
-	err = f.sendProcessedMessage(msgProcessed)
-	if err != nil {
-		f.log.Errorf("Failed to send processed count message: %v", err)
-		answerMessage(NACK_REQUEUE, message)
-		return err
-	}
-
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessage of type " + f.conf.ofType)
 		answerMessage(ACK, message)
+
+		msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
+		err = f.sendProcessedMessage(msgProcessed)
+		if err != nil {
+			f.log.Errorf("Failed to send processed count message: %v", err)
+			answerMessage(NACK_REQUEUE, message)
+			return err
+		}
+
 		return nil
 	}
 
@@ -239,6 +240,15 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	}
 
 	answerMessage(ACK, message)
+
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
+	err = f.sendProcessedMessage(msgProcessed)
+	if err != nil {
+		f.log.Errorf("Failed to send processed count message: %v", err)
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
+
 	f.log.Infof("Filtered message and sent filterMessage batch")
 	return nil
 }

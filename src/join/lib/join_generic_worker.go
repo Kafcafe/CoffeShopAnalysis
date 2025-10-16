@@ -499,14 +499,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 
 	j.log.Infof("Joined %v items", len(joined))
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
-	err = j.sendProcessedMessage(msgProcessed)
-	if err != nil {
-		j.log.Errorf("Failed to send processed count message: %v", err)
-		answerMessage(NACK_REQUEUE, message)
-		return err
-	}
-
+	j.log.Infof("Message joined and sent: %v", joined)
 	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, false, msg.QueryId)
 	destinationRouteKey, err := j.sendNextStage(*response)
 	if err != nil {
@@ -516,6 +509,15 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	}
 
 	answerMessage(ACK, message)
+
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
+	err = j.sendProcessedMessage(msgProcessed)
+	if err != nil {
+		j.log.Errorf("Failed to send processed count message: %v", err)
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
+
 	j.log.Infof("Joined message and sent to next stage: %s", destinationRouteKey)
 	return nil
 }
