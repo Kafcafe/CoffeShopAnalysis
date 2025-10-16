@@ -62,7 +62,6 @@ def test_three():
     print()
     assert compare_results.compare_all_results(results_paths) 
 
-
 def test_five():
     docker.down()
     gen_compose.gen_docker_compose(5, 5, 5, 5, 5, 5, 5, 5, 5, 5)
