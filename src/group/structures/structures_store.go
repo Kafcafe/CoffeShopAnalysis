@@ -58,6 +58,14 @@ func (g *TopKStoreGroup) add(record Record) error {
 	return nil
 }
 
+func (g *TopKStoreGroup) GetGroup() StoreGroup {
+	return g.group
+}
+
+func (g *TopKStoreGroup) GetK() int {
+	return g.k
+}
+
 /*
 	{
 		"storeId1": ["userId1,3", "userId2,6"],
