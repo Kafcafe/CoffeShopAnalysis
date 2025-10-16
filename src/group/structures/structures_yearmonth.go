@@ -107,7 +107,7 @@ func (g YearMonthGroup) ToMapString() map[string][]string {
 		itemsPerYearMonth := []string{}
 
 		for itemId, item := range yearMonthItems {
-			itemString := fmt.Sprintf("%s,%d,%f", itemId, item.TotalQuantity, item.TotalProfit)
+			itemString := fmt.Sprintf("%s,%d,%.2f", itemId, item.TotalQuantity, item.TotalProfit)
 			itemsPerYearMonth = append(itemsPerYearMonth, itemString)
 		}
 

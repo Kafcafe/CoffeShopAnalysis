@@ -55,7 +55,7 @@ func (g SemesterGroup) ToMapString() map[string][]string {
 		storesPerSemester := []string{}
 
 		for storeId, tpv := range semesterStores {
-			storeString := fmt.Sprintf("%s,%f", storeId, tpv)
+			storeString := fmt.Sprintf("%s,%.2f", storeId, tpv)
 			storesPerSemester = append(storesPerSemester, storeString)
 		}
 
