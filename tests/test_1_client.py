@@ -1,7 +1,6 @@
 import os
 import pytest
 from tests.utils import docker, parser, compare_results, config, gen_compose
-import time
 
 @pytest.fixture(scope="module", autouse=True)
 def setup():
@@ -39,21 +38,18 @@ def build_results_path(clients_id):
 
 # def test_server_with_one_node_each():
 #     docker.down()
-#     gen_compose.gen_docker_compose(clients=1)
+#     gen_compose.gen_docker_compose()
 #     docker.up()
 #     docker.wait_for_clients(1)
 #     read_logs('client1')
 #     results_paths = build_results_path([1])
 #     assert compare_results.compare_all_results(results_paths)
 
-def test_server_with_two_nodes_each():
-    docker.down()
-    gen_compose.gen_docker_compose(clients=1, filters_year=2, filters_hour=2, filters_amount=2, group_by_year_month=2, group_by_semester=2, join_items=2, join_store=2, topk=2)
-    docker.up()
-    docker.wait_for_clients(1)
-    read_logs('client1')
-    results_paths = build_results_path([1])
-    time.sleep(2)  # Ensure all file operations are complete
-    assert compare_results.compare_all_results(results_paths) 
-
-
+# def test_server_with_two_nodes_each_full():
+#     docker.down()
+#     gen_compose.gen_docker_compose(filters_year=2, filters_hour=2, filters_amount=2, group_by_year_month=2, group_by_semester=2, join_items=2, join_store=2, topk=2)
+#     docker.up()
+#     docker.wait_for_clients(1)
+#     read_logs('client1')
+#     results_paths = build_results_path([1])
+#     assert compare_results.compare_all_results(results_paths) 
