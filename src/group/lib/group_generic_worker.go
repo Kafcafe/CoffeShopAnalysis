@@ -100,8 +100,10 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
+		g.mutex.Lock()
 		clientStats := g.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
+		g.mutex.Unlock()
 		go g.handleEofMessage(message, *msg)
 		return nil
 	}
@@ -147,11 +149,15 @@ func (g *GroupByGenericWorker) sendEofNextStage(msgToSend middleware.Message) er
 func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
 	g.mutex.Lock()
 	clientStats := g.getClientStats(eofMsg.ClientId)
-	g.mutex.Lock()
+	g.mutex.Unlock()
 
 	g.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
-	if clientStats.GetProcessed(eofMsg.DataType) < eofMsg.TotalEmitted {
+	g.mutex.Lock()
+	processed := clientStats.GetProcessed(eofMsg.DataType)
+	g.mutex.Unlock()
+
+	if processed < eofMsg.TotalEmitted {
 		g.log.Infof("Not all messages processed yet for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 		g.log.Infof("Waiting for all messages to be processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 		clientStats.WaitForEofChan(eofMsg.DataType)
@@ -379,7 +385,6 @@ func (g *GroupByGenericWorker) processedCountMessage(message amqp.Delivery) erro
 	}
 
 	g.mutex.Lock()
-	defer g.mutex.Unlock()
 	clientStats := g.getClientStats(msg.ClientId)
 
 	clientStats.AddProcessed(msg.DataType)
@@ -392,6 +397,8 @@ func (g *GroupByGenericWorker) processedCountMessage(message amqp.Delivery) erro
 			clientStats.SendEofChan(msg.DataType)
 		}
 	}
+
+	g.mutex.Unlock()
 
 	answerMessage(ACK, message)
 	return nil
