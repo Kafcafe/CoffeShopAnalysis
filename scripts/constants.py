@@ -41,6 +41,8 @@ services:
           - "15672:15672"
         networks:
           - analysis_net
+        volumes:
+          - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
         environment:
           RABBITMQ_DEFAULT_USER: user
           RABBITMQ_DEFAULT_PASS: user
