@@ -169,6 +169,22 @@ func (p *Protocol) RcvAmountOfFiles() (int, error) {
 	return int(amount), nil
 }
 
+func (p *Protocol) RcvClientId() (string, error) {
+	lenBytes := make([]byte, SIZEOF_UINT32)
+	if err := p.receiveAll(lenBytes); err != nil {
+		return "", err
+	}
+
+	dataLen := p.ntohsUint32(lenBytes)
+
+	idBytes := make([]byte, dataLen)
+	if err := p.receiveAll(idBytes); err != nil {
+		return "", err
+	}
+
+	return string(idBytes), nil
+}
+
 func (p *Protocol) SendResults(query uint32, results []string, isEof bool) error {
 	QNumber := p.htonsUint32(query)
 	if err := p.sendAll(QNumber); err != nil {
