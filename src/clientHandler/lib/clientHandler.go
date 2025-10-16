@@ -257,6 +257,14 @@ func (clh *ClientHandler) Handle() error {
 		return fmt.Errorf("error sending start signal to client: %v", err)
 	}
 
+	id, err := clh.protocol.RcvClientId()
+
+	if err != nil {
+		return fmt.Errorf("error receiving client ID: %v", err)
+	}
+
+	clh.log.Infof("Client ID received: %s", id)
+
 	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
 	if err != nil {
 		return fmt.Errorf("error receiving amount of dataTypes: %v", err)
