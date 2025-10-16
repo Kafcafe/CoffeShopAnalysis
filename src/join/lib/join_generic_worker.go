@@ -317,10 +317,17 @@ func (j *JoinGenericWorker) gatherOtherPartialResults(eofMessage amqp.Delivery, 
 		return
 	}
 
+	middlewareHandler, err := middleware.NewMiddlewareHandler(j.middlewareHandler.RabbitConn)
+	if err != nil {
+		j.log.Errorf("Failed to create middleware handler: %v", err)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
+
 	// Create Ephemeral queue
 	queueName := fmt.Sprintf("join.%s.results.request.gather.%s", j.conf.ofType, eofMsg.ClientId)
 	j.middlewareMutex.Lock()
-	queue, err := j.middlewareHandler.CreateQueue(queueName)
+	queue, err := middlewareHandler.CreateQueue(queueName)
 	j.middlewareMutex.Unlock()
 
 	if err != nil {
@@ -376,6 +383,7 @@ func (j *JoinGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eo
 	destinationRouteKey, middleError := j.sendNextStage(*response)
 	if middleError != nil {
 		j.log.Errorf("problem while sending message to %s: %v", destinationRouteKey, middleError)
+		answerMessage(NACK_DISCARD, eofMessage)
 		return
 	}
 	j.log.Infof("Sent consolidated results: %s", destinationRouteKey)
@@ -451,7 +459,6 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 	j.sideTable[msg.ClientId] = j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
 	j.mutex.Unlock()
 
-	answerMessage(ACK, message)
 	j.log.Debug("Partially updated side table")
 
 	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
@@ -461,6 +468,8 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		answerMessage(NACK_REQUEUE, message)
 		return err
 	}
+
+	answerMessage(ACK, message)
 
 	return nil
 }
@@ -515,8 +524,6 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return err
 	}
 
-	answerMessage(ACK, message)
-
 	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
 	err = j.sendProcessedMessage(msgProcessed)
 	if err != nil {
@@ -525,6 +532,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return err
 	}
 
+	answerMessage(ACK, message)
 	j.log.Infof("Joined message and sent to next stage: %s", destinationRouteKey)
 	return nil
 }

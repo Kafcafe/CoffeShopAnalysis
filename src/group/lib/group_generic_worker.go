@@ -210,10 +210,17 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 		return
 	}
 
+	middlewareHandler, err := middleware.NewMiddlewareHandler(g.middlewareHandler.RabbitConn)
+	if err != nil {
+		g.log.Errorf("Failed to create middleware handler: %v", err)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
+
 	// Create Ephemeral queue
 	queueName := fmt.Sprintf("group.%s.results.request.gather.%s", g.conf.ofType, eofMsg.ClientId)
 	g.middlewareMutex.Lock()
-	queue, err := g.middlewareHandler.CreateQueue(queueName)
+	queue, err := middlewareHandler.CreateQueue(queueName)
 	g.middlewareMutex.Unlock()
 
 	if err != nil {
@@ -326,6 +333,7 @@ func (g *GroupByGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery,
 		middleError := g.sendNextStage(*response)
 		if middleError != nil {
 			g.log.Errorf("problem while sending message to %s: %v", g.conf.nextStagePub, middleError)
+			answerMessage(NACK_DISCARD, eofMessage)
 			return
 		}
 		g.log.Infof("Sent consolidated results")

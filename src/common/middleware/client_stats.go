@@ -1,5 +1,7 @@
 package middleware
 
+import "sync"
+
 type DataType = string
 
 type ClientStats struct {
@@ -7,6 +9,7 @@ type ClientStats struct {
 	emitted   map[DataType]int
 	eof       map[DataType]int
 	eofChan   map[DataType]chan int
+	mutex     sync.Mutex
 }
 
 func NewClientStats() *ClientStats {
@@ -15,6 +18,7 @@ func NewClientStats() *ClientStats {
 		emitted:   make(map[DataType]int),
 		eof:       make(map[DataType]int),
 		eofChan:   make(map[DataType]chan int),
+		mutex:     sync.Mutex{},
 	}
 }
 
@@ -50,15 +54,19 @@ func (cs *ClientStats) GetEof(dataType DataType) (int, bool) {
 }
 
 func (cs *ClientStats) SendEofChan(dataType DataType) {
+	cs.mutex.Lock()
 	if _, exists := cs.eofChan[dataType]; !exists {
 		cs.eofChan[dataType] = make(chan int, 1)
 	}
+	cs.mutex.Unlock()
 	cs.eofChan[dataType] <- 1
 }
 
 func (cs *ClientStats) WaitForEofChan(dataType DataType) {
+	cs.mutex.Lock()
 	if _, exists := cs.eofChan[dataType]; !exists {
 		cs.eofChan[dataType] = make(chan int, 1)
 	}
+	cs.mutex.Unlock()
 	<-cs.eofChan[dataType]
 }
