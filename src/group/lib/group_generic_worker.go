@@ -272,10 +272,12 @@ func (g *GroupByGenericWorker) getTopK(msg structures.AllowedGroup) (map[string]
 			registry := structures.NewTopKRegister(string(storeId), userId, count)
 			toper.Add(registry)
 		}
-		topKUsers := toper.GetTopK()
+		topKUsers := toper.GetTopKWithKeys()
 		result[string(storeId)] = make([]string, 0, len(topKUsers))
-		for _, user := range topKUsers {
-			result[string(storeId)] = append(result[string(storeId)], fmt.Sprintf("%s", user.String()))
+		for _, userCountPair := range topKUsers {
+			countResult := userCountPair.Value
+			userResult := userCountPair.Key
+			result[string(storeId)] = append(result[string(storeId)], fmt.Sprintf("%s,%d", userResult, countResult))
 		}
 		returnStoreId = string(storeId)
 	}

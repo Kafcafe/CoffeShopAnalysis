@@ -131,16 +131,14 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 			eofFlags[queryId] = true
 		}
 
-		var cleanResult []string
-		var err error
+		var cleanResult []string = msg.Payload
+		var err error = nil
 
 		switch msg.QueryId {
 		case 1:
 			cleanResult, err = cleanTransactionResults(msg.Payload)
 		case 2:
 			cleanResult, err = cleanTransactionItemsResults(msg.Payload)
-		default:
-			cleanResult = msg.Payload
 		}
 
 		if err != nil {

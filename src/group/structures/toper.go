@@ -4,6 +4,11 @@ import (
 	heap "group/datatypes"
 )
 
+type TopKPair struct {
+	Key   string
+	Value int
+}
+
 type Toper[T comparable] struct {
 	heap *heap.Heap[T]
 	k    int
@@ -46,6 +51,20 @@ func (t *Toper[T]) GetTopK() []T {
 	result := make([]T, t.k)
 	for i := len(result) - 1; i >= 0; i-- {
 		result[i] = t.heap.Pop()
+	}
+	return result
+}
+
+func (t *Toper[T]) GetTopKWithKeys() []TopKPair {
+	result := make([]TopKPair, t.k)
+	for i := len(result) - 1; i >= 0; i-- {
+		item := t.heap.Pop()
+		if reg, ok := any(item).(TopKRegister); ok {
+			result[i] = TopKPair{
+				Key:   reg.UserId,
+				Value: reg.Count,
+			}
+		}
 	}
 	return result
 }

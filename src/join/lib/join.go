@@ -1,6 +1,7 @@
 package join
 
 import (
+	"fmt"
 	"strings"
 )
 
@@ -81,16 +82,16 @@ func UpdatedSideTableWithUsers(sideTable []string, payload []string) []string {
 	// Recorremos sideTable directamente y reemplazamos en orden
 	updated := make([]string, len(sideTable))
 	for i, entry := range sideTable {
-		parts := strings.SplitN(entry, ",", 2)
-		if len(parts) != 2 {
+		parts := strings.SplitN(entry, ",", 3)
+		if len(parts) != 3 {
 			updated[i] = entry
 			continue
 		}
-		store, second := parts[0], parts[1]
+		store, userId, count := parts[0], parts[1], parts[2]
 
 		// si "second" es un userId y aparece en el payload, lo reemplazamos
-		if birthdate, ok := payloadMap[second]; ok && !strings.Contains(second, "-") {
-			updated[i] = store + "," + birthdate
+		if birthdate, ok := payloadMap[userId]; ok && !strings.Contains(userId, "-") {
+			updated[i] = fmt.Sprintf("%s,%s,%s", store, birthdate, count)
 		} else {
 			updated[i] = entry
 		}
