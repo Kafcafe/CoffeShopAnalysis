@@ -1,3 +1,5 @@
+import sys
+
 def _compare_sets(name, current_set, expected_set, sample_size=3):
     """
     Compara dos conjuntos de resultados e imprime un resumen con ejemplos de diferencias.
@@ -117,7 +119,8 @@ def compare_results_q4(client_id):
     _compare_sets(name, current_results, expected_results)
 
 if __name__ == "__main__":
-    client_id = 1
+    client_id = sys.argv[1] if len(sys.argv) > 1 else 1
+    print(f"Comparando resultados para client_id {client_id}")
     compare_results_q1(client_id)
     compare_results_q2(client_id)
     compare_results_q3(client_id)
