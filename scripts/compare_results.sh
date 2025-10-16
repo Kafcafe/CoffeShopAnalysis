@@ -1,1 +1,1 @@
-python3 ./scripts/compare_results.py
+python3 ./scripts/compare_results.py $1
