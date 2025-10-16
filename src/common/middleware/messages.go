@@ -257,3 +257,36 @@ func NewMessageProcessedFromBytes(msgBytes []byte) (*MessageProcessed, error) {
 	}
 	return &msg, nil
 }
+
+type MessageResultsRequest struct {
+	Origin    string // Who is requesting the results
+	QueueName string // To which queue the results should be sent
+	ClientId  string // Client ID of the original data stream
+	DataType  string // Data type of the original data stream
+}
+
+func NewMessageResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
+	return &MessageResultsRequest{
+		Origin:    origin,
+		QueueName: queueName,
+		ClientId:  clientId,
+		DataType:  dataType,
+	}
+}
+
+func (m *MessageResultsRequest) ToBytes() ([]byte, error) {
+	msgBytes, err := json.Marshal(m)
+	if err != nil {
+		return []byte{}, fmt.Errorf("problem while marshalling MessageResultsRequest: %w", err)
+	}
+	return msgBytes, nil
+}
+
+func NewMessageResultsRequestFromBytes(msgBytes []byte) (*MessageResultsRequest, error) {
+	var msg MessageResultsRequest
+	err := json.Unmarshal(msgBytes, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed message deserialization: %w", err)
+	}
+	return &msg, nil
+}
