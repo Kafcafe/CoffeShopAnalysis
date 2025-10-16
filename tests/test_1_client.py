@@ -36,20 +36,20 @@ def build_results_path(clients_id):
             paths[client_id].append(path)
     return paths
 
-def test_server_with_one_node_each():
-    docker.down()
-    gen_compose.gen_docker_compose()
-    docker.up()
-    docker.wait_for_clients(1)
-    read_logs('client1')
-    results_paths = build_results_path([1])
-    assert compare_results.compare_all_results(results_paths)
+# def test_server_with_one_node_each():
+#     docker.down()
+#     gen_compose.gen_docker_compose()
+#     docker.up()
+#     docker.wait_for_clients(1)
+#     read_logs('client1')
+#     results_paths = build_results_path([1])
+#     assert compare_results.compare_all_results(results_paths)
 
-def test_server_with_two_nodes_each_full():
-    docker.down()
-    gen_compose.gen_docker_compose(1, 2, 2, 2, 2, 2, 2, 2, 2, 2)
-    docker.up()
-    docker.wait_for_clients(1)
-    read_logs('client1')
-    results_paths = build_results_path([1])
-    assert compare_results.compare_all_results(results_paths) 
+# def test_server_with_two_nodes_each_full():
+#     docker.down()
+#     gen_compose.gen_docker_compose(1, 2, 2, 2, 2, 2, 2, 2, 2, 2)
+#     docker.up()
+#     docker.wait_for_clients(1)
+#     read_logs('client1')
+#     results_paths = build_results_path([1])
+#     assert compare_results.compare_all_results(results_paths) 

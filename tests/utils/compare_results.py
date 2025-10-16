@@ -36,14 +36,14 @@ def compare_results_q1(q1_path):
 
     with open(q1_path, "r", encoding="utf-8") as f:
         for line in f:
-            id, store, _, amount, date = line.strip().split(',')
+            id, _, _, amount, _ = line.strip().split(',')
             formatted = f"{id},{float(amount):.1f}"
             lines_current_results.add(formatted)
     
     with open(expected_results, "r", encoding="utf-8") as f:
         next(f)
         for line in f:
-            id, amount = line.strip().split(',')
+            id, _, _, amount, _ = line.strip().split(',')
             formatted = f"{id},{float(amount):.1f}"
             lines_expected_results.add(formatted)
 
