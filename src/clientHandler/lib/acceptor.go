@@ -91,6 +91,13 @@ func (a *Acceptor) createExchangeHandler(middlewareHandler *middleware.Middlewar
 	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
+func (a *Acceptor) createExchangeHandlerStandalone(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
+	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
+		return middlewareHandler.CreateDirectExchangeStandalone(routeKey)
+	}
+	return middlewareHandler.CreateTopicExchangeStandalone(routeKey)
+}
+
 type ExchangeHandlers struct {
 	// General
 	transactionsPublishing middleware.MessageMiddlewareExchange
@@ -99,48 +106,19 @@ type ExchangeHandlers struct {
 	usersPublishing        middleware.MessageMiddlewareExchange
 	//transactionItemsPublishing Exchange
 
-	// Side table Query 2
-	// menuItemsByIdPublishing Exchange
-
-	// Side table Query 4
-	// storeNamesItemsByIdPublishing Exchange
-	// birthdaysByUserIdPublishing   Exchange
-
 	// Results
-	resultsQ1Subscription middleware.MessageMiddlewareExchange
-	resultsQ2Subscription middleware.MessageMiddlewareExchange
-	resultsQ3Subscription middleware.MessageMiddlewareExchange
-	resultsQ4Subscription middleware.MessageMiddlewareExchange
+	resultsSubscription middleware.MessageMiddlewareExchange
 }
 
-func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.MiddlewareHandler) (*ExchangeHandlers, error) {
-
+func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.MiddlewareHandler, newId ClientUuid) (*ExchangeHandlers, error) {
 	transactionsRouteKey := "transactions"
-	transactionsPublishingHandler, err := a.createExchangeHandler(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsPublishingHandler, err := a.createExchangeHandlerStandalone(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
-	resultsQ1SubscriptionRouteKey := "results.q1"
-	resultsQ1SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ1SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
-	if err != nil {
-		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
-	}
-
-	resultsQ2SubscriptionRouteKey := "results.q2"
-	resultsQ2SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ2SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
-	if err != nil {
-		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
-	}
-
-	resultsQ3SubscriptionRouteKey := "results.q3"
-	resultsQ3SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ3SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
-	if err != nil {
-		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
-	}
-
-	resultsQ4SubscriptionRouteKey := "results.q4"
-	resultsQ4SubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsQ4SubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsSubscriptionRouteKey := fmt.Sprintf("results.%s", newId.Full)
+	resultsSubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
@@ -168,10 +146,7 @@ func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.Middlewa
 		menuItemsPublishing:    *menuItemsPublishingHandler,
 		storePublishing:        *storePublishingHandler,
 		usersPublishing:        *usersPublishingHandler,
-		resultsQ1Subscription:  *resultsQ1SubscriptionHandler,
-		resultsQ2Subscription:  *resultsQ2SubscriptionHandler,
-		resultsQ3Subscription:  *resultsQ3SubscriptionHandler,
-		resultsQ4Subscription:  *resultsQ4SubscriptionHandler,
+		resultsSubscription:    *resultsSubscriptionHandler,
 	}, nil
 }
 
@@ -217,7 +192,7 @@ func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 	a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 	newId := NewClientUuid()
 
-	exchangeHandlers, err := a.createExchangeHandlers(middlewareHandler)
+	exchangeHandlers, err := a.createExchangeHandlers(middlewareHandler, newId)
 
 	if err != nil {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)

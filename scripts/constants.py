@@ -41,6 +41,8 @@ services:
           - "15672:15672"
         networks:
           - analysis_net
+        volumes:
+          - ./rabbitmq/rabbitmq.conf:/etc/rabbitmq/rabbitmq.conf
         environment:
           RABBITMQ_DEFAULT_USER: user
           RABBITMQ_DEFAULT_PASS: user
@@ -108,7 +110,7 @@ CLIENTS_TEMPLATE = """
         container_name: "client{id}"
         environment:
           CLIENT_ID: {id}
-          FILETYPES: "transactions,transaction_items,store,menu,users"
+          FILETYPES: "store,menu,transactions,transaction_items,users"
         depends_on:
           - client-handler
         networks:
@@ -119,7 +121,7 @@ CLIENTS_TEMPLATE = """
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
-          - ./.data:/data
+          - ./testData:/data
 """
 
 GROUP_TEMPLATE = """

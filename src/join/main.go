@@ -90,15 +90,15 @@ func main() {
 	joinerCount := config.GetInt("join.count")
 	joinerType := config.GetString("join.type")
 
-	joinItemsWorker, err := join.CreateJoinItemsWorker(joinerType, rabbitConf, joinerId, joinerCount)
+	joinItemsWorker, err := join.CreateJoinerWorker(joinerType, rabbitConf, joinerId, joinerCount)
 	if err != nil {
-		logger.Errorf("Failed creating new joinItems worker: %s", err)
+		logger.Errorf("Failed creating new joiner worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
 	}
 
 	err = (*joinItemsWorker).Run()
 	if err != nil {
-		logger.Errorf("Failed creating new joinerBy worker: %s", err)
+		logger.Errorf("Failed creating new joiner worker: %s", err)
 		os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
 	}
 

@@ -33,9 +33,25 @@ func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey str
 	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
+func createExchangeHandlerStandalone(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
+	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
+	}
+
+	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
+		return middlewareHandler.CreateDirectExchangeStandalone(routeKey)
+	}
+	if exchangeType == middleware.EXCHANGE_TYPE_FANOUT {
+		return middlewareHandler.CreateFanoutExchangeStandalone(routeKey)
+	}
+	return middlewareHandler.CreateTopicExchangeStandalone(routeKey)
+}
+
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:

@@ -180,9 +180,11 @@ deactivate-env:
 .PHONY: deactivate-env
 
 pytest:
+	export REPO_PATH=$(PWD)
 	pytest 
 .PHONY: test
 
 pytest-verbose:
+	export REPO_PATH=$(PWD)
 	pytest -v -ss
 .PHONY: test-verbose

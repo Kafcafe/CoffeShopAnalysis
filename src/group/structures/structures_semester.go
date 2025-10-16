@@ -10,17 +10,15 @@ type Semester string
 type TPV float64
 type StoreID string
 
-type SemesterGroupPerClient map[ClientId]SemesterGroup
-
 type SemesterGroup map[Semester]map[StoreID]TPV
 
 func NewSemesterGroup() SemesterGroup {
 	return make(SemesterGroup)
 }
 
-func (g *SemesterGroup) AddBatch(records []Record) {
+func (g SemesterGroup) AddBatch(records []Record) {
 	for _, record := range records {
-		g.Add(record)
+		g.add(record)
 	}
 }
 
@@ -28,7 +26,7 @@ func sumTpv(existingTpv TPV, newTpv float64) TPV {
 	return existingTpv + TPV(newTpv)
 }
 
-func (g *SemesterGroup) Add(record Record) error {
+func (g *SemesterGroup) add(record Record) error {
 	parsedRecord, err := parseRecordForSemester(record)
 	if err != nil {
 		return err
@@ -67,29 +65,33 @@ func (g SemesterGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func (g *SemesterGroup) Merge(other SemesterGroup) {
-	for sem, stores := range other {
+func (g SemesterGroup) Merge(other AllowedGroup) {
+	otherTyped, ok := other.(SemesterGroup)
+	if !ok {
+		return
+	}
 
-		if _, exists := (*g)[sem]; !exists {
-			(*g)[sem] = make(map[StoreID]TPV)
+	// Merge the two maps
+	for sem, stores := range otherTyped {
+
+		if _, exists := g[sem]; !exists {
+			g[sem] = make(map[StoreID]TPV)
 		}
 
 		for storeId, tpv := range stores {
-			existing, exists := (*g)[sem][storeId]
+			existing, exists := g[sem][storeId]
 
 			if exists {
-				(*g)[sem][storeId] = sumTpv(existing, float64(tpv))
+				g[sem][storeId] = sumTpv(existing, float64(tpv))
 			} else {
-				(*g)[sem][storeId] = tpv
+				g[sem][storeId] = tpv
 			}
 		}
 	}
 }
 
-func NewSemesterGroupFromMapString(m map[string][]string) SemesterGroup {
-	g := make(SemesterGroup)
-
-	for semStr, storeStrs := range m {
+func (g SemesterGroup) FromMapString(data map[string][]string) AllowedGroup {
+	for semStr, storeStrs := range data {
 		sem := Semester(semStr)
 		g[sem] = make(map[StoreID]TPV)
 
@@ -111,32 +113,8 @@ func NewSemesterGroupFromMapString(m map[string][]string) SemesterGroup {
 	return g
 }
 
-func NewSemesterGroupPerClient() SemesterGroupPerClient {
-	return make(SemesterGroupPerClient)
-}
-
-func (g *SemesterGroupPerClient) Add(clientId string, records []Record) {
-	// If the client's group doesn't exist yet, initialize it
-	group, ok := (*g)[clientId]
-	if !ok {
-		group = NewSemesterGroup()
-	}
-
-	// Use pointer receiver so AddBatch modifies the existing group
-	group.AddBatch(records)
-
-	// Store it back
-	(*g)[clientId] = group
-}
-
-func (g *SemesterGroupPerClient) Get(clientId string) SemesterGroup {
-	if group, ok := (*g)[clientId]; ok {
-		return group
-	}
-	// return an empty group (safe to use immediately)
-	return NewSemesterGroup()
-}
-
-func (g *SemesterGroupPerClient) Delete(clientId string) {
-	delete(*g, clientId)
+func (g SemesterGroup) GetMessageToSend() []map[string][]string {
+	messages := make([]map[string][]string, 0, 1)
+	messages = append(messages, g.ToMapString())
+	return messages
 }
