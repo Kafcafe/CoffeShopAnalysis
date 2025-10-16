@@ -4,4 +4,4 @@ server:
 log:
   level: "INFO"
 conection:
-  limit: 2
+  limit: 5

@@ -35,8 +35,9 @@ type GroupByGenericWorker struct {
 
 	conf GroupByConfig
 
-	mutex sync.Mutex
-	group structures.GrouperPerClient[structures.AllowedGroup]
+	mutex           sync.Mutex
+	middlewareMutex sync.Mutex
+	group           structures.GrouperPerClient[structures.AllowedGroup]
 	// new eof
 	clientsStats       map[ClientId]*middleware.ClientStats
 	gatherResultsChans map[ClientId]chan int // to signal when a result has been gathered
@@ -70,8 +71,9 @@ func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByCon
 		errChan:           make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 		conf:              conf,
 
-		mutex: sync.Mutex{},
-		group: structures.NewGrouperPerClient[structures.AllowedGroup](),
+		mutex:           sync.Mutex{},
+		middlewareMutex: sync.Mutex{},
+		group:           structures.NewGrouperPerClient[structures.AllowedGroup](),
 
 		clientsStats:       make(map[ClientId]*middleware.ClientStats),
 		gatherResultsChans: make(map[ClientId]chan int),
@@ -205,7 +207,10 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 
 	// Create Ephemeral queue
 	queueName := fmt.Sprintf("group.%s.results.request.gather.%s", g.conf.ofType, eofMsg.ClientId)
+	g.middlewareMutex.Lock()
 	queue, err := g.middlewareHandler.CreateQueue(queueName)
+	g.middlewareMutex.Unlock()
+
 	if err != nil {
 		g.log.Errorf("Failed to declare ephemeral queue: %v", err)
 		answerMessage(NACK_REQUEUE, eofMessage)
@@ -453,7 +458,10 @@ func (g *GroupByGenericWorker) gatherAndSendPartialResults(message amqp.Delivery
 
 func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
 	// declare queue many to one (many publishers one consumer)
+	g.middlewareMutex.Lock()
 	queue, err := g.middlewareHandler.CreateQueue(queueName)
+	g.middlewareMutex.Unlock()
+
 	if err != nil {
 		g.log.Errorf("Failed to declare queue %s: %v", queueName, err)
 		return middleware.MessageMiddlewareMessageError
