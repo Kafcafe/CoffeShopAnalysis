@@ -54,3 +54,4 @@ venv/
 .venv/
 .pytest_cache/
 reduce_data_set/
+all_data/
