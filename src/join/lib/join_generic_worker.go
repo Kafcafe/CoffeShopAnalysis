@@ -26,8 +26,9 @@ type JoinGenericWorker struct {
 	middlewareHandlers JoinMiddlewareHandlers
 	errChan            chan middleware.MessageMiddlewareError
 
-	mutex        sync.Mutex
-	clientsStats map[string]*middleware.ClientStats
+	mutex           sync.Mutex
+	middlewareMutex sync.Mutex
+	clientsStats    map[string]*middleware.ClientStats
 
 	sideTable         map[ClientId][]string
 	masterSideTable   []string
@@ -92,8 +93,9 @@ func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) 
 		conf:    config,
 		errChan: make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 
-		mutex:        sync.Mutex{},
-		clientsStats: make(map[string]*middleware.ClientStats),
+		mutex:           sync.Mutex{},
+		middlewareMutex: sync.Mutex{},
+		clientsStats:    make(map[string]*middleware.ClientStats),
 
 		sideTable:         map[string][]string{},
 		sideTableReceived: make(chan int, SINGLE_ITEM_BUFFER_LEN),
@@ -317,7 +319,10 @@ func (j *JoinGenericWorker) gatherOtherPartialResults(eofMessage amqp.Delivery, 
 
 	// Create Ephemeral queue
 	queueName := fmt.Sprintf("join.%s.results.request.gather.%s", j.conf.ofType, eofMsg.ClientId)
+	j.middlewareMutex.Lock()
 	queue, err := j.middlewareHandler.CreateQueue(queueName)
+	j.middlewareMutex.Unlock()
+
 	if err != nil {
 		j.log.Errorf("Failed to declare ephemeral queue: %v", err)
 		answerMessage(NACK_REQUEUE, eofMessage)
@@ -676,7 +681,10 @@ func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
 
 func (j *JoinGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
 	// declare queue many to one (many publishers one consumer)
+	j.middlewareMutex.Lock()
 	queue, err := j.middlewareHandler.CreateQueue(queueName)
+	j.middlewareMutex.Unlock()
+
 	if err != nil {
 		j.log.Errorf("Failed to declare queue %s: %v", queueName, err)
 		return middleware.MessageMiddlewareMessageError
