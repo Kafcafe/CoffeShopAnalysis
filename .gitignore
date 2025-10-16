@@ -45,6 +45,8 @@ src/common/example
 scripts/__pycache__
 scripts/*.pyc
 results
+
+testData/
 .fuse_hidden*
 .vscode
 
@@ -52,6 +54,5 @@ venv/
 .venv/
 .pytest_cache/
 reduce_data_set/
-
 all_data/
 testData/
