@@ -30,7 +30,6 @@ def _compare_sets(name, current_set, expected_set, sample_size=3):
 def compare_results_q1(q1_path):
     name = "results_q1"
     expected_results = "./tests/expected_results/results_q1.csv"
-
     lines_current_results = set()
     lines_expected_results = set()
 
@@ -38,7 +37,7 @@ def compare_results_q1(q1_path):
         for line in f:
             id, amount = line.strip().split(',')
             formatted = f"{id},{float(amount):.1f}"
-            lines_expected_results.add(formatted)
+            lines_current_results.add(formatted)
     
     with open(expected_results, "r", encoding="utf-8") as f:
         next(f)
@@ -50,15 +49,14 @@ def compare_results_q1(q1_path):
     return _compare_sets(name, lines_current_results, lines_expected_results)
 
 
-def compare_results_q2(client_id):
+def compare_results_q2(q2_path):
     name = "results_q2_best_sellers"
-    current_results_path = f"./results/results_q2_{client_id}.txt"
     expected_results_path = "./scripts/expected_results/results_q2.csv"
 
     current_results = set()
     expected_results = set()
     
-    with open(current_results_path, 'r') as file:
+    with open(q2_path, 'r') as file:
         for line in file:
             current_results.add(line.strip())
 
@@ -66,7 +64,7 @@ def compare_results_q2(client_id):
         for line in file:
             expected_results.add(line.strip())
 
-    _compare_sets(name, current_results, expected_results)
+    return _compare_sets(name, current_results, expected_results)
     
 
 def compare_results_q3(q3_path):
@@ -115,7 +113,7 @@ def compare_all_results(results: dict[int, list[str]]):
     for client_id in results.keys():
         q1_path, q2_path, q3_path, q4_path = results[client_id]
         resultq1 = compare_results_q1(q1_path)
-        resultsq2 = compare_results_q2(client_id)
+        resultsq2 = compare_results_q2(q2_path)
         resultsq3 = compare_results_q3(q3_path)
         resultsq4 = compare_results_q4(q4_path)
         if not (resultq1 and resultsq2 and resultsq3 and resultsq4):
