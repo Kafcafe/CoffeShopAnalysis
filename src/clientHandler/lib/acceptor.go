@@ -91,6 +91,13 @@ func (a *Acceptor) createExchangeHandler(middlewareHandler *middleware.Middlewar
 	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
+func (a *Acceptor) createExchangeHandlerStandalone(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
+	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
+		return middlewareHandler.CreateDirectExchangeStandalone(routeKey)
+	}
+	return middlewareHandler.CreateTopicExchangeStandalone(routeKey)
+}
+
 type ExchangeHandlers struct {
 	// General
 	transactionsPublishing middleware.MessageMiddlewareExchange
@@ -105,7 +112,7 @@ type ExchangeHandlers struct {
 
 func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.MiddlewareHandler, newId ClientUuid) (*ExchangeHandlers, error) {
 	transactionsRouteKey := "transactions"
-	transactionsPublishingHandler, err := a.createExchangeHandler(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsPublishingHandler, err := a.createExchangeHandlerStandalone(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}

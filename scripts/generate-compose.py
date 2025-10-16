@@ -38,6 +38,7 @@ def generate_compose(file_destination: str,
                      group_by_semester_nums: int,
                      join_items_nums: int,
                      join_store_nums: int, 
+                     join_users_nums: int,
                      topk_nums: int):
     """
     Generate a Docker Compose file with the specified number of clients.
@@ -97,8 +98,9 @@ def generate_compose(file_destination: str,
     for i in range(join_store_nums):
         compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_STORE_Q3_TYPE}{i+1}", join_type=JOIN_STORE_Q3_TYPE, join_count=join_store_nums)
 
-    # Always 1 node currentyl
-    compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_USERS_TYPE}", join_type=JOIN_USERS_TYPE, join_count=1)
+    for i in range(join_users_nums):
+        compose += constants.JOIN_TEMPLATE.format(id=f"-{JOIN_USERS_TYPE}{i+1}", join_type=JOIN_USERS_TYPE, join_count=join_users_nums)
+        
 
     for i in range(topk_nums):
         group_type = GROUP_BY_TOPK_BEST_CLIENTS
@@ -127,7 +129,7 @@ def main():
     """
     try:
         # Validate command line arguments
-        if len(sys.argv) != 11:
+        if len(sys.argv) != 12:
             print("Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_join_items> <num_join_store> <num_topk>")
             print(f"\nYour input of length { len(sys.argv)}: {sys.argv}")
             sys.exit(1)
@@ -145,7 +147,8 @@ def main():
         group_by_semester_nums: int = int(sys.argv[7])
         join_items_nums: int = int(sys.argv[8])
         join_store_nums: int = int(sys.argv[9])
-        topk_nums: int = int(sys.argv[10])
+        join_users_nums: int = int(sys.argv[10])
+        topk_nums: int = int(sys.argv[11])
 
         # Generate the compose file
         generate_compose(file_destination,
@@ -157,6 +160,7 @@ def main():
                          group_by_semester_nums,
                          join_items_nums,
                          join_store_nums, 
+                         join_users_nums,
                          topk_nums)
 
         print(f"""
@@ -169,7 +173,7 @@ def main():
  - Group by Semester: {group_by_semester_nums}
  - Join Items: {join_items_nums}        
  - Join Store: {join_store_nums}
- - Join Users: 1
+ - Join Users: {join_users_nums}
  - Top K: {topk_nums}
         """)
 

@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"sync"
 	"syscall"
 
 	"github.com/op/go-logging"
@@ -26,7 +27,8 @@ type FilterGenericWorker struct {
 	middlewareHandlers MiddlewareHandlers
 	errChan            chan middleware.MessageMiddlewareError
 	// new eof
-	clientsStats map[ClientId]*middleware.ClientStats
+	clientsStatsMutex sync.Mutex
+	clientsStats      map[ClientId]*middleware.ClientStats
 }
 
 type MiddlewareHandlers struct {
@@ -71,6 +73,7 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 		filter:            *NewFilter(),
 		conf:              config,
 		errChan:           make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		clientsStatsMutex: sync.Mutex{},
 		clientsStats:      make(map[ClientId]*middleware.ClientStats),
 	}, nil
 }
@@ -203,25 +206,28 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
+		f.clientsStatsMutex.Lock()
 		clientStats := f.getClientStats(msg.ClientId)
 		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
+		f.clientsStatsMutex.Unlock()
 		go f.handleEofMessage(message, *msg)
 		return nil
 	}
 
 	filteredBatch := f.conf.messageCallback(&f.filter, msg.Payload)
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
-	err = f.sendProcessedMessage(msgProcessed)
-	if err != nil {
-		f.log.Errorf("Failed to send processed count message: %v", err)
-		answerMessage(NACK_REQUEUE, message)
-		return err
-	}
-
 	if len(filteredBatch) == 0 {
 		f.log.Info("No transaction passed the filterMessage of type " + f.conf.ofType)
 		answerMessage(ACK, message)
+
+		msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
+		err = f.sendProcessedMessage(msgProcessed)
+		if err != nil {
+			f.log.Errorf("Failed to send processed count message: %v", err)
+			answerMessage(NACK_REQUEUE, message)
+			return err
+		}
+
 		return nil
 	}
 
@@ -234,6 +240,15 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	}
 
 	answerMessage(ACK, message)
+
+	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, len(filteredBatch) > 0, msg.QueryId)
+	err = f.sendProcessedMessage(msgProcessed)
+	if err != nil {
+		f.log.Errorf("Failed to send processed count message: %v", err)
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
+
 	f.log.Infof("Filtered message and sent filterMessage batch")
 	return nil
 }
@@ -277,11 +292,14 @@ func (f *FilterGenericWorker) getClientStats(clientId ClientId) *middleware.Clie
 }
 
 func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
+	f.clientsStatsMutex.Lock()
 	clientStats := f.getClientStats(eofMsg.ClientId)
+	processed := clientStats.GetProcessed(eofMsg.DataType)
+	f.clientsStatsMutex.Unlock()
 
 	f.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
-	if clientStats.GetProcessed(eofMsg.DataType) < eofMsg.TotalEmitted {
+	if processed < eofMsg.TotalEmitted {
 		f.log.Infof("Not all messages processed yet for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 		f.log.Infof("Waiting for all messages to be processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 		clientStats.WaitForEofChan(eofMsg.DataType)
@@ -290,7 +308,10 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 	f.log.Infof("All messages processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 
 	// update emitted count
+	f.clientsStatsMutex.Lock()
 	eofMsg.TotalEmitted = clientStats.GetEmitted(eofMsg.DataType)
+	f.clientsStatsMutex.Unlock()
+
 	err := f.sendNextStage(eofMsg)
 	if err != nil {
 		f.log.Errorf("Failed to send EOF message to next stage: %v", err)
@@ -308,6 +329,8 @@ func (f *FilterGenericWorker) processedCountMessage(message amqp.Delivery) error
 		return err
 	}
 
+	f.clientsStatsMutex.Lock()
+	defer f.clientsStatsMutex.Unlock()
 	clientStats := f.getClientStats(msg.ClientId)
 
 	clientStats.AddProcessed(msg.DataType)

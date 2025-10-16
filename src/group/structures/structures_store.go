@@ -8,32 +8,39 @@ import (
 
 type UserCount int
 type StoreGroup map[StoreID]map[UserID]UserCount
-type StoreGroupPerClient map[ClientId]StoreGroup
 
-func NewStoreGroup() StoreGroup {
-	return make(StoreGroup)
+type TopKStoreGroup struct {
+	k     int
+	group StoreGroup
+}
+
+func NewTopKStoreGroup(k int) TopKStoreGroup {
+	return TopKStoreGroup{
+		k:     k,
+		group: make(StoreGroup),
+	}
 }
 
 func sumCount(existingCount, newCount UserCount) UserCount {
 	return existingCount + newCount
 }
 
-func (g *StoreGroup) AddBatch(records []Record) {
+func (g TopKStoreGroup) AddBatch(records []Record) {
 	for _, record := range records {
-		g.Add(record)
+		g.add(record)
 	}
 }
 
-func (g *StoreGroup) Add(record Record) error {
+func (g *TopKStoreGroup) add(record Record) error {
 	parsedRecord, err := parseRecordForSemester(record)
 	if err != nil {
 
 		return err
 	}
 
-	_, exists := (*g)[parsedRecord.StoreID]
+	_, exists := g.group[parsedRecord.StoreID]
 	if !exists {
-		(*g)[parsedRecord.StoreID] = make(map[UserID]UserCount)
+		g.group[parsedRecord.StoreID] = make(map[UserID]UserCount)
 	}
 
 	if parsedRecord.UserID == "" {
@@ -41,14 +48,22 @@ func (g *StoreGroup) Add(record Record) error {
 	}
 
 	newCount := UserCount(1)
-	existingCount, exists := (*g)[parsedRecord.StoreID][parsedRecord.UserID]
+	existingCount, exists := g.group[parsedRecord.StoreID][parsedRecord.UserID]
 	if exists {
-		(*g)[parsedRecord.StoreID][parsedRecord.UserID] = sumCount(existingCount, newCount)
+		g.group[parsedRecord.StoreID][parsedRecord.UserID] = sumCount(existingCount, newCount)
 	} else {
-		(*g)[parsedRecord.StoreID][parsedRecord.UserID] = newCount
+		g.group[parsedRecord.StoreID][parsedRecord.UserID] = newCount
 	}
 
 	return nil
+}
+
+func (g *TopKStoreGroup) GetGroup() StoreGroup {
+	return g.group
+}
+
+func (g *TopKStoreGroup) GetK() int {
+	return g.k
 }
 
 /*
@@ -57,10 +72,10 @@ func (g *StoreGroup) Add(record Record) error {
 		"storeId2": ["userId1,5", "userId4,5"],
 	}
 */
-func (g StoreGroup) ToMapString() map[string][]string {
-	out := make(map[string][]string, len(g))
+func (g TopKStoreGroup) ToMapString() map[string][]string {
+	out := make(map[string][]string, len(g.group))
 
-	for storeId, users := range g {
+	for storeId, users := range g.group {
 		usersPerStore := []string{}
 
 		for userId, count := range users {
@@ -74,20 +89,24 @@ func (g StoreGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func (g *StoreGroup) Merge(other StoreGroup) {
-	for storeId, users := range other {
+func (g TopKStoreGroup) Merge(other AllowedGroup) {
+	otherTyped, ok := other.(TopKStoreGroup)
+	if !ok {
+		return
+	}
+	for storeId, users := range otherTyped.group {
 
-		if _, exists := (*g)[storeId]; !exists {
-			(*g)[storeId] = make(map[UserID]UserCount)
+		if _, exists := g.group[storeId]; !exists {
+			g.group[storeId] = make(map[UserID]UserCount)
 		}
 
 		for userId, count := range users {
-			existing, exists := (*g)[storeId][userId]
+			existing, exists := g.group[storeId][userId]
 
 			if exists {
-				(*g)[storeId][userId] = sumCount(existing, count)
+				g.group[storeId][userId] = sumCount(existing, count)
 			} else {
-				(*g)[storeId][userId] = count
+				g.group[storeId][userId] = count
 			}
 		}
 	}
@@ -97,12 +116,10 @@ func (g *StoreGroup) Merge(other StoreGroup) {
 ////////////////////////////////////////////
 ////////////////////////////////////////////
 
-func NewStoreGroupFromMapString(m map[string][]string) StoreGroup {
-	g := make(StoreGroup)
-
+func (g TopKStoreGroup) FromMapString(m map[string][]string) AllowedGroup {
 	for storeStr, userStrs := range m {
 		storeId := StoreID(storeStr)
-		g[storeId] = make(map[UserID]UserCount)
+		g.group[storeId] = make(map[UserID]UserCount)
 
 		for _, userStr := range userStrs {
 			parts := strings.Split(userStr, ",")
@@ -116,48 +133,39 @@ func NewStoreGroupFromMapString(m map[string][]string) StoreGroup {
 				continue
 			}
 
-			g[storeId][userId] = UserCount(count)
+			g.group[storeId][userId] = UserCount(count)
 		}
 	}
 	return g
 }
 
-func (g StoreGroupPerClient) ToMapString() map[string]map[string][]string {
-	out := make(map[string]map[string][]string, len(g))
+func (g TopKStoreGroup) GetMessageToSend() []map[string][]string {
+	messages := make([]map[string][]string, 0, 1)
+	result := make(map[string][]string)
 
-	for clientId, storeGroup := range g {
-		out[string(clientId)] = storeGroup.ToMapString()
+	for storeId, users := range g.group {
+		if len(users) == 0 {
+			continue
+		}
+		toper := NewToper(g.k, CmpTransactions)
+		for userID, value := range users {
+			userId := string(userID)
+			if userId == "" {
+				continue
+			}
+			count := int(value)
+			if count <= 0 {
+				continue
+			}
+			registry := NewTopKRegister(string(storeId), userId, count)
+			toper.Add(registry)
+		}
+		topKUsers := toper.GetTopK()
+		result[string(storeId)] = make([]string, 0, len(topKUsers))
+		for _, user := range topKUsers {
+			result[string(storeId)] = append(result[string(storeId)], user.String())
+		}
 	}
-
-	return out
-}
-
-func NewStoreGroupPerClient() StoreGroupPerClient {
-	return make(StoreGroupPerClient)
-}
-
-func (g *StoreGroupPerClient) Add(clientId string, records []Record) {
-	// If the client's group doesn't exist yet, initialize it
-	group, ok := (*g)[clientId]
-	if !ok {
-		group = NewStoreGroup()
-	}
-
-	// Use pointer receiver so AddBatch modifies the existing group
-	group.AddBatch(records)
-
-	// Store it back
-	(*g)[clientId] = group
-}
-
-func (g *StoreGroupPerClient) Get(clientId string) StoreGroup {
-	if group, ok := (*g)[clientId]; ok {
-		return group
-	}
-	// return an empty group (safe to use immediately)
-	return NewStoreGroup()
-}
-
-func (g *StoreGroupPerClient) Delete(clientId string) {
-	delete(*g, clientId)
+	messages = append(messages, result)
+	return messages
 }

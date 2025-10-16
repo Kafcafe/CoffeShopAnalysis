@@ -51,6 +51,17 @@ func GroupBySemesterConfig(groupId string, groupCount int) GroupByConfig {
 	}
 }
 
+func GroupByTopKConfig(groupId string, groupCount int, k int) GroupByConfig {
+	return GroupByConfig{
+		id:           groupId,
+		count:        groupCount,
+		ofType:       GROUP_TYPE_TOPK,
+		prevStageSub: "transactions.transactions.all",
+		nextStagePub: "transactions.transactions.topk",
+		factory:      func() structures.AllowedGroup { return structures.NewTopKStoreGroup(k) },
+	}
+}
+
 func CreateGroupByWorker(groupType string,
 	rabbitConf middleware.RabbitConfig,
 	groupId string,
@@ -78,7 +89,8 @@ func CreateGroupByWorker(groupType string,
 	case GROUP_TYPE_TOPK:
 		Kconfig := envConfig.GetInt("k")
 		logger.Infof("GroupBy type %s using k: %d", GROUP_TYPE_TOPK, Kconfig)
-		groupByWorker, err = NewGroupByTopKBestClients(rabbitConf, groupId, groupCount, Kconfig)
+		config := GroupByTopKConfig(groupId, groupCount, Kconfig)
+		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config)
 		if err != nil {
 			return nil, err
 		}
