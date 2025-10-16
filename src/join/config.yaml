@@ -1,3 +1,3 @@
 join:
 log:
-  level: "INFO"
+  level: "DEBUG"
