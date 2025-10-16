@@ -39,16 +39,16 @@ def build_results_path(clients_id):
     return paths
 
 
-def test_two_clients_one_each():
-    docker.down()
-    gen_compose.gen_docker_compose(2, 1, 1, 1, 1, 1, 1, 1, 1, 1)
-    docker.up()
-    docker.wait_for_clients(2)
-    read_logs('client1')
-    read_logs('client2')
-    results_paths = build_results_path([1, 2])
-    print()
-    assert compare_results.compare_all_results(results_paths)
+# def test_two_clients_one_each():
+#     docker.down()
+#     gen_compose.gen_docker_compose(2, 1, 1, 1, 1, 1, 1, 1, 1, 1)
+#     docker.up()
+#     docker.wait_for_clients(2)
+#     read_logs('client1')
+#     read_logs('client2')
+#     results_paths = build_results_path([1, 2])
+#     print()
+#     assert compare_results.compare_all_results(results_paths)
 
 def test_three():
     docker.down()

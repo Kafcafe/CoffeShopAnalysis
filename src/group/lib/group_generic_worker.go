@@ -132,7 +132,9 @@ func (g *GroupByGenericWorker) sendNextStage(msgToSend middleware.MessageGrouped
 	if err != nil {
 		return err
 	}
+	g.middlewareMutex.Lock()
 	sendErr := g.exchangeHandlers.nextStagePub.Send(msgBytes)
+	g.middlewareMutex.Unlock()
 	if sendErr != 0 {
 		return fmt.Errorf("error sending message to next stage: %d", sendErr)
 	}
@@ -144,7 +146,9 @@ func (g *GroupByGenericWorker) sendEofNextStage(msgToSend middleware.Message) er
 	if err != nil {
 		return err
 	}
+	g.middlewareMutex.Lock()
 	g.exchangeHandlers.nextStagePub.Send(msgBytes)
+	g.middlewareMutex.Unlock()
 	return nil
 }
 
@@ -168,6 +172,7 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 	g.log.Infof("All messages processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
 
 	g.log.Infof("Initiating gathering results and sending EOF for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
+	// time.Sleep()
 	g.gatherResultsAndSendEof(eofMessage, eofMsg, clientStats)
 }
 
@@ -226,7 +231,9 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 	}
 
 	// Broadcast results request
+	g.middlewareMutex.Lock()
 	g.exchangeHandlers.broadcastResultsRequestPub.Send(requestBytes)
+	g.middlewareMutex.Unlock()
 
 	// Create channel to gather results
 	g.gatherResultsChans[eofMsg.ClientId] = make(chan int, countToWaitResults)
@@ -427,7 +434,9 @@ func (g *GroupByGenericWorker) sendProcessedMessage(msgProcessed *middleware.Mes
 	if err != nil {
 		return err
 	}
+	g.middlewareMutex.Lock()
 	sendErr := g.exchangeHandlers.broadcastCountPub.Send(msgProcessedBytes)
+	g.middlewareMutex.Unlock()
 	if sendErr != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("failed to send processed count message: %v", sendErr)
 	}
@@ -511,8 +520,8 @@ func (g *GroupByGenericWorker) gatherAndSendPartialResults(message amqp.Delivery
 func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
 	// declare queue many to one (many publishers one consumer)
 	g.middlewareMutex.Lock()
+	defer g.middlewareMutex.Unlock()
 	queue, err := g.middlewareHandler.CreateQueue(queueName)
-	g.middlewareMutex.Unlock()
 
 	if err != nil {
 		g.log.Errorf("Failed to declare queue %s: %v", queueName, err)

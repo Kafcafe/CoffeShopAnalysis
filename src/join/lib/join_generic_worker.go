@@ -338,7 +338,9 @@ func (j *JoinGenericWorker) gatherOtherPartialResults(eofMessage amqp.Delivery, 
 	}
 
 	// Broadcast results request
+	j.middlewareMutex.Lock()
 	j.middlewareHandlers.broadcastResultsRequestPub.Send(requestBytes)
+	j.middlewareMutex.Unlock()
 
 	// Create channel to gather results
 	j.gatherResultsChans[eofMsg.ClientId] = make(chan int, countToWaitResults)
@@ -570,7 +572,9 @@ func (j *JoinGenericWorker) sendProcessedMessage(msgProcessed *middleware.Messag
 	if err != nil {
 		return err
 	}
+	j.middlewareMutex.Lock()
 	sendErr := j.middlewareHandlers.broadcastCountPub.Send(msgProcessedBytes)
+	j.middlewareMutex.Unlock()
 	if sendErr != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("failed to send processed count message: %v", sendErr)
 	}
@@ -607,7 +611,9 @@ func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextSta
 		}
 	}
 
+	j.middlewareMutex.Lock()
 	nextStagePub.Send(msgBytes)
+	j.middlewareMutex.Unlock()
 	return routeKey, nil
 }
 
@@ -682,8 +688,8 @@ func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
 func (j *JoinGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
 	// declare queue many to one (many publishers one consumer)
 	j.middlewareMutex.Lock()
+	defer j.middlewareMutex.Unlock()
 	queue, err := j.middlewareHandler.CreateQueue(queueName)
-	j.middlewareMutex.Unlock()
 
 	if err != nil {
 		j.log.Errorf("Failed to declare queue %s: %v", queueName, err)

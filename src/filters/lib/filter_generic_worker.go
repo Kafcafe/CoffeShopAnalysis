@@ -187,7 +187,9 @@ func (f *FilterGenericWorker) sendProcessedMessage(msgProcessed *middleware.Mess
 	if err != nil {
 		return err
 	}
+	f.clientsStatsMutex.Lock()
 	sendErr := f.middlewareHandlers.broadcastCountPub.Send(msgProcessedBytes)
+	f.clientsStatsMutex.Unlock()
 	if sendErr != middleware.MessageMiddlewareSuccess {
 		return fmt.Errorf("failed to send processed count message: %v", sendErr)
 	}
@@ -280,7 +282,9 @@ func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error 
 	if err != nil {
 		return err
 	}
+	f.clientsStatsMutex.Lock()
 	nextStagePub.Send(msgBytes)
+	f.clientsStatsMutex.Unlock()
 	return nil
 }
 
