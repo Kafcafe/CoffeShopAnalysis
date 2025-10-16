@@ -121,7 +121,7 @@ CLIENTS_TEMPLATE = """
         volumes:
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
-          - ./.data:/data
+          - ./testData:/data
 """
 
 GROUP_TEMPLATE = """

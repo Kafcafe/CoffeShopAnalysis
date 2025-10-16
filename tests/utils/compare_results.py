@@ -137,18 +137,16 @@ def compare_results_q4(q4_path):
 
     return _compare_sets(name, current_results, expected_results)
 
-# if __name__ == "__main__":
-#     compare_results_q1()
-#     compare_results_q2_top_earners()
-#     compare_results_q2_best_sellers()
-#     compare_results_q3()
-#     compare_results_q4()
-
-def compare_all_results(q1_path, q2_path, q3_path, q4_path):
-    resultq1 = compare_results_q1(q1_path)
-    resultq2_te = compare_results_q2_top_earners(q2_path)
-    resultq2_bs = compare_results_q2_best_sellers(q2_path)
-    resultsq3 = compare_results_q3(q3_path)
-    resultsq4 = compare_results_q4(q4_path)
-    return resultq1 and resultq2_te and resultq2_bs and resultsq3 and resultsq4
-    
+def compare_all_results(results: dict[int, list[str]]):
+    result = True
+    for client_id in results.keys():
+        q1_path, q2_path, q3_path, q4_path = results[client_id]
+        resultq1 = compare_results_q1(q1_path)
+        resultq2_te = compare_results_q2_top_earners(q2_path)
+        resultq2_bs = compare_results_q2_best_sellers(q2_path)
+        resultsq3 = compare_results_q3(q3_path)
+        resultsq4 = compare_results_q4(q4_path)
+        if not (resultq1 and resultq2_te and resultq2_bs and resultsq3 and resultsq4):
+            print(f"❌ Resultados del cliente {client_id} no coinciden.")
+            result = False
+    return result
