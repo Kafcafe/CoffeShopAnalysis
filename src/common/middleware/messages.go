@@ -290,3 +290,30 @@ func NewMessageResultsRequestFromBytes(msgBytes []byte) (*MessageResultsRequest,
 	}
 	return &msg, nil
 }
+
+type MessageResultsResponse struct {
+	Origin         string              // Who is sending the results
+	ClientId       string              // Client ID of the original data stream
+	DataType       string              // Data type of the original data stream
+	Processed      int                 // Number of processed items
+	Emitted        int                 // Number of emitted items
+	Payload        []string            // The actual results
+	GroupedPayload map[string][]string // The actual results in grouped form
+}
+
+func (m *MessageResultsResponse) ToBytes() ([]byte, error) {
+	msgBytes, err := json.Marshal(m)
+	if err != nil {
+		return []byte{}, fmt.Errorf("problem while marshalling MessageResultsResponse: %w", err)
+	}
+	return msgBytes, nil
+}
+
+func NewMessageResultsResponseFromBytes(msgBytes []byte) (*MessageResultsResponse, error) {
+	var msg MessageResultsResponse
+	err := json.Unmarshal(msgBytes, &msg)
+	if err != nil {
+		return nil, fmt.Errorf("failed message deserialization: %w", err)
+	}
+	return &msg, nil
+}
