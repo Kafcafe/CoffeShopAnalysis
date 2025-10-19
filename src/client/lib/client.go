@@ -118,8 +118,7 @@ func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string,
 	files, err := fh.GetFilesWithPattern(pattern)
 
 	if err != nil {
-		c.log.Errorf("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
-		return nil, err
+		return nil, fmt.Errorf("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
 	}
 
 	return files, nil
@@ -132,14 +131,12 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		c.currBg = NewBatchGenerator(c.config.dataPath, file)
 
 		if c.currBg == nil {
-			c.log.Errorf("| action: Error creating batch generator for file %s | result: error", file)
-			return fmt.Errorf("error creating batch generator for file %s", file)
+			return fmt.Errorf("| action: Error creating batch generator for file %s | result: error", file)
 		}
 
 		for c.currBg.IsReading() {
 			if err := c.processBatch(c.currBg, file); err != nil {
-				c.log.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
-				return err
+				return fmt.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
 			}
 			c.log.Infof("| action: processed batch for file | client_id: %s | file: %s", c.Id, file)
 		}
@@ -147,22 +144,18 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		err := c.protocol.finishBatch()
 
 		if err != nil {
-			c.log.Errorf("| action: Error finishing batch for file %s: %v | result: error", file, err)
-			return err
+			return fmt.Errorf("| action: Error finishing batch for file %s: %v | result: error", file, err)
 		}
 
 		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
-
 	}
 
 	err := c.protocol.FinishSendingFilesOf(pattern)
 
 	if err != nil {
-		c.log.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
-		return err
+		return fmt.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
 	}
 	return nil
-
 }
 
 func (c *Client) processBatch(bg *BatchGenerator, file string) error {
@@ -170,15 +163,13 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 	batch, err := bg.GetNextBatch(c.config.batchMaxAmount)
 
 	if err != nil {
-		c.log.Errorf("| action: Error getting next batch from file %s: %v | result: error", file, err)
-		return err
+		return fmt.Errorf("| action: Error getting next batch from file %s: %v | result: error", file, err)
 	}
 
 	err = c.protocol.SendBatch(batch)
 
 	if err != nil {
-		c.log.Errorf("| action: Error sending batch from file %s: %v | result: error", file, err)
-		return err
+		return fmt.Errorf("| action: Error sending batch from file %s: %v | result: error", file, err)
 	}
 
 	c.log.Infof("| action: Sent batch with information of file: %s", file)
@@ -220,7 +211,10 @@ func (c *Client) LogFinishQuery(query int) {
 
 	c.log.Infof("| action: Finished receiving results for query %d", query)
 	savePath := fmt.Sprintf("./results/results_q%d_%s.txt", query, c.Id)
-	WriteLines(c.results[query], savePath)
+
+	if err := WriteLines(c.results[query], savePath); err != nil {
+		c.log.Errorf("| action: Error writing results for query %d: %v", query, err)
+	}
 }
 
 // WriteLines overwrites the file at filePath with the given lines,
@@ -229,7 +223,7 @@ func WriteLines(lines []string, filePath string) error {
 	// Ensure parent directory exists
 
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return err
+		return fmt.Errorf("| action: Error while creating results folder %v", err)
 	}
 
 	// Join lines with newline separator
