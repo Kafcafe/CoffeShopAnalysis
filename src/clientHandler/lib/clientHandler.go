@@ -201,15 +201,28 @@ func (clh *ClientHandler) Handle() error {
 	go clh.launchResultsProcessing()
 
 	// Loop over each data type
+	var dataType string
+	var amountOfFiles int
+
 	for range amountOfdataTypes {
 		clh.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
 
-		dataType, amountOfFiles, err := clh.handleDataType()
+		dataType, amountOfFiles, err = clh.handleDataType()
 		if err != nil {
 			clh.log.Errorf("Error handling dataType: %v", err)
+			break
 		}
 
 		clh.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
+	}
+
+	if err != nil {
+		clh.log.Warningf("Sending EOF after failure for error: %v", err)
+		errSending := clh.dispatchBatchToMiddleware(dataType, []string{}, true)
+		if errSending != nil {
+			return fmt.Errorf("error dispatching EOF to middleware: %v", errSending)
+		}
+		return fmt.Errorf("error while processing: %v", err)
 	}
 
 	<-clh.sentAllResultsChan
@@ -224,7 +237,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 	dataType, err = clh.protocol.ReceiveFilesDataType()
 
 	if err != nil {
-		return "", 0, fmt.Errorf("error receiving files dataType: %v", err)
+		return dataType, 0, fmt.Errorf("error receiving files dataType: %v", err)
 	}
 
 	clh.log.Infof("Received files dataType: %s", dataType)
@@ -233,12 +246,12 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 	clh.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
 
 	if err != nil {
-		return "", 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
+		return dataType, 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
 	err = clh.processDataType(amountOfFiles, dataType)
 	if err != nil {
-		return "", 0, fmt.Errorf("error processing files for dataType %s: %v", dataType, err)
+		return dataType, 0, fmt.Errorf("error processing files for dataType %s: %v", dataType, err)
 	}
 
 	return dataType, amountOfFiles, nil
