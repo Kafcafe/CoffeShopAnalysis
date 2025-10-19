@@ -1,5 +1,6 @@
 import sys
 
+
 def _compare_sets(name, current_set, expected_set, sample_size=3):
     """
     Compara dos conjuntos de resultados e imprime un resumen con ejemplos de diferencias.
@@ -37,18 +38,19 @@ def compare_results_q1(client_id):
 
     with open(current_results, "r", encoding="utf-8") as f:
         for line in f:
-            id, amount = line.strip().split(',')
+            id, amount = line.strip().split(",")
             formatted = f"{id},{float(amount):.1f}"
             lines_current_results.add(formatted)
-    
+
     with open(expected_results, "r", encoding="utf-8") as f:
         next(f)
         for line in f:
-            id, amount = line.strip().split(',')
+            id, amount = line.strip().split(",")
             formatted = f"{id},{float(amount):.1f}"
             lines_expected_results.add(formatted)
 
     _compare_sets(name, lines_current_results, lines_expected_results)
+
 
 def compare_results_q2(client_id):
     name = "results_q2_best_sellers"
@@ -57,17 +59,17 @@ def compare_results_q2(client_id):
 
     current_results = set()
     expected_results = set()
-    
-    with open(current_results_path, 'r') as file:
+
+    with open(current_results_path, "r") as file:
         for line in file:
             current_results.add(line.strip())
 
-    with open(expected_results_path, 'r') as file:
+    with open(expected_results_path, "r") as file:
         for line in file:
             expected_results.add(line.strip())
 
     _compare_sets(name, current_results, expected_results)
-    
+
 
 def compare_results_q3(client_id):
     name = "results_q3"
@@ -75,17 +77,17 @@ def compare_results_q3(client_id):
     expected_results_path = "./scripts/expected_results/results_q3.csv"
 
     def parse_line(line: str) -> str:
-        semester, store, total = line.strip().split(',')
+        semester, store, total = line.strip().split(",")
         return f"{semester},{store},{float(total):.2f}"
 
     current_results = set()
     expected_results = set()
 
-    with open(current_results_path, 'r') as file:
+    with open(current_results_path, "r") as file:
         for line in file:
             current_results.add(parse_line(line))
 
-    with open(expected_results_path, 'r') as file:
+    with open(expected_results_path, "r") as file:
         next(file)
         for line in file:
             expected_results.add(parse_line(line))
@@ -99,7 +101,7 @@ def compare_results_q4(client_id):
     expected_results_path = "./scripts/expected_results/results_q4.csv"
 
     def parse_line(line: str) -> str:
-        parts = line.strip().split(',')
+        parts = line.strip().split(",")
         store = parts[0]
         bday = parts[1]
         return f"{store},{bday}"
@@ -107,21 +109,25 @@ def compare_results_q4(client_id):
     current_results = set()
     expected_results = set()
 
-    with open(current_results_path, 'r') as file:
+    with open(current_results_path, "r") as file:
         for line in file:
             current_results.add(parse_line(line))
 
-    with open(expected_results_path, 'r') as file:
+    with open(expected_results_path, "r") as file:
         next(file)
         for line in file:
             expected_results.add(parse_line(line))
 
     _compare_sets(name, current_results, expected_results)
 
+
 if __name__ == "__main__":
     client_id = sys.argv[1] if len(sys.argv) > 1 else 1
     print(f"Comparando resultados para client_id {client_id}")
-    compare_results_q1(client_id)
-    compare_results_q2(client_id)
-    compare_results_q3(client_id)
-    compare_results_q4(client_id)
+    try:
+        compare_results_q1(client_id)
+        compare_results_q2(client_id)
+        compare_results_q3(client_id)
+        compare_results_q4(client_id)
+    except Exception as e:
+        print(f"Error found: [{e.__class__.__name__}] {e}")
