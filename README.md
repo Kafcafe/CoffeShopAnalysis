@@ -23,6 +23,7 @@ Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
    1. [Module Testing](#Module-Testing)
    1. [End2End Testing](#End2End-Testing)
    1. [Cleanup Commands](#Cleanup-Commands)
+   1. [Client Restart Test](#Client-Restart-Test)
 
 ## Dependencies and Setup
 
@@ -266,6 +267,60 @@ make pytest-verbose
 ```
 
 The tests run on **the ~30% dataset**, so it may take a while for all the tests to finish. The results taken directly from the clients' files output are compared to the expected results for these tests.
+
+### Client Restart Test
+
+This section describes manual testing procedures to verify the system's functionality, particularly focusing on client restart capabilities and result consistency.
+
+This test verifies that the system produces consistent results when a client is restarted after initial processing.
+
+**Prerequisites:**
+
+- Ensure the `testData` directory contains the reduced dataset (see [Dataset](#dataset) section)
+- Ensure expected results are available in `./tests/expected_results/`
+
+**Test Steps:**
+
+1. **Start the normal system:**
+
+   ```shell
+   make up
+   ```
+
+2. **Wait for client 1 to complete processing:**
+   Monitor the logs to ensure client 1 has finished processing all data:
+
+   ```shell
+   docker compose -f ./docker-compose-dev.yaml logs client1 --follow
+   ```
+
+3. **Compare results with expected output:**
+   Run the comparison script to verify correctness:
+
+   ```shell
+   python3 ./scripts/compare_results.py 1
+   ```
+
+   Expected output should show all results matching (✅ indicators for each query).
+
+4. **While the rest of the system is up, restart client 1 using the bootc (from bootclient) script:**
+   Use the `bootc.sh` script to start a standalone client with the test data:
+
+   ```shell
+   ./bootc.sh 1 ./testData
+   ```
+
+5. **Verify results consistency:**
+   Run the comparison script again to ensure the restarted client produces identical results:
+   ```shell
+   python3 ./scripts/compare_results.py 1
+   ```
+
+**Expected Behavior:**
+
+- Initial system run should produce correct results matching expected output
+- Restarted client should produce identical results, confirming system consistency
+- All comparison outputs should show ✅ for successful matches
 
 ### Cleanup Commands
 
