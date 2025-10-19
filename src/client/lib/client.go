@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	logger "common/logger"
@@ -24,6 +25,9 @@ type Client struct {
 	finishedChan chan bool
 	fileTypes    string
 	log          *logging.Logger
+
+	was_signaled bool
+	mutex        sync.Mutex
 }
 
 type ClientExecutionError error
@@ -48,6 +52,8 @@ func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 		log:          logger,
 		Id:           clientId,
 		fileTypes:    fileTypes,
+		was_signaled: false,
+		mutex:        sync.Mutex{},
 	}
 
 	signal.Notify(client.sigChan, syscall.SIGTERM)
@@ -56,7 +62,29 @@ func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 
 func (c *Client) handleSignals() {
 	<-c.sigChan
+
+	c.log.Info("Received shutdown signal")
+
+	c.mutex.Lock()
+	c.was_signaled = true
+	c.mutex.Unlock()
+
 	c.Shutdown()
+}
+
+func (c *Client) return_err_if_not_signaled(err error) error {
+	var was_signaled bool
+
+	c.mutex.Lock()
+	was_signaled = c.was_signaled
+	c.mutex.Unlock()
+
+	if was_signaled {
+		return nil
+	} else {
+		c.Shutdown()
+		return err
+	}
 }
 
 func (c *Client) Run() ClientExecutionError {
@@ -68,7 +96,6 @@ func (c *Client) Run() ClientExecutionError {
 
 	var listfiles []string = strings.Split(c.fileTypes, ",")
 	c.log.Info(listfiles)
-	defer c.Shutdown()
 	go c.handleSignals()
 	go c.ProcessResults()
 
@@ -80,36 +107,36 @@ func (c *Client) Run() ClientExecutionError {
 
 	if err != nil {
 		c.log.Errorf("| action: Error receiving start from server: %v | result: error", err)
-		return err
+		return c.return_err_if_not_signaled(err)
 	}
 
 	err = c.protocol.sendAmountOfTopics(len(listfiles))
 
 	if err != nil {
 		c.log.Errorf("| action: Error sending amount of topics: %v | result: error", err)
-		return err
+		return c.return_err_if_not_signaled(err)
 	}
 
 	for _, pattern := range listfiles {
 		files, err := c.GetFilesWithPattern(pattern, fileHandler)
 		if err != nil {
 			c.log.Errorf("| action: Error getting files: %v | result: error", err)
-			return err
+			return c.return_err_if_not_signaled(err)
 		}
 
 		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
 			c.log.Errorf("| action: Error sending files topic: %v | result: error", err)
-			return err
+			return c.return_err_if_not_signaled(err)
 		}
 
 		if err = c.ProcessFileList(files, pattern); err != nil {
 			c.log.Errorf("| action: Error processing file list: %v | result: error", err)
-			return err
+			return c.return_err_if_not_signaled(err)
 		}
 	}
 
 	<-c.finishedChan
-
+	c.Shutdown()
 	return nil
 }
 
