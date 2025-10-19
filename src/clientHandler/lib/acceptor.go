@@ -166,7 +166,7 @@ func (a *Acceptor) Run() error {
 		conn, err := a.listener.Accept()
 
 		if err != nil {
-			a.log.Warningf("Failed 2o accept connection: %v", err)
+			a.log.Warningf("Failed to accept connection: %v", err)
 			return nil
 		}
 

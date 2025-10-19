@@ -96,6 +96,8 @@ func main() {
 
 	if err := client.Run(); err != nil {
 		logger.Criticalf("| action: run client | result: error | client_id: %s | Client execution failed: %s", clientId, err)
+		elapsed := time.Since(start)
+		logger.Infof("| action: log execution time | client_id: %s | Execution took %s and then failed\n", clientId, elapsed)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)
 	}
 

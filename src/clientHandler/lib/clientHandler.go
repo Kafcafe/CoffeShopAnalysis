@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"sync"
+	"time"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -18,24 +19,28 @@ const (
 	ACK          = 0
 	NACK_REQUEUE = 1
 	NACK_DISCARD = 2
+
+	TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS = 15
 )
 
 type QueryID int
 type DataType = string
 
 type ClientHandler struct {
-	protocol           *Protocol
-	log                *logging.Logger
-	ClientId           ClientUuid
-	exchangeHandlers   ExchangeHandlers
-	errChan            chan middleware.MessageMiddlewareError
-	isRunning          bool
-	mtx                sync.Mutex
-	resultsChan        chan middleware.Message
-	sentAllResultsChan chan int
-	emittedCount       map[DataType]int
-	limitHandler       *ConnectionLimit
-	middlewareHandler  *middleware.MiddlewareHandler
+	protocol                                *Protocol
+	log                                     *logging.Logger
+	ClientId                                ClientUuid
+	exchangeHandlers                        ExchangeHandlers
+	errChan                                 chan middleware.MessageMiddlewareError
+	isRunning                               bool
+	mtx                                     sync.Mutex
+	resultsChan                             chan middleware.Message
+	sentAllResultsChan                      chan int
+	timeToProcessAlreadyBufferedResultsChan chan int
+	connectionBroken                        chan int
+	emittedCount                            map[DataType]int
+	limitHandler                            *ConnectionLimit
+	middlewareHandler                       *middleware.MiddlewareHandler
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -50,18 +55,20 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
 
 	return &ClientHandler{
-		protocol:           protocol,
-		log:                logger.GetLoggerWithPrefix(loggerPrefix),
-		ClientId:           clientId,
-		exchangeHandlers:   exchangeHandlers,
-		errChan:            make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
-		isRunning:          true,
-		mtx:                sync.Mutex{},
-		resultsChan:        make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
-		sentAllResultsChan: make(chan int, 1),
-		emittedCount:       make(map[DataType]int),
-		limitHandler:       limitRef,
-		middlewareHandler:  middlewareHandler,
+		protocol:                                protocol,
+		log:                                     logger.GetLoggerWithPrefix(loggerPrefix),
+		ClientId:                                clientId,
+		exchangeHandlers:                        exchangeHandlers,
+		errChan:                                 make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
+		isRunning:                               true,
+		mtx:                                     sync.Mutex{},
+		resultsChan:                             make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+		sentAllResultsChan:                      make(chan int, 1),
+		emittedCount:                            make(map[DataType]int),
+		limitHandler:                            limitRef,
+		middlewareHandler:                       middlewareHandler,
+		timeToProcessAlreadyBufferedResultsChan: make(chan int, 1),
+		connectionBroken:                        make(chan int, 1),
 	}
 }
 
@@ -101,8 +108,46 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	return nil
 }
 
+func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message, eofFlags *map[int]bool) error {
+	queryId := msg.QueryId
+
+	if queryId <= 0 || queryId > 4 {
+		clh.log.Warningf("Unrecognized queryId")
+		return nil
+	}
+
+	if msg.IsEof {
+		(*eofFlags)[queryId] = true
+	}
+
+	var cleanResult []string = msg.Payload
+	var err error = nil
+
+	switch msg.QueryId {
+	case 1:
+		cleanResult, err = cleanTransactionResults(msg.Payload)
+	case 2:
+		cleanResult, err = cleanTransactionItemsResults(msg.Payload)
+	}
+
+	if err != nil {
+		clh.log.Errorf("Error cleaning result for query %d, sending results raw: %v", msg.QueryId, err)
+		if err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof); err != nil {
+			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+		}
+		return err
+	}
+
+	if err := clh.protocol.SendResults(uint32(queryId), cleanResult, msg.IsEof); err != nil {
+		clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+	}
+
+	return nil
+}
+
 func (clh *ClientHandler) launchCentralResultDispatching() {
 	// Track EOF for each query
+	var dispathMessage bool = true
 	eofFlags := map[int]bool{
 		1: false,
 		2: false,
@@ -118,39 +163,22 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 			return
 		}
 
-		msg := <-clh.resultsChan
-
-		queryId := msg.QueryId
-
-		if queryId <= 0 || queryId > 4 {
-			clh.log.Warningf("Unrecognized queryId")
-			continue
-		}
-
-		if msg.IsEof {
-			eofFlags[queryId] = true
-		}
-
-		var cleanResult []string = msg.Payload
-		var err error = nil
-
-		switch msg.QueryId {
-		case 1:
-			cleanResult, err = cleanTransactionResults(msg.Payload)
-		case 2:
-			cleanResult, err = cleanTransactionItemsResults(msg.Payload)
-		}
-
-		if err != nil {
-			clh.log.Errorf("Error cleaning result for query %d, sending results raw: %v", msg.QueryId, err)
-			if err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof); err != nil {
-				clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+		select {
+		case msg := <-clh.resultsChan:
+			if !dispathMessage {
+				continue
 			}
-			return
-		}
 
-		if err := clh.protocol.SendResults(uint32(queryId), cleanResult, msg.IsEof); err != nil {
-			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+			err := clh.dispatchResultMessage(&msg, &eofFlags)
+			if err != nil {
+				return
+			}
+		case <-clh.timeToProcessAlreadyBufferedResultsChan:
+			clh.log.Infof("Finished processing buffered results")
+			return
+		case <-clh.connectionBroken:
+			clh.log.Infof("Finished processing buffered results")
+			dispathMessage = false
 		}
 	}
 }
@@ -201,15 +229,42 @@ func (clh *ClientHandler) Handle() error {
 	go clh.launchResultsProcessing()
 
 	// Loop over each data type
+	var dataType string
+	var amountOfFiles int
+
 	for range amountOfdataTypes {
 		clh.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
 
-		dataType, amountOfFiles, err := clh.handleDataType()
+		dataType, amountOfFiles, err = clh.handleDataType()
 		if err != nil {
 			clh.log.Errorf("Error handling dataType: %v", err)
+			break
 		}
 
 		clh.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
+	}
+
+	if err != nil {
+		clh.log.Warningf("Sending EOF after failure for error: %v", err)
+		errSending := clh.dispatchBatchToMiddleware(dataType, []string{}, true)
+
+		var errToReturn error = nil
+		if errSending != nil {
+			errToReturn = fmt.Errorf("error dispatching EOF to middleware: %v", errSending)
+		}
+
+		clh.log.Infof("Processing buffered results for %d seconds", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
+		clh.connectionBroken <- 0
+		<-time.After(time.Duration(TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS) * time.Second)
+		clh.log.Infof("Finished buffered time for results (was %ds)", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
+		clh.timeToProcessAlreadyBufferedResultsChan <- 0
+
+		if errToReturn != nil {
+			return errToReturn
+		}
+
+		errToReturn = fmt.Errorf("error while processing: %v", err)
+		return errToReturn
 	}
 
 	<-clh.sentAllResultsChan
@@ -224,7 +279,7 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 	dataType, err = clh.protocol.ReceiveFilesDataType()
 
 	if err != nil {
-		return "", 0, fmt.Errorf("error receiving files dataType: %v", err)
+		return dataType, 0, fmt.Errorf("error receiving files dataType: %v", err)
 	}
 
 	clh.log.Infof("Received files dataType: %s", dataType)
@@ -233,12 +288,12 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 	clh.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
 
 	if err != nil {
-		return "", 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
+		return dataType, 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
 	err = clh.processDataType(amountOfFiles, dataType)
 	if err != nil {
-		return "", 0, fmt.Errorf("error processing files for dataType %s: %v", dataType, err)
+		return dataType, 0, fmt.Errorf("error processing files for dataType %s: %v", dataType, err)
 	}
 
 	return dataType, amountOfFiles, nil

@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"strings"
+	"sync"
 	"syscall"
 
 	logger "common/logger"
@@ -24,6 +25,9 @@ type Client struct {
 	finishedChan chan bool
 	fileTypes    string
 	log          *logging.Logger
+
+	was_signaled bool
+	mutex        sync.Mutex
 }
 
 type ClientExecutionError error
@@ -48,6 +52,8 @@ func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 		log:          logger,
 		Id:           clientId,
 		fileTypes:    fileTypes,
+		was_signaled: false,
+		mutex:        sync.Mutex{},
 	}
 
 	signal.Notify(client.sigChan, syscall.SIGTERM)
@@ -56,7 +62,29 @@ func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 
 func (c *Client) handleSignals() {
 	<-c.sigChan
+
+	c.log.Info("Received shutdown signal")
+
+	c.mutex.Lock()
+	c.was_signaled = true
+	c.mutex.Unlock()
+
 	c.Shutdown()
+}
+
+func (c *Client) return_err_if_not_signaled(err error) error {
+	var was_signaled bool
+
+	c.mutex.Lock()
+	was_signaled = c.was_signaled
+	c.mutex.Unlock()
+
+	if was_signaled {
+		return nil
+	} else {
+		c.Shutdown()
+		return err
+	}
 }
 
 func (c *Client) Run() ClientExecutionError {
@@ -68,7 +96,6 @@ func (c *Client) Run() ClientExecutionError {
 
 	var listfiles []string = strings.Split(c.fileTypes, ",")
 	c.log.Info(listfiles)
-	defer c.Shutdown()
 	go c.handleSignals()
 	go c.ProcessResults()
 
@@ -80,36 +107,36 @@ func (c *Client) Run() ClientExecutionError {
 
 	if err != nil {
 		c.log.Errorf("| action: Error receiving start from server: %v | result: error", err)
-		return err
+		return c.return_err_if_not_signaled(err)
 	}
 
 	err = c.protocol.sendAmountOfTopics(len(listfiles))
 
 	if err != nil {
 		c.log.Errorf("| action: Error sending amount of topics: %v | result: error", err)
-		return err
+		return c.return_err_if_not_signaled(err)
 	}
 
 	for _, pattern := range listfiles {
 		files, err := c.GetFilesWithPattern(pattern, fileHandler)
 		if err != nil {
 			c.log.Errorf("| action: Error getting files: %v | result: error", err)
-			return err
+			return c.return_err_if_not_signaled(err)
 		}
 
 		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
 			c.log.Errorf("| action: Error sending files topic: %v | result: error", err)
-			return err
+			return c.return_err_if_not_signaled(err)
 		}
 
 		if err = c.ProcessFileList(files, pattern); err != nil {
 			c.log.Errorf("| action: Error processing file list: %v | result: error", err)
-			return err
+			return c.return_err_if_not_signaled(err)
 		}
 	}
 
 	<-c.finishedChan
-
+	c.Shutdown()
 	return nil
 }
 
@@ -118,8 +145,7 @@ func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string,
 	files, err := fh.GetFilesWithPattern(pattern)
 
 	if err != nil {
-		c.log.Errorf("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
-		return nil, err
+		return nil, fmt.Errorf("| action: Error getting files with pattern %s: %v | result: error", pattern, err)
 	}
 
 	return files, nil
@@ -132,14 +158,12 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		c.currBg = NewBatchGenerator(c.config.dataPath, file)
 
 		if c.currBg == nil {
-			c.log.Errorf("| action: Error creating batch generator for file %s | result: error", file)
-			return fmt.Errorf("error creating batch generator for file %s", file)
+			return fmt.Errorf("| action: Error creating batch generator for file %s | result: error", file)
 		}
 
 		for c.currBg.IsReading() {
 			if err := c.processBatch(c.currBg, file); err != nil {
-				c.log.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
-				return err
+				return fmt.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
 			}
 			c.log.Infof("| action: processed batch for file | client_id: %s | file: %s", c.Id, file)
 		}
@@ -147,22 +171,18 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		err := c.protocol.finishBatch()
 
 		if err != nil {
-			c.log.Errorf("| action: Error finishing batch for file %s: %v | result: error", file, err)
-			return err
+			return fmt.Errorf("| action: Error finishing batch for file %s: %v | result: error", file, err)
 		}
 
 		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
-
 	}
 
 	err := c.protocol.FinishSendingFilesOf(pattern)
 
 	if err != nil {
-		c.log.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
-		return err
+		return fmt.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
 	}
 	return nil
-
 }
 
 func (c *Client) processBatch(bg *BatchGenerator, file string) error {
@@ -170,15 +190,13 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 	batch, err := bg.GetNextBatch(c.config.batchMaxAmount)
 
 	if err != nil {
-		c.log.Errorf("| action: Error getting next batch from file %s: %v | result: error", file, err)
-		return err
+		return fmt.Errorf("| action: Error getting next batch from file %s: %v | result: error", file, err)
 	}
 
 	err = c.protocol.SendBatch(batch)
 
 	if err != nil {
-		c.log.Errorf("| action: Error sending batch from file %s: %v | result: error", file, err)
-		return err
+		return fmt.Errorf("| action: Error sending batch from file %s: %v | result: error", file, err)
 	}
 
 	c.log.Infof("| action: Sent batch with information of file: %s", file)
@@ -220,7 +238,10 @@ func (c *Client) LogFinishQuery(query int) {
 
 	c.log.Infof("| action: Finished receiving results for query %d", query)
 	savePath := fmt.Sprintf("./results/results_q%d_%s.txt", query, c.Id)
-	WriteLines(c.results[query], savePath)
+
+	if err := WriteLines(c.results[query], savePath); err != nil {
+		c.log.Errorf("| action: Error writing results for query %d: %v", query, err)
+	}
 }
 
 // WriteLines overwrites the file at filePath with the given lines,
@@ -229,7 +250,7 @@ func WriteLines(lines []string, filePath string) error {
 	// Ensure parent directory exists
 
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return err
+		return fmt.Errorf("| action: Error while creating results folder %v", err)
 	}
 
 	// Join lines with newline separator
