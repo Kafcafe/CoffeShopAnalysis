@@ -67,6 +67,15 @@ down:
 	docker compose -f $(FILE) down
 .PHONY: down
 
+# Stop and remove services for a specific client
+# Usage: make downc 1
+# Gracefully stops containers with 3s timeout, then removes them
+downc:
+	CLIENT_ID=$(filter-out $@, $(MAKECMDGOALS)); \
+	docker compose -f docker-compose.client$${CLIENT_ID}.yaml stop -t 3; \
+	docker compose -f docker-compose.client$${CLIENT_ID}.yaml down
+.PHONY: downc
+
 # View real-time logs from services
 # Use positional argument to specify which services to log:
 #   make logs              - All services (default)

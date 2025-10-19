@@ -1,4 +1,3 @@
-
 """
 Docker Compose YAML templates for distributed coffee shop analysis system.
 
@@ -122,6 +121,23 @@ CLIENTS_TEMPLATE = """
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
           - ./testData:/data
+"""
+
+CLIENT_STANDALONE_TEMPLATE = """
+    client{id}:
+        container_name: "client{id}"
+        environment:
+          CLIENT_ID: {id}
+          FILETYPES: "store,menu,transactions,transaction_items,users"
+        networks:
+          - analysis_net
+        build:
+          context: ./src/
+          dockerfile: client/Dockerfile
+        volumes:
+          - ./src/client/config.yaml:/config.yaml
+          - ./results:/results
+          - {data_folder}:/data
 """
 
 GROUP_TEMPLATE = """

@@ -58,3 +58,4 @@ reduce_data_set/
 all_data/
 
 testData*/
+docker-compose.client*

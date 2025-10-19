@@ -66,40 +66,6 @@ services:
           - ./results:/results
           - ./testData2:/data
 
-    client2:
-        container_name: "client2"
-        environment:
-          CLIENT_ID: 2
-          FILETYPES: "store,menu,transactions,transaction_items,users"
-        depends_on:
-          - client-handler
-        networks:
-          - analysis_net
-        build:
-          context: ./src/
-          dockerfile: client/Dockerfile
-        volumes:
-          - ./src/client/config.yaml:/config.yaml
-          - ./results:/results
-          - ./testData2:/data
-
-    client3:
-        container_name: "client3"
-        environment:
-          CLIENT_ID: 3
-          FILETYPES: "store,menu,transactions,transaction_items,users"
-        depends_on:
-          - client-handler
-        networks:
-          - analysis_net
-        build:
-          context: ./src/
-          dockerfile: client/Dockerfile
-        volumes:
-          - ./src/client/config.yaml:/config.yaml
-          - ./results:/results
-          - ./testData2:/data
-
     filter-year1:
         container_name: "filter-year1"
         depends_on:
