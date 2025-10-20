@@ -184,29 +184,29 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	return nil
 }
 
-func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error {
-	var nextStagePub middleware.MessageMiddlewareExchange
-	var exists bool
-
-	if f.conf.ofType == FILTER_TYPE_AMOUNT {
-		nextStagePub, exists = f.middlewareHandlers.nextStagePubs[msgToSend.ClientId]
-		if !exists {
-			routeKey := fmt.Sprintf("results.%s", msgToSend.ClientId)
-			f.log.Infof("Next stage publishing for datatype %s on routeKey %s", msgToSend.DataType, routeKey)
-			exchange, err := f.middlewareHandler.CreateDirectExchangeStandalone(routeKey)
-			if err != nil {
-				return fmt.Errorf("error creating exchange handler for %s: %v", routeKey, err)
-			}
-			f.middlewareHandlers.nextStagePubs[msgToSend.ClientId] = *exchange
-			nextStagePub = *exchange
-		}
-	} else {
-		nextStagePub, exists = f.middlewareHandlers.nextStagePubs[msgToSend.DataType]
-		if !exists {
-			return fmt.Errorf("received unprocessabble message in sendNextStage of type %s", msgToSend.DataType)
-		}
+func (f *FilterGenericWorker) getNextStagePub(clientId ClientId, dataType DataType) (middleware.MessageMiddlewareExchange, error) {
+	if f.conf.ofType != FILTER_TYPE_AMOUNT {
+		return f.middlewareHandlers.nextStagePubs[dataType], nil
 	}
+	nextStagePub, exists := f.middlewareHandlers.nextStagePubs[clientId]
+	if !exists {
+		routeKey := fmt.Sprintf("results.%s", clientId)
+		f.log.Infof("Next stage publishing for datatype %s on routeKey %s", dataType, routeKey)
+		exchange, err := f.middlewareHandler.CreateDirectExchangeStandalone(routeKey)
+		if err != nil {
+			return middleware.MessageMiddlewareExchange{}, fmt.Errorf("error creating exchange handler for %s: %v", routeKey, err)
+		}
+		f.middlewareHandlers.nextStagePubs[clientId] = *exchange
+		nextStagePub = *exchange
+	}
+	return nextStagePub, nil
+}
 
+func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error {
+	nextStagePub, err := f.getNextStagePub(msgToSend.ClientId, msgToSend.DataType)
+	if err != nil {
+		return fmt.Errorf("received unprocessabble message in sendNextStage of type %s", msgToSend.DataType)
+	}
 	msgBytes, err := msgToSend.ToBytes()
 	if err != nil {
 		return err
@@ -224,8 +224,19 @@ func (f *FilterGenericWorker) getClientStats(clientId ClientId) *middleware.Clie
 	return f.clientsStats[clientId]
 }
 
+func (f *FilterGenericWorker) waitForResults(clientId ClientId, dataType DataType, totalEmitted int) (processed int, emitted int) {
+	processed = 0
+	emitted = 0
+	// timeouts? exponential backoff?
+	for processed < totalEmitted {
+		msg := <-f.resultsChans[clientId][dataType]
+		processed += msg.Processed
+		emitted += msg.Emitted
+	}
+	return processed, emitted
+}
+
 func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	var processed, emitted int
 	mh, err := middleware.NewMiddlewareHandler(f.middlewareHandler.RabbitConn)
 	if err != nil {
 		f.log.Errorf("Failed to create middleware handler: %v", err)
@@ -240,12 +251,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		return
 	}
 
-	requestMsg := middleware.NewMessageResultsRequest(
-		f.conf.id,
-		queueName,
-		eofMsg.ClientId,
-		eofMsg.DataType,
-	)
+	requestMsg := middleware.NewMessageResultsRequest(f.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
 	requestBytes, err := requestMsg.ToBytes()
 	if err != nil {
 		f.log.Errorf("Failed to serialize results request message: %v", err)
@@ -264,12 +270,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		return
 	}
 
-	// timeouts? exponential backoff?
-	for processed < eofMsg.TotalEmitted {
-		msg := <-f.resultsChans[eofMsg.ClientId][eofMsg.DataType]
-		processed += msg.Processed
-		emitted += msg.Emitted
-	}
+	processed, emitted := f.waitForResults(eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
 	if err := queue.StopConsuming(); err != middleware.MessageMiddlewareSuccess {
 		f.log.Errorf("Failed to stop consuming ephemeral queue %s: %v", queueName, err)
@@ -278,12 +279,13 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		f.log.Errorf("Failed to delete ephemeral queue %s: %v", queueName, err)
 	}
 
+	eofMsg.TotalEmitted = emitted
 	if err := f.sendNextStage(eofMsg); err != nil {
 		f.log.Errorf("Failed to send EOF message to next stage: %v", err)
 		answerMessage(NACK_DISCARD, eofMessage)
 		return
 	}
-	f.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
+	f.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Processed count: %d, Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, processed, emitted)
 	answerMessage(ACK, eofMessage)
 }
 
