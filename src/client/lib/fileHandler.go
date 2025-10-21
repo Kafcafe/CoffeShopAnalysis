@@ -22,23 +22,12 @@ func NewFileHandler(folderPath string) *FileHandler {
 }
 
 func (fh *FileHandler) GetFilesWithPattern(pattern string) ([]string, error) {
-	entries, err := os.ReadDir(fh.folderPath)
+	var matchedFiles []string
 
+	err := fh.walkDir(fh.folderPath, pattern, &matchedFiles)
 	if err != nil {
-		fmt.Println("Error reading directory:", err)
-		return nil, fmt.Errorf("error reading directory: %w", err)
-	}
-
-	var matchedFiles []os.DirEntry
-
-	for _, entry := range entries {
-		if entry.IsDir() {
-			continue
-		}
-
-		if strings.Contains(entry.Name(), pattern) {
-			matchedFiles = append(matchedFiles, entry)
-		}
+		fh.log.Critical("Error walking directory: %v", err)
+		return nil, err
 	}
 
 	if len(matchedFiles) == 0 {
@@ -46,11 +35,32 @@ func (fh *FileHandler) GetFilesWithPattern(pattern string) ([]string, error) {
 		return nil, fmt.Errorf("no files matched the given pattern")
 	}
 
-	fileNames := make([]string, len(matchedFiles))
+	return matchedFiles, nil
+}
 
-	for i, file := range matchedFiles {
-		fileNames[i] = file.Name()
+// walkDir recursively walks through directories and appends files matching the pattern.
+func (fh *FileHandler) walkDir(path, pattern string, matchedFiles *[]string) error {
+	entries, err := os.ReadDir(path)
+	if err != nil {
+		return fmt.Errorf("error reading directory %s: %w", path, err)
 	}
 
-	return fileNames, nil
+	for _, entry := range entries {
+		fullPath := fh.buildPath(path, entry.Name())
+		if !strings.Contains(entry.Name(), pattern) {
+			continue
+		}
+		if entry.IsDir() {
+			if err := fh.walkDir(fullPath, pattern, matchedFiles); err != nil {
+				return err
+			}
+		} else if strings.Contains(entry.Name(), pattern) {
+			*matchedFiles = append(*matchedFiles, fullPath)
+		}
+	}
+	return nil
+}
+
+func (fh *FileHandler) buildPath(filepath, filename string) string {
+	return fmt.Sprintf("%s/%s", filepath, filename)
 }
