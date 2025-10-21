@@ -22,28 +22,12 @@ func NewFileHandler(folderPath string) *FileHandler {
 }
 
 func (fh *FileHandler) GetFilesWithPattern(pattern string) ([]string, error) {
-	entries, err := os.ReadDir(fh.folderPath)
-	if err != nil {
-		fmt.Println("Error reading directory:", err)
-		return nil, fmt.Errorf("error reading directory: %w", err)
-	}
-
 	var matchedFiles []string
 
-	for _, entry := range entries {
-		if entry.IsDir() {
-			subFiles, err := fh.GetSubDirectories(entry.Name(), pattern, fh.folderPath)
-
-			if err != nil {
-				return nil, err
-			}
-			matchedFiles = append(matchedFiles, subFiles...)
-			continue
-		}
-
-		if strings.Contains(entry.Name(), pattern) {
-			matchedFiles = append(matchedFiles, entry.Name())
-		}
+	err := fh.walkDir(fh.folderPath, pattern, &matchedFiles)
+	if err != nil {
+		fh.log.Critical("Error walking directory: %v", err)
+		return nil, err
 	}
 
 	if len(matchedFiles) == 0 {
@@ -54,29 +38,27 @@ func (fh *FileHandler) GetFilesWithPattern(pattern string) ([]string, error) {
 	return matchedFiles, nil
 }
 
-func (fh *FileHandler) GetSubDirectories(path string, pattern string, parent string) ([]string, error) {
-
-	currDir := fh.buildPath(parent, path)
-	entries, err := os.ReadDir(currDir)
-
+// walkDir recursively walks through directories and appends files matching the pattern.
+func (fh *FileHandler) walkDir(path, pattern string, matchedFiles *[]string) error {
+	entries, err := os.ReadDir(path)
 	if err != nil {
-		return nil, fmt.Errorf("error reading directory: %w", err)
+		return fmt.Errorf("error reading directory %s: %w", path, err)
 	}
-
-	var directories []string
 
 	for _, entry := range entries {
-		if entry.IsDir() {
+		fullPath := fh.buildPath(path, entry.Name())
+		if !strings.Contains(entry.Name(), pattern) {
 			continue
 		}
-
-		if strings.Contains(entry.Name(), pattern) {
-			directories = append(directories, fh.buildPath(currDir, entry.Name()))
+		if entry.IsDir() {
+			if err := fh.walkDir(fullPath, pattern, matchedFiles); err != nil {
+				return err
+			}
+		} else if strings.Contains(entry.Name(), pattern) {
+			*matchedFiles = append(*matchedFiles, fullPath)
 		}
 	}
-
-	return directories, nil
-
+	return nil
 }
 
 func (fh *FileHandler) buildPath(filepath, filename string) string {
