@@ -215,7 +215,7 @@ func (c *Client) ProcessResults() error {
 		}
 
 		if finish && !finishedAll {
-			c.log.Infof("Finished receiving results for query %d | results: %v", query, c.results[int(query)])
+			c.log.Infof("Finished receiving results for query %d | results: %v", query, len(c.results[int(query)]))
 			c.LogFinishQuery(int(query))
 			continue
 		} else if finish && finishedAll {
