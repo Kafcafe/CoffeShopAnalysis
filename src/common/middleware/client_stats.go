@@ -65,6 +65,14 @@ func (cs *ClientStats) GetStats(dataType DataType) (processed int, emitted int) 
 	return cs.processed[dataType], cs.emitted[dataType]
 }
 
+func (cs *ClientStats) Clear(dataType DataType) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+	cs.ensureDatatypeExists(dataType)
+	cs.processed[dataType] = 0
+	cs.emitted[dataType] = 0
+}
+
 // Down from here is deprecated
 
 // TODO: Remove these individual methods if not needed
