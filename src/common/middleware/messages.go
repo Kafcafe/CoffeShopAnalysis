@@ -258,11 +258,20 @@ func NewMessageProcessedFromBytes(msgBytes []byte) (*MessageProcessed, error) {
 	return &msg, nil
 }
 
+type RequestType int
+
+const (
+	RESULTS_REQUEST_TYPE_COUNT = iota
+	RESULTS_REQUEST_TYPE_GATHER
+	RESULTS_REQUEST_TYPE_CLEAR
+)
+
 type MessageResultsRequest struct {
-	Origin    string // Who is requesting the results
-	QueueName string // To which queue the results should be sent
-	ClientId  string // Client ID of the original data stream
-	DataType  string // Data type of the original data stream
+	Origin      string // Who is requesting the results
+	QueueName   string // To which queue the results should be sent
+	ClientId    string // Client ID of the original data stream
+	DataType    string // Data type of the original data stream
+	RequestType RequestType
 }
 
 func NewMessageResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
@@ -272,6 +281,23 @@ func NewMessageResultsRequest(origin, queueName, clientId, dataType string) *Mes
 		ClientId:  clientId,
 		DataType:  dataType,
 	}
+}
+
+func NewCountResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
+	message := NewMessageResultsRequest(origin, queueName, clientId, dataType)
+	message.RequestType = RESULTS_REQUEST_TYPE_COUNT
+	return message
+}
+
+func NewGatherResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
+	message := NewMessageResultsRequest(origin, queueName, clientId, dataType)
+	message.RequestType = RESULTS_REQUEST_TYPE_GATHER
+	return message
+}
+func NewClearResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
+	message := NewMessageResultsRequest(origin, queueName, clientId, dataType)
+	message.RequestType = RESULTS_REQUEST_TYPE_CLEAR
+	return message
 }
 
 func (m *MessageResultsRequest) ToBytes() ([]byte, error) {
@@ -299,6 +325,7 @@ type MessageResultsResponse struct {
 	Emitted        int                 // Number of emitted items
 	Payload        []string            // The actual results
 	GroupedPayload map[string][]string // The actual results in grouped form
+	RequestType    RequestType         // Type of the original request
 }
 
 func (m *MessageResultsResponse) ToBytes() ([]byte, error) {
