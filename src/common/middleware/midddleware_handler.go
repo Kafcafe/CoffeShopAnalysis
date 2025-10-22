@@ -14,8 +14,10 @@ const (
 	EXCHANGE_NAME_DIRECT_TYPE = "coffee-analysis-direct"
 	EXCHANGE_NAME_FANOUT_TYPE = "coffee-analysis-fanout"
 
-	EXCHANGE_DURABILITY = false
-	QUEUE_DURABILITY    = false
+	EXCHANGE_DURABILITY  = false
+	QUEUE_DURABILITY     = false
+	RESPONSE_TIMEOUT_SEC = 10
+	MAX_EOF_RETRIES      = 3
 )
 
 type MiddlewareHandler struct {
