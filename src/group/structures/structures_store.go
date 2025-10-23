@@ -160,10 +160,12 @@ func (g TopKStoreGroup) GetMessageToSend() []map[string][]string {
 			registry := NewTopKRegister(string(storeId), userId, count)
 			toper.Add(registry)
 		}
-		topKUsers := toper.GetTopK()
+		topKUsers := toper.GetTopKWithKeys()
 		result[string(storeId)] = make([]string, 0, len(topKUsers))
-		for _, user := range topKUsers {
-			result[string(storeId)] = append(result[string(storeId)], user.String())
+		for _, userCountPair := range topKUsers {
+			countResult := userCountPair.Value
+			userResult := userCountPair.Key
+			result[string(storeId)] = append(result[string(storeId)], fmt.Sprintf("%s,%d", userResult, countResult))
 		}
 	}
 	messages = append(messages, result)

@@ -132,6 +132,7 @@ func (g *GroupByGenericWorker) sendNextStage(msgToSend middleware.MessageGrouped
 	if err != nil {
 		return err
 	}
+	g.log.Infof("Sending message to next stage of bytes size %d", len(msgBytes))
 	g.middlewareMutex.Lock()
 	sendErr := g.exchangeHandlers.nextStagePub.Send(msgBytes)
 	g.middlewareMutex.Unlock()
@@ -260,44 +261,6 @@ func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Deliver
 	delete(g.gatherResultsChans, eofMsg.ClientId)
 }
 
-func (g *GroupByGenericWorker) getTopK(msg structures.AllowedGroup) (map[string][]string, string) {
-	result := make(map[string][]string)
-	var returnStoreId string = ""
-
-	otherTyped, ok := msg.(structures.TopKStoreGroup)
-	if !ok {
-		return map[string][]string{}, ""
-	}
-
-	for storeId, users := range otherTyped.GetGroup() {
-		if len(users) == 0 {
-			continue
-		}
-		toper := structures.NewToper(otherTyped.GetK(), structures.CmpTransactions)
-		for userID, value := range users {
-			userId := string(userID)
-			if userId == "" {
-				continue
-			}
-			count := int(value)
-			if count <= 0 {
-				continue
-			}
-			registry := structures.NewTopKRegister(string(storeId), userId, count)
-			toper.Add(registry)
-		}
-		topKUsers := toper.GetTopKWithKeys()
-		result[string(storeId)] = make([]string, 0, len(topKUsers))
-		for _, userCountPair := range topKUsers {
-			countResult := userCountPair.Value
-			userResult := userCountPair.Key
-			result[string(storeId)] = append(result[string(storeId)], fmt.Sprintf("%s,%d", userResult, countResult))
-		}
-		returnStoreId = string(storeId)
-	}
-	return result, returnStoreId
-}
-
 func (g *GroupByGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eofMsg middleware.Message, clientStats *middleware.ClientStats) {
 	g.gatherOtherPartialResults(eofMessage, eofMsg)
 
@@ -309,32 +272,14 @@ func (g *GroupByGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery,
 	messageToSend := currentGroup.GetMessageToSend()
 	var emitted int = 0
 
-	if g.conf.ofType != GROUP_TYPE_TOPK {
-		emitted = 0
-		for _, messages := range messageToSend {
-			for key, records := range messages {
-				keyRecords := map[string][]string{key: records}
-				response := middleware.NewMessageGrouped(eofMsg.DataType, eofMsg.ClientId, keyRecords, false, eofMsg.QueryId)
-
-				middleError := g.sendNextStage(*response)
-				if middleError != nil {
-					g.log.Errorf("problem while sending message to %s: %v", g.conf.nextStagePub, middleError)
-					continue
-				}
-				g.log.Infof("Sent consolidated results: %s", key)
-				emitted++
-			}
-		}
-	} else {
-		elements, _ := g.getTopK(currentGroup)
-
-		response := middleware.NewMessageGrouped(eofMsg.DataType, eofMsg.ClientId, elements, false, eofMsg.QueryId)
+	emitted = 0
+	for _, group := range messageToSend {
+		response := middleware.NewMessageGrouped(eofMsg.DataType, eofMsg.ClientId, group, false, eofMsg.QueryId)
 
 		middleError := g.sendNextStage(*response)
 		if middleError != nil {
 			g.log.Errorf("problem while sending message to %s: %v", g.conf.nextStagePub, middleError)
-			answerMessage(NACK_DISCARD, eofMessage)
-			return
+			continue
 		}
 		g.log.Infof("Sent consolidated results")
 		emitted++
