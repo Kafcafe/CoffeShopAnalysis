@@ -225,18 +225,18 @@ func (f *FilterGenericWorker) getClientStats(clientId ClientId) *middleware.Clie
 	return f.clientsStats[clientId]
 }
 
-func (f *FilterGenericWorker) broadcastAndWaitForResults(broadcastRequestBytes []byte, clientId ClientId, dataType DataType, totalEmitted int) (processed int, emitted int, timeout bool) {
-	for retriesCount := 0; processed < totalEmitted && retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
+func (f *FilterGenericWorker) broadcastAndWaitForResults(requestBytes []byte, clientId ClientId, dataType DataType, expectedEmitted int) (processed int, emitted int, timeout bool) {
+	for retriesCount := 0; processed < expectedEmitted && retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
 		processed = 0
 		emitted = 0
 		timeout = false
 		timeoutDuration := time.Second * time.Duration(middleware.RESPONSE_TIMEOUT_SEC*(retriesCount+1))
-		if sendErr := f.middlewareHandlers.broadcastResultsRequestPub.Send(broadcastRequestBytes); sendErr != middleware.MessageMiddlewareSuccess {
+		if sendErr := f.middlewareHandlers.broadcastResultsRequestPub.Send(requestBytes); sendErr != middleware.MessageMiddlewareSuccess {
 			f.log.Errorf("Failed to send results request message to broadcast exchange: %v", sendErr)
 			break
 		}
 		f.log.Infof("Sent results request message to broadcast exchange for client %s and dataType %s. Attempt %d/%d", clientId, dataType, retriesCount+1, middleware.MAX_EOF_RETRIES)
-		for !timeout && processed < totalEmitted {
+		for !timeout && processed < expectedEmitted {
 			select {
 			case msg := <-f.resultsChans[clientId][dataType]:
 				f.log.Infof("Received results response from %s for client %s and datatype %s: processed=%d, emitted=%d", msg.Origin, msg.ClientId, msg.DataType, msg.Processed, msg.Emitted)
@@ -258,7 +258,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		answerMessage(NACK_REQUEUE, eofMessage)
 		return
 	}
-	queueName := fmt.Sprintf("group.%s.results.request.gather.%s", f.conf.ofType, eofMsg.ClientId)
+	queueName := fmt.Sprintf("filter.%s.results.request.gather.%s", f.conf.ofType, eofMsg.ClientId)
 	queue, err := mh.CreateQueue(queueName)
 	if err != nil {
 		f.log.Errorf("Failed to create ephemeral queue %s: %v", queueName, err)
@@ -266,7 +266,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		return
 	}
 
-	requestMsg := middleware.NewCountResultsRequest(f.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
+	requestMsg := middleware.NewGatherResultsRequest(f.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
 	requestBytes, err := requestMsg.ToBytes()
 	if err != nil {
 		f.log.Errorf("Failed to serialize results request message: %v", err)
