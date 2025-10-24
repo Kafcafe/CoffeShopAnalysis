@@ -261,8 +261,7 @@ func NewMessageProcessedFromBytes(msgBytes []byte) (*MessageProcessed, error) {
 type RequestType int
 
 const (
-	RESULTS_REQUEST_TYPE_COUNT = iota
-	RESULTS_REQUEST_TYPE_GATHER
+	RESULTS_REQUEST_TYPE_GATHER = iota
 	RESULTS_REQUEST_TYPE_CLEAR
 )
 
@@ -281,12 +280,6 @@ func NewMessageResultsRequest(origin, queueName, clientId, dataType string) *Mes
 		ClientId:  clientId,
 		DataType:  dataType,
 	}
-}
-
-func NewCountResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
-	message := NewMessageResultsRequest(origin, queueName, clientId, dataType)
-	message.RequestType = RESULTS_REQUEST_TYPE_COUNT
-	return message
 }
 
 func NewGatherResultsRequest(origin, queueName, clientId, dataType string) *MessageResultsRequest {
