@@ -15,6 +15,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const BATCH_SIZE_GROUPED_MESSAGE = 100
+
 type MiddlewareHandlers struct {
 	prevStageSub               middleware.MessageMiddlewareQueue
 	nextStagePub               middleware.MessageMiddlewareExchange
@@ -253,7 +255,9 @@ func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, c
 			case msg := <-g.resultsChans[clientId][dataType]:
 				processed += msg.Processed
 				emitted += msg.Emitted
-				results.AddMapString(msg.GroupedPayload)
+				if msg.GroupedPayload != nil {
+					results.AddMapString(msg.GroupedPayload)
+				}
 			case <-time.After(timeoutDuration):
 				g.log.Warningf("Timeout waiting for results response for client %s and datatype %s after %d seconds", clientId, dataType, middleware.RESPONSE_TIMEOUT_SEC)
 				timeout = true
@@ -350,13 +354,13 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 	// TODO: batch results if too large
 	// Send processed 0 and emitted 0 to indicate that results are being sent
 	// Send real processed and emitted in last message
+	g.sendResultsRequestBatched(msg, currentGroup, BATCH_SIZE_GROUPED_MESSAGE)
 	responseMsg := middleware.MessageResultsResponse{
-		Origin:         g.conf.id,
-		ClientId:       msg.ClientId,
-		DataType:       msg.DataType,
-		Processed:      processed,
-		Emitted:        emitted,
-		GroupedPayload: currentGroup.ToMapString(),
+		Origin:    g.conf.id,
+		ClientId:  msg.ClientId,
+		DataType:  msg.DataType,
+		Processed: processed,
+		Emitted:   emitted,
 	}
 	responseBytes, err := responseMsg.ToBytes()
 	if err != nil {
@@ -369,6 +373,31 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 	}
 	g.log.Infof("Sent results response to %s for client %s and datatype %s: processed=%d, emitted=%d", msg.QueueName, msg.ClientId, msg.DataType, processed, emitted)
 	answerMessage(ACK, message)
+	return nil
+}
+
+func (g *GroupByGenericWorker) sendResultsRequestBatched(msg *middleware.MessageResultsRequest, group structures.AllowedGroup, batchSize int) error {
+
+	currentGroupMap := group.ToMapString()
+	for key, value := range currentGroupMap {
+		chunks := chunkSlice(value, batchSize)
+		for _, chunk := range chunks {
+			partialGroup := map[string][]string{key: chunk}
+			responseMsg := middleware.MessageResultsResponse{
+				Origin:         g.conf.id,
+				ClientId:       msg.ClientId,
+				DataType:       msg.DataType,
+				GroupedPayload: partialGroup,
+			}
+			responseBytes, err := responseMsg.ToBytes()
+			if err != nil {
+				return err
+			}
+			if sendErr := g.SendToQueue(msg.QueueName, responseBytes); sendErr != middleware.MessageMiddlewareSuccess {
+				return fmt.Errorf("failed to send results response to queue %s", msg.QueueName)
+			}
+		}
+	}
 	return nil
 }
 
