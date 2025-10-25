@@ -3,9 +3,8 @@ package structures
 type AllowedGroup interface {
 	AddBatch(records []string)
 	ToMapString() map[string][]string
-	Merge(other AllowedGroup)
+	AddMapString(data map[string][]string)
 	GetMessageToSend() []map[string][]string
-	FromMapString(data map[string][]string) AllowedGroup
 }
 
 // Mapa genérico parametrizado
@@ -34,11 +33,4 @@ func (g GrouperPerClient[T]) Get(clientId ClientId, factory func() T) T {
 
 func (g GrouperPerClient[T]) Delete(clientId ClientId) {
 	delete(g, clientId)
-}
-
-func (g GrouperPerClient[T]) ToMapString(clientId ClientId) map[string][]string {
-	if group, ok := g[clientId]; ok {
-		return group.ToMapString()
-	}
-	return map[string][]string{}
 }

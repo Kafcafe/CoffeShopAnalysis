@@ -89,12 +89,13 @@ func (g TopKStoreGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func (g TopKStoreGroup) Merge(other AllowedGroup) {
-	otherTyped, ok := other.(TopKStoreGroup)
-	if !ok {
-		return
-	}
-	for storeId, users := range otherTyped.group {
+func (g TopKStoreGroup) AddMapString(data map[string][]string) {
+	other := NewTopKStoreGroupFromMap(data, g.k)
+	g.merge(other)
+}
+
+func (g TopKStoreGroup) merge(other TopKStoreGroup) {
+	for storeId, users := range other.group {
 
 		if _, exists := g.group[storeId]; !exists {
 			g.group[storeId] = make(map[UserID]UserCount)
@@ -116,7 +117,8 @@ func (g TopKStoreGroup) Merge(other AllowedGroup) {
 ////////////////////////////////////////////
 ////////////////////////////////////////////
 
-func (g TopKStoreGroup) FromMapString(m map[string][]string) AllowedGroup {
+func NewTopKStoreGroupFromMap(m map[string][]string, k int) TopKStoreGroup {
+	g := NewTopKStoreGroup(k)
 	for storeStr, userStrs := range m {
 		storeId := StoreID(storeStr)
 		g.group[storeId] = make(map[UserID]UserCount)

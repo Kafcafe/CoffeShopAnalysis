@@ -65,14 +65,14 @@ func (g SemesterGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func (g SemesterGroup) Merge(other AllowedGroup) {
-	otherTyped, ok := other.(SemesterGroup)
-	if !ok {
-		return
-	}
+func (g SemesterGroup) AddMapString(data map[string][]string) {
+	other := NewSemesterGroupFromMap(data)
+	g.merge(other)
+}
 
+func (g SemesterGroup) merge(other SemesterGroup) {
 	// Merge the two maps
-	for sem, stores := range otherTyped {
+	for sem, stores := range other {
 
 		if _, exists := g[sem]; !exists {
 			g[sem] = make(map[StoreID]TPV)
@@ -90,7 +90,8 @@ func (g SemesterGroup) Merge(other AllowedGroup) {
 	}
 }
 
-func (g SemesterGroup) FromMapString(data map[string][]string) AllowedGroup {
+func NewSemesterGroupFromMap(data map[string][]string) SemesterGroup {
+	g := NewSemesterGroup()
 	for semStr, storeStrs := range data {
 		sem := Semester(semStr)
 		g[sem] = make(map[StoreID]TPV)
