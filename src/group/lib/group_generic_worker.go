@@ -104,19 +104,16 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		g.log.Infof("EOF received for client %s and datatype %s", msg.ClientId, msg.DataType)
 		go g.handleEofMessage(message, *msg)
 		return nil
 	}
 
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
+	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	g.mutex.Unlock()
 
-	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
-
 	answerMessage(ACK, message)
-	// g.log.Info("Grouped message")
 	return nil
 }
 
@@ -207,8 +204,6 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 
 	messageToSend := results.GetMessageToSend()
 	var emitted int = 0
-
-	emitted = 0
 	for _, group := range messageToSend {
 		response := middleware.NewMessageGrouped(eofMsg.DataType, eofMsg.ClientId, group, false, eofMsg.QueryId)
 
@@ -217,7 +212,6 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 			g.log.Errorf("problem while sending message to %s: %v", g.conf.nextStagePub, middleError)
 			continue
 		}
-		g.log.Infof("Sent consolidated results")
 		emitted++
 	}
 
@@ -243,15 +237,12 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 }
 
 func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, clientId ClientId, dataType DataType, expectedEmitted int) (processed, emitted int, results structures.AllowedGroup, timeout bool) {
-	g.middlewareMutex.Lock()
-	g.exchangeHandlers.broadcastResultsRequestPub.Send(requestBytes)
-	g.middlewareMutex.Unlock()
-
-	results = g.conf.factory()
-
-	for retriesCount := 0; processed < expectedEmitted && retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
+	messages_received_count := 0
+	for retriesCount := 0; retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
+		messages_received_count = 0
 		processed = 0
 		emitted = 0
+		results = g.conf.factory()
 		timeout = false
 		timeoutDuration := time.Second * time.Duration(middleware.RESPONSE_TIMEOUT_SEC*(retriesCount+1))
 		if sendErr := g.exchangeHandlers.broadcastResultsRequestPub.Send(requestBytes); sendErr != middleware.MessageMiddlewareSuccess {
@@ -264,144 +255,19 @@ func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, c
 			case msg := <-g.resultsChans[clientId][dataType]:
 				processed += msg.Processed
 				emitted += msg.Emitted
-				// TODO: simplify merging interface
-				incomingGroup := g.conf.factory()
-				incomingGroup.FromMapString(msg.GroupedPayload)
-				results.Merge(incomingGroup)
+				results.AddMapString(msg.GroupedPayload)
+				messages_received_count++
 			case <-time.After(timeoutDuration):
 				g.log.Warningf("Timeout waiting for results response for client %s and datatype %s after %d seconds", clientId, dataType, middleware.RESPONSE_TIMEOUT_SEC)
 				timeout = true
 			}
 		}
-	}
-	return processed, emitted, results, timeout
-}
-
-func (g *GroupByGenericWorker) gatherAndMergePartialResults(message amqp.Delivery) error {
-
-	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
-	if err != nil {
-		g.log.Errorf("Failed to parse message: %v", err)
-		answerMessage(NACK_DISCARD, message)
-		return err
-	}
-	g.log.Infof("Gathering partial results for client %s and dataType %s", msg.ClientId, msg.DataType)
-
-	partialGrouping := g.conf.factory()
-	partialGrouping.FromMapString(msg.Payload)
-
-	g.mutex.Lock()
-	currentGroup := g.group.Get(msg.ClientId, g.conf.factory)
-	currentGroup.Merge(partialGrouping)
-	g.mutex.Unlock()
-
-	g.log.Infof("Partial results merged for client %s and dataType %s", msg.ClientId, msg.DataType)
-	// Signal that a result has been gathered
-	if ch, exists := g.gatherResultsChans[msg.ClientId]; exists {
-		ch <- 1
-	}
-	answerMessage(ACK, message)
-	return nil
-}
-
-func (g *GroupByGenericWorker) gatherOtherPartialResults(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	countToWaitResults := g.conf.count - 1
-	if countToWaitResults <= 0 {
-		g.log.Infof("No need to gather other partial results, only one instance for client %s and dataType %s", "", "")
-		return
-	}
-
-	middlewareHandler, err := middleware.NewMiddlewareHandler(g.middlewareHandler.RabbitConn)
-	if err != nil {
-		g.log.Errorf("Failed to create middleware handler: %v", err)
-		answerMessage(NACK_REQUEUE, eofMessage)
-		return
-	}
-
-	// Create Ephemeral queue
-	queueName := fmt.Sprintf("group.%s.results.request.gather.%s", g.conf.ofType, eofMsg.ClientId)
-	g.middlewareMutex.Lock()
-	queue, err := middlewareHandler.CreateQueue(queueName)
-	g.middlewareMutex.Unlock()
-
-	if err != nil {
-		g.log.Errorf("Failed to declare ephemeral queue: %v", err)
-		answerMessage(NACK_REQUEUE, eofMessage)
-		return
-	}
-	g.log.Infof("Requesting results to receive in queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
-	requestMsg := middleware.NewMessageResultsRequest(g.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
-	requestBytes, err := requestMsg.ToBytes()
-	if err != nil {
-		g.log.Errorf("Failed to serialize message: %v", err)
-		answerMessage(NACK_REQUEUE, eofMessage)
-		return
-	}
-
-	// Broadcast results request
-	g.middlewareMutex.Lock()
-	g.exchangeHandlers.broadcastResultsRequestPub.Send(requestBytes)
-	g.middlewareMutex.Unlock()
-
-	// Create channel to gather results
-	g.gatherResultsChans[eofMsg.ClientId] = make(chan int, countToWaitResults)
-	// Consume from ephemeral queue
-	g.log.Infof("Consuming results from queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
-	queue.StartConsuming(g.gatherAndMergePartialResults, g.errChan)
-
-	for i := range countToWaitResults {
-		g.log.Infof("Waiting for partial results %d/%d for client %s and dataType %s", i+1, countToWaitResults, eofMsg.ClientId, eofMsg.DataType)
-		<-g.gatherResultsChans[eofMsg.ClientId]
-		g.log.Infof("Received partial results %d/%d for client %s and dataType %s", i+1, countToWaitResults, eofMsg.ClientId, eofMsg.DataType)
-	}
-	// Stop consuming and delete ephemeral queue
-	queue.StopConsuming()
-	queue.Delete()
-	g.log.Infof("All partial results received for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-	delete(g.gatherResultsChans, eofMsg.ClientId)
-}
-
-func (g *GroupByGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eofMsg middleware.Message, clientStats *middleware.ClientStats) {
-	g.gatherOtherPartialResults(eofMessage, eofMsg)
-
-	// SEND RESULTS
-	g.mutex.Lock()
-	currentGroup := g.group.Get(eofMsg.ClientId, g.conf.factory)
-	g.mutex.Unlock()
-
-	messageToSend := currentGroup.GetMessageToSend()
-	var emitted int = 0
-
-	emitted = 0
-	for _, group := range messageToSend {
-		response := middleware.NewMessageGrouped(eofMsg.DataType, eofMsg.ClientId, group, false, eofMsg.QueryId)
-
-		middleError := g.sendNextStage(*response)
-		if middleError != nil {
-			g.log.Errorf("problem while sending message to %s: %v", g.conf.nextStagePub, middleError)
-			continue
+		if !timeout {
+			break
 		}
-		g.log.Infof("Sent consolidated results")
-		emitted++
 	}
-
-	// update emitted count and send eof
-	eofMsg.TotalEmitted = emitted
-	err := g.sendEofNextStage(eofMsg)
-	if err != nil {
-		g.log.Errorf("Failed to send EOF message to next stage: %v", err)
-		answerMessage(NACK_DISCARD, eofMessage)
-		return
-	}
-
-	answerMessage(ACK, eofMessage)
-	g.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
-
-	// DELETE AFTER SENDING
-	g.mutex.Lock()
-	g.group.Delete(eofMsg.ClientId)
-	g.mutex.Unlock()
-
+	g.log.Infof("Messages received for client %s: %d", clientId, messages_received_count)
+	return processed, emitted, results, timeout
 }
 
 func (g *GroupByGenericWorker) createExchangeHandlers() error {
@@ -470,30 +336,23 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		answerMessage(NACK_DISCARD, message)
 		return err
 	}
-	// g.log.Infof("Received request to gather and send partial results from %s to queue %s", msg.Origin, msg.QueueName)
-	// if msg.Origin == g.conf.id {
-	// 	g.log.Infof("Ignoring request to gather and send partial results from myself %s", msg.Origin)
-	// 	answerMessage(ACK, message)
-	// 	return nil
-	// }
-
-	clientStats := g.getClientStats(msg.ClientId)
 
 	if msg.RequestType == middleware.RESULTS_REQUEST_TYPE_CLEAR {
 		g.log.Infof("Clearing stored group for client %s as per request from %s", msg.ClientId, msg.Origin)
 		g.mutex.Lock()
 		g.group.Delete(msg.ClientId)
+		g.getClientStats(msg.ClientId).Clear(msg.DataType)
 		g.mutex.Unlock()
-		clientStats.Clear(msg.DataType)
 		answerMessage(ACK, message)
 		return nil
 	}
 
-	g.log.Infof("Gathering and sending grouped payload to %s for client %s and datatype %s", msg.QueueName, msg.ClientId, msg.DataType)
+	count++
+	g.log.Infof("Count %d", count)
 	g.mutex.Lock()
 	currentGroup := g.group.Get(msg.ClientId, g.conf.factory)
+	processed, emitted := g.getClientStats(msg.ClientId).GetStats(msg.DataType)
 	g.mutex.Unlock()
-	processed, emitted := clientStats.GetStats(msg.DataType)
 	// TODO: batch results if too large
 	// Send processed 0 and emitted 0 to indicate that results are being sent
 	// Send real processed and emitted in last message
@@ -536,6 +395,8 @@ func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) mid
 	}
 	return middleware.MessageMiddlewareSuccess
 }
+
+var count int = 0
 
 func (g *GroupByGenericWorker) Run() error {
 	defer g.Shutdown()
