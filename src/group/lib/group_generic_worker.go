@@ -237,9 +237,7 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 }
 
 func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, clientId ClientId, dataType DataType, expectedEmitted int) (processed, emitted int, results structures.AllowedGroup, timeout bool) {
-	messages_received_count := 0
 	for retriesCount := 0; retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
-		messages_received_count = 0
 		processed = 0
 		emitted = 0
 		results = g.conf.factory()
@@ -256,7 +254,6 @@ func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, c
 				processed += msg.Processed
 				emitted += msg.Emitted
 				results.AddMapString(msg.GroupedPayload)
-				messages_received_count++
 			case <-time.After(timeoutDuration):
 				g.log.Warningf("Timeout waiting for results response for client %s and datatype %s after %d seconds", clientId, dataType, middleware.RESPONSE_TIMEOUT_SEC)
 				timeout = true
@@ -266,7 +263,6 @@ func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, c
 			break
 		}
 	}
-	g.log.Infof("Messages received for client %s: %d", clientId, messages_received_count)
 	return processed, emitted, results, timeout
 }
 
@@ -347,8 +343,6 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		return nil
 	}
 
-	count++
-	g.log.Infof("Count %d", count)
 	g.mutex.Lock()
 	currentGroup := g.group.Get(msg.ClientId, g.conf.factory)
 	processed, emitted := g.getClientStats(msg.ClientId).GetStats(msg.DataType)
@@ -395,8 +389,6 @@ func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) mid
 	}
 	return middleware.MessageMiddlewareSuccess
 }
-
-var count int = 0
 
 func (g *GroupByGenericWorker) Run() error {
 	defer g.Shutdown()
