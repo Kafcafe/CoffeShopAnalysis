@@ -20,6 +20,7 @@ type JoinWorkerConfig struct {
 	id                             string
 	count                          int
 	ofType                         string
+	queryId                        int
 	prevStageSub                   string
 	sideTableSub                   string
 	nextStagePubs                  map[string]string
@@ -32,6 +33,7 @@ func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
 		id:            joinId,
 		count:         joinCount,
 		ofType:        JOIN_ITEMS_TYPE,
+		queryId:       2,
 		prevStageSub:  "transactions.items.group.yearmonth",
 		sideTableSub:  "transactions.items.menu.items",
 		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
@@ -74,6 +76,7 @@ func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
 		id:            joinId,
 		count:         joinCount,
 		ofType:        "store_q3",
+		queryId:       3,
 		prevStageSub:  "transactions.transactions.group.semester",
 		sideTableSub:  "transactions.store",
 		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
@@ -94,6 +97,7 @@ func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
 		id:                             joinId,
 		count:                          joinCount,
 		ofType:                         "users",
+		queryId:                        4,
 		prevStageSub:                   "transactions.users",
 		sideTableSub:                   "transactions.transactions.join.store",
 		nextStagePubs:                  map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
@@ -109,34 +113,23 @@ func CreateJoinerWorker(joinItemsType string,
 
 	var joinItemsWorker JoinItemsWorker
 	var err error
+	var config JoinWorkerConfig
 
 	switch joinItemsType {
 	case JOIN_ITEMS_TYPE:
-		config := JoinItemsConfig(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinItemsConfig(joinerId, joinerCount)
 	case JOIN_STORE_TYPE:
-		config := JoinStoreConfig(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinStoreConfig(joinerId, joinerCount)
 	case JOIN_USERS_TYPE:
-		config := JoinUsersConfig(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinUsersConfig(joinerId, joinerCount)
 	case JOIN_STORE_Q3_TYPE:
-		config := JoinStoreQ3Config(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinStoreQ3Config(joinerId, joinerCount)
 	default:
-		return nil, fmt.Errorf("Unknown joiner type: %s", joinItemsType)
+		return nil, fmt.Errorf("unknown joiner type: %s", joinItemsType)
+	}
+	joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+	if err != nil {
+		return nil, err
 	}
 
 	return &joinItemsWorker, nil
