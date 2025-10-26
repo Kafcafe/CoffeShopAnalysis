@@ -504,8 +504,6 @@ func (j *JoinGenericWorker) getClientStats(clientId string) *middleware.ClientSt
 
 func (j *JoinGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
 	// declare queue many to one (many publishers one consumer)
-	j.middlewareMutex.Lock()
-	defer j.middlewareMutex.Unlock()
 	queue, err := j.middlewareHandler.CreateQueue(queueName)
 
 	if err != nil {
