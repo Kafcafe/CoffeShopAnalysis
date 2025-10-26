@@ -156,7 +156,6 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	}
 
 	if msg.IsEof {
-		f.log.Infof("EOF received for client %s and datatype %s", msg.ClientId, msg.DataType)
 		go f.handleEofMessage(message, *msg)
 		return nil
 	}
@@ -252,6 +251,7 @@ func (f *FilterGenericWorker) broadcastAndWaitForResults(requestBytes []byte, cl
 }
 
 func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
+	f.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 	mh, err := middleware.NewMiddlewareHandler(f.middlewareHandler.RabbitConn)
 	if err != nil {
 		f.log.Errorf("Failed to create middleware handler: %v", err)
