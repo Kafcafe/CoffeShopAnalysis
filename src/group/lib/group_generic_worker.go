@@ -41,9 +41,8 @@ type GroupByGenericWorker struct {
 	middlewareMutex sync.Mutex
 	group           structures.GrouperPerClient[structures.AllowedGroup]
 	// new eof
-	clientsStats       map[ClientId]*middleware.ClientStats
-	gatherResultsChans map[ClientId]chan int // to signal when a result has been gathered
-	resultsChans       map[ClientId]map[DataType]chan middleware.MessageResultsResponse
+	clientsStats map[ClientId]*middleware.ClientStats
+	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 }
 
 func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByConfig) (*GroupByGenericWorker, error) {
@@ -78,9 +77,8 @@ func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByCon
 		middlewareMutex: sync.Mutex{},
 		group:           structures.NewGrouperPerClient[structures.AllowedGroup](),
 
-		clientsStats:       make(map[ClientId]*middleware.ClientStats),
-		gatherResultsChans: make(map[ClientId]chan int),
-		resultsChans:       make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		clientsStats: make(map[ClientId]*middleware.ClientStats),
+		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 	}, nil
 }
 
