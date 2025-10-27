@@ -126,8 +126,17 @@ if __name__ == "__main__":
     print(f"Comparando resultados para client_id {client_id}")
     try:
         compare_results_q1(client_id)
+    except Exception as e:
+        print(f"Error found: [{e.__class__.__name__}] {e}")
+    try:
         compare_results_q2(client_id)
+    except Exception as e:
+        print(f"Error found: [{e.__class__.__name__}] {e}")
+    try:
         compare_results_q3(client_id)
+    except Exception as e:
+        print(f"Error found: [{e.__class__.__name__}] {e}")
+    try:
         compare_results_q4(client_id)
     except Exception as e:
         print(f"Error found: [{e.__class__.__name__}] {e}")
