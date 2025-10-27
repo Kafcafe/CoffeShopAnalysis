@@ -261,7 +261,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return nil
 	}
 
-	flattenedPayload := j.conf.flattenPayload(msg.GroupedPayload)
+	flattenedPayload := flattenPayload(msg.GroupedPayload)
 	j.mutex.Lock()
 	j.mainTable[msg.ClientId] = append(j.mainTable[msg.ClientId], flattenedPayload...)
 	j.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
