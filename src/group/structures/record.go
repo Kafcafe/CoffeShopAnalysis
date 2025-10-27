@@ -13,7 +13,7 @@ type ParsedTransactionItemRecord struct {
 	Profit    float64
 }
 
-type UserID string
+type UserID = string
 
 type ParsedTransactionRecord struct {
 	StoreID     StoreID

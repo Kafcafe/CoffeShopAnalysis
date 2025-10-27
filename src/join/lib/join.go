@@ -70,32 +70,25 @@ func (j *Join) generateMapItemsByIndex(items []string, index, idIndex int) map[s
 
 func UpdatedSideTableWithUsers(sideTable []string, payload []string) []string {
 	// Index rápido para buscar userId → birthdate en el payload
-	payloadMap := make(map[string]string, len(payload))
+	birthdateByUser := make(map[string]string, len(payload))
 	for _, user := range payload {
 		parts := strings.SplitN(user, ",", 2)
-		if len(parts) == 2 {
-			userId, birthdate := parts[0], parts[1]
-			payloadMap[userId] = birthdate
-		}
+		userId, birthdate := parts[0], parts[1]
+		birthdateByUser[userId] = birthdate
 	}
 
 	// Recorremos sideTable directamente y reemplazamos en orden
-	updated := make([]string, len(sideTable))
-	for i, entry := range sideTable {
-		parts := strings.SplitN(entry, ",", 3)
-		if len(parts) != 3 {
-			updated[i] = entry
-			continue
-		}
-		store, userId, count := parts[0], parts[1], parts[2]
+	partialUpdate := make([]string, 0, len(sideTable))
 
-		// si "second" es un userId y aparece en el payload, lo reemplazamos
-		if birthdate, ok := payloadMap[userId]; ok && !strings.Contains(userId, "-") {
-			updated[i] = fmt.Sprintf("%s,%s,%s", store, birthdate, count)
-		} else {
-			updated[i] = entry
+	for _, entry := range sideTable {
+		parts := strings.SplitN(entry, ",", 3)
+		mappedEntry := entry
+		store, user, count := parts[0], parts[1], parts[2]
+		if birthdate, exists := birthdateByUser[user]; exists {
+			mappedEntry = fmt.Sprintf("%s,%s,%s", store, birthdate, count)
 		}
+		partialUpdate = append(partialUpdate, mappedEntry)
 	}
 
-	return updated
+	return partialUpdate
 }

@@ -7,8 +7,6 @@ type DataType = string
 type ClientStats struct {
 	processed map[DataType]int
 	emitted   map[DataType]int
-	eof       map[DataType]int
-	eofChan   map[DataType]chan int
 	mutex     sync.Mutex
 }
 
@@ -16,57 +14,50 @@ func NewClientStats() *ClientStats {
 	return &ClientStats{
 		processed: make(map[DataType]int),
 		emitted:   make(map[DataType]int),
-		eof:       make(map[DataType]int),
-		eofChan:   make(map[DataType]chan int),
 		mutex:     sync.Mutex{},
 	}
 }
 
-func (cs *ClientStats) AddProcessed(dataType DataType) {
+func (cs *ClientStats) ensureDatatypeExists(dataType DataType) {
 	if _, exists := cs.processed[dataType]; !exists {
 		cs.processed[dataType] = 0
 	}
-	cs.processed[dataType] += 1
-}
-
-func (cs *ClientStats) AddEmitted(dataType DataType) {
 	if _, exists := cs.emitted[dataType]; !exists {
 		cs.emitted[dataType] = 0
 	}
-	cs.emitted[dataType] += 1
 }
 
-func (cs *ClientStats) SetEof(dataType DataType, count int) {
-	cs.eof[dataType] = count
-}
-
-func (cs *ClientStats) GetProcessed(dataType DataType) int {
-	return cs.processed[dataType]
-}
-
-func (cs *ClientStats) GetEmitted(dataType DataType) int {
-	return cs.emitted[dataType]
-}
-
-func (cs *ClientStats) GetEof(dataType DataType) (int, bool) {
-	val, exists := cs.eof[dataType]
-	return val, exists
-}
-
-func (cs *ClientStats) SendEofChan(dataType DataType) {
+func (cs *ClientStats) Add(dataType DataType, processed, emitted bool) {
 	cs.mutex.Lock()
-	if _, exists := cs.eofChan[dataType]; !exists {
-		cs.eofChan[dataType] = make(chan int, 1)
+	defer cs.mutex.Unlock()
+	cs.ensureDatatypeExists(dataType)
+	if processed {
+		cs.processed[dataType] += 1
 	}
-	cs.mutex.Unlock()
-	cs.eofChan[dataType] <- 1
+	if emitted {
+		cs.emitted[dataType] += 1
+	}
 }
 
-func (cs *ClientStats) WaitForEofChan(dataType DataType) {
+func (cs *ClientStats) Remove(dataType DataType, processed, emitted int) {
 	cs.mutex.Lock()
-	if _, exists := cs.eofChan[dataType]; !exists {
-		cs.eofChan[dataType] = make(chan int, 1)
-	}
-	cs.mutex.Unlock()
-	<-cs.eofChan[dataType]
+	defer cs.mutex.Unlock()
+	cs.ensureDatatypeExists(dataType)
+	cs.processed[dataType] -= processed
+	cs.emitted[dataType] -= emitted
+}
+
+func (cs *ClientStats) GetStats(dataType DataType) (processed int, emitted int) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+	cs.ensureDatatypeExists(dataType)
+	return cs.processed[dataType], cs.emitted[dataType]
+}
+
+func (cs *ClientStats) Clear(dataType DataType) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+	cs.ensureDatatypeExists(dataType)
+	cs.processed[dataType] = 0
+	cs.emitted[dataType] = 0
 }

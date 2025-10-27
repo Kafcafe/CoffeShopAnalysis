@@ -117,7 +117,13 @@ func (g YearMonthGroup) ToMapString() map[string][]string {
 	return out
 }
 
-func (g YearMonthGroup) FromMapString(data map[string][]string) AllowedGroup {
+func (g YearMonthGroup) AddMapString(data map[string][]string) {
+	other := NewYearMonthGroupFromMap(data)
+	g.merge(other)
+}
+
+func NewYearMonthGroupFromMap(data map[string][]string) YearMonthGroup {
+	g := NewYearMonthGroup()
 	for ymStr, itemStrs := range data {
 		ym := YearMonth(ymStr)
 		g[ym] = make(map[ItemID]Item)
@@ -146,13 +152,8 @@ func (g YearMonthGroup) FromMapString(data map[string][]string) AllowedGroup {
 }
 
 // Merge merges the items from another YearMonthGroup into this one.
-func (g YearMonthGroup) Merge(other AllowedGroup) {
-	// TODO: ver si se puede hacer mas lindo :)
-	otherTyped, ok := other.(YearMonthGroup)
-	if !ok {
-		return
-	}
-	for ym, items := range otherTyped {
+func (g YearMonthGroup) merge(other YearMonthGroup) {
+	for ym, items := range other {
 
 		if _, exists := g[ym]; !exists {
 			g[ym] = make(map[ItemID]Item)

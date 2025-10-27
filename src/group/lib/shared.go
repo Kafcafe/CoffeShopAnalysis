@@ -1,9 +1,6 @@
 package group
 
 import (
-	"common/middleware"
-	"fmt"
-
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -18,36 +15,6 @@ const (
 	THERE_IS_PREVIOUS_MESSAGE = 0
 )
 
-func createExchangeHandler(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
-	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
-	}
-
-	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
-		return middlewareHandler.CreateDirectExchange(routeKey)
-	}
-	if exchangeType == middleware.EXCHANGE_TYPE_FANOUT {
-		return middlewareHandler.CreateFanoutExchange(routeKey)
-	}
-	return middlewareHandler.CreateTopicExchange(routeKey)
-}
-
-func createExchangeHandlerStandalone(rabbitConn *middleware.RabbitConnection, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
-	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
-	}
-
-	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
-		return middlewareHandler.CreateDirectExchangeStandalone(routeKey)
-	}
-	if exchangeType == middleware.EXCHANGE_TYPE_FANOUT {
-		return middlewareHandler.CreateFanoutExchangeStandalone(routeKey)
-	}
-	return middlewareHandler.CreateTopicExchangeStandalone(routeKey)
-}
-
 func answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
@@ -59,48 +26,18 @@ func answerMessage(ackType int, message amqp.Delivery) {
 	}
 }
 
-func prepareEofQueue(rabbitConn *middleware.RabbitConnection, filterType string, filterId string) (*middleware.MessageMiddlewareQueue, error) {
-	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create middleware handler: %w", err)
+func chunkSlice[T any](s []T, chunkSize int) [][]T {
+	if chunkSize <= 0 {
+		return nil
 	}
 
-	// Declare and bind for Query 1
-	err = middlewareHandler.DeclareExchange(middleware.EXCHANGE_NAME_TOPIC_TYPE, middleware.EXCHANGE_TYPE_TOPIC)
-	if err != nil {
-		return nil, fmt.Errorf("failed to declare exchange in prepareEofQueue: %v", err)
+	var chunks [][]T
+	for i := 0; i < len(s); i += chunkSize {
+		end := i + chunkSize
+		if end > len(s) {
+			end = len(s)
+		}
+		chunks = append(chunks, s[i:end])
 	}
-
-	queueName := fmt.Sprintf("eof.group.%s.%s", filterType, filterId)
-	_, err = middlewareHandler.DeclareQueue(queueName)
-	if err != nil {
-		return nil, fmt.Errorf("failed to declare queue %s: %v", queueName, err)
-	}
-
-	err = middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_TOPIC_TYPE, fmt.Sprintf("eof.group.%s.*", filterType))
-	if err != nil {
-		return nil, fmt.Errorf("failed to bind queue to exchange: %v", err)
-	}
-
-	return middleware.NewMessageMiddlewareQueue(queueName, middlewareHandler.Channel, nil), nil
-}
-
-func prepareInputQueues(rabbitConn *middleware.RabbitConnection, groupType string) error {
-	middlewareHandler, err := middleware.NewMiddlewareHandler(rabbitConn)
-	if err != nil {
-		return fmt.Errorf("failed to create middleware handler: %w", err)
-	}
-	// Declare and bind for Query 1
-	routeKey := fmt.Sprintf("transactions.transactions.%s", groupType)
-	_, err = middlewareHandler.DeclareQueue(routeKey)
-	if err != nil {
-		return fmt.Errorf("failed to declare queue %s: %v", routeKey, err)
-	}
-
-	err = middlewareHandler.BindQueue(routeKey, middleware.EXCHANGE_NAME_TOPIC_TYPE, "transactions.transactions.all")
-	if err != nil {
-		return fmt.Errorf("failed to bind queue to exchange: %v", err)
-	}
-
-	return nil
+	return chunks
 }

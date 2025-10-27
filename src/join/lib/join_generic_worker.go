@@ -9,12 +9,14 @@ import (
 	"strings"
 	"sync"
 	"syscall"
+	"time"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
 type ClientId = string
+type DataType = string
 
 type JoinGenericWorker struct {
 	log               *logging.Logger
@@ -31,18 +33,16 @@ type JoinGenericWorker struct {
 	clientsStats    map[string]*middleware.ClientStats
 
 	sideTable         map[ClientId][]string
-	masterSideTable   []string
-	sideTableReceived chan int
+	mainTable         map[ClientId][]string
+	sideTableReceived map[ClientId]chan int
 
-	gatherResultsChans map[ClientId]chan int // to signal when a result has been gathered
+	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 }
 
 type JoinMiddlewareHandlers struct {
 	prevStageSub               middleware.MessageMiddlewareQueue
 	sideTableSub               middleware.MessageMiddlewareQueue
 	nextStagePubs              map[string]middleware.MessageMiddlewareExchange
-	broadcastCountPub          middleware.MessageMiddlewareExchange
-	broadcastCountSub          middleware.MessageMiddlewareQueue
 	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
 	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
 }
@@ -53,8 +53,6 @@ func (mh *JoinMiddlewareHandlers) Shutdown() {
 	for _, nextStagePub := range mh.nextStagePubs {
 		nextStagePub.Close()
 	}
-	mh.broadcastCountPub.Close()
-	mh.broadcastCountSub.Close()
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -98,9 +96,10 @@ func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) 
 		clientsStats:    make(map[string]*middleware.ClientStats),
 
 		sideTable:         map[string][]string{},
-		sideTableReceived: make(chan int, SINGLE_ITEM_BUFFER_LEN),
+		mainTable:         map[string][]string{},
+		sideTableReceived: make(map[ClientId]chan int),
 
-		gatherResultsChans: make(map[ClientId]chan int),
+		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 	}, nil
 }
 
@@ -148,284 +147,66 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 	}
 	nextStagePubs[j.conf.ofType] = *nextStagePub
 
-	// BROADCAST COUNT PUB/SUB
-	j.log.Infof("Setting up count PUB for join %s", j.conf.id)
-	broadcastCountPubRoutKey := fmt.Sprintf("join.%s.count", j.conf.ofType)
-	broadcastCountPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastCountPubRoutKey)
+	// RESULTS REQUEST PUB/SUB
+	j.log.Infof("Setting up results request Exchange for join %s", j.conf.id)
+	broadcastResultsRequestExchangeName := fmt.Sprintf("join.%s.results.request", j.conf.ofType)
+	broadcastResultsRequestPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastResultsRequestExchangeName)
 	if err != nil {
-		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastCountPubRoutKey, err)
+		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastResultsRequestExchangeName, err)
 	}
 
-	j.log.Infof("Setting up count SUB for join %s", j.conf.id)
-	broadcastCountSubQueueName := fmt.Sprintf("join.%s.count.%s", j.conf.ofType, j.conf.id)
-	broadcastCountSub, err := j.middlewareHandler.CreateQueue(broadcastCountSubQueueName)
+	j.log.Infof("Setting up results request SUB for join %s", j.conf.id)
+	broadcastResultsRequestSubQueueName := fmt.Sprintf("join.%s.results.request.%s", j.conf.ofType, j.conf.id)
+	broadcastResultsRequestSub, err := j.middlewareHandler.CreateQueue(broadcastResultsRequestSubQueueName)
 	if err != nil {
-		return fmt.Errorf("error creating count queue for %s: %v", broadcastCountSubQueueName, err)
+		return fmt.Errorf("error creating results request queue for %s: %v", broadcastResultsRequestSubQueueName, err)
 	}
-	err = j.middlewareHandler.BindQueue(broadcastCountSubQueueName, broadcastCountPubRoutKey, "")
+	err = j.middlewareHandler.BindQueue(broadcastResultsRequestSubQueueName, broadcastResultsRequestExchangeName, "")
 
 	if err != nil {
-		return fmt.Errorf("error preparing count queue for %s: %v", j.conf.ofType, err)
+		return fmt.Errorf("error preparing results request queue for %s: %v", j.conf.ofType, err)
 	}
 
 	j.middlewareHandlers = JoinMiddlewareHandlers{
-		prevStageSub:      *prevStageSub,
-		sideTableSub:      *sideTableSub,
-		nextStagePubs:     nextStagePubs,
-		broadcastCountPub: *broadcastCountPub,
-		broadcastCountSub: *broadcastCountSub,
+		prevStageSub:               *prevStageSub,
+		sideTableSub:               *sideTableSub,
+		nextStagePubs:              nextStagePubs,
+		broadcastResultsRequestPub: *broadcastResultsRequestPub,
+		broadcastResultsRequestSub: *broadcastResultsRequestSub,
 	}
 	return nil
 }
 
-func (j *JoinGenericWorker) createExchangeHandlersForFinalStage() error {
-	// PREV STAGE SUB
-	_, err := j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.prevStageSub)
-	if err != nil {
-		return fmt.Errorf("error creating exchange handler for results.q2: %v", err)
-	}
-
-	// this name is just for identification purposes
-	prevStageSubQueueName := j.conf.prevStageSub + "." + j.conf.ofType
-	prevStageSub, err := j.middlewareHandler.CreateQueue(prevStageSubQueueName)
-	if err != nil {
-		return fmt.Errorf("error creating queue handler for %s: %v", prevStageSubQueueName, err)
-	}
-
-	err = j.middlewareHandler.BindQueue(prevStageSubQueueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, j.conf.prevStageSub)
-	if err != nil {
-		return fmt.Errorf("error preparing queue for transactions: %v", err)
-	}
-
-	// SIDE TABLE SUB
-	_, err = j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.sideTableSub)
-	if err != nil {
-		return fmt.Errorf("error creating exchange handler for %s: %v", j.conf.sideTableSub, err)
-	}
-
-	queueName := fmt.Sprintf("%s.%s.%s", j.conf.sideTableSub, j.conf.ofType, j.conf.id)
-	sideTableSub, err := j.middlewareHandler.CreateQueue(queueName)
-	if err != nil {
-		return fmt.Errorf("error creating queue handler for %s: %v", queueName, err)
-	}
-
-	err = j.middlewareHandler.BindQueue(queueName, middleware.EXCHANGE_NAME_DIRECT_TYPE, j.conf.sideTableSub)
-	if err != nil {
-		return fmt.Errorf("error preparing side table queue for %s: %v", j.conf.ofType, err)
-	}
-
-	// NEXT STAGE PUB
-
-	// BROADCAST COUNT PUB/SUB
-	j.log.Infof("Setting up count PUB for join %s", j.conf.id)
-	broadcastCountPubRoutKey := fmt.Sprintf("join.%s.count", j.conf.ofType)
-	broadcastCountPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastCountPubRoutKey)
-	if err != nil {
-		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastCountPubRoutKey, err)
-	}
-
-	j.log.Infof("Setting up count SUB for join %s", j.conf.id)
-	broadcastCountSubQueueName := fmt.Sprintf("join.%s.count.%s", j.conf.ofType, j.conf.id)
-	broadcastCountSub, err := j.middlewareHandler.CreateQueue(broadcastCountSubQueueName)
-	if err != nil {
-		return fmt.Errorf("error creating count queue for %s: %v", broadcastCountSubQueueName, err)
-	}
-	err = j.middlewareHandler.BindQueue(broadcastCountSubQueueName, broadcastCountPubRoutKey, "")
-
-	if err != nil {
-		return fmt.Errorf("error preparing count queue for %s: %v", j.conf.ofType, err)
-	}
-
-	// BROADCAST PARTIAL RESULTS
-
-	if j.conf.ofType == JOIN_USERS_TYPE {
-		j.log.Infof("Setting up results request Exchange for join %s", j.conf.id)
-		broadcastResultsRequestExchangeName := fmt.Sprintf("join.%s.results.request", j.conf.ofType)
-		broadcastResultsRequestPub, err := j.middlewareHandler.CreateFanoutExchangeStandalone(broadcastResultsRequestExchangeName)
-		if err != nil {
-			return fmt.Errorf("error creating exchange handler for %s: %v", broadcastResultsRequestExchangeName, err)
+func (j *JoinGenericWorker) broadcastAndWaitForResults(requestBytes []byte, clientId ClientId, dataType DataType, expectedEmitted int) (processed, emitted int, results []string, timeout bool) {
+	for retriesCount := 0; retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
+		processed = 0
+		emitted = 0
+		results = []string{}
+		timeout = false
+		timeoutDuration := time.Second * time.Duration(middleware.RESPONSE_TIMEOUT_SEC*(retriesCount+1))
+		if sendErr := j.middlewareHandlers.broadcastResultsRequestPub.Send(requestBytes); sendErr != middleware.MessageMiddlewareSuccess {
+			j.log.Errorf("Failed to send results request message to broadcast exchange: %v", sendErr)
+			break
 		}
-
-		j.log.Infof("Setting up results request SUB for join %s", j.conf.id)
-		broadcastResultsRequestSubQueueName := fmt.Sprintf("join.%s.results.request.%s", j.conf.ofType, j.conf.id)
-		broadcastResultsRequestSub, err := j.middlewareHandler.CreateQueue(broadcastResultsRequestSubQueueName)
-		if err != nil {
-			return fmt.Errorf("error creating results request queue for %s: %v", broadcastResultsRequestSubQueueName, err)
+		j.log.Infof("Sent results request message to broadcast exchange for client %s and dataType %s. Attempt %d/%d", clientId, dataType, retriesCount+1, middleware.MAX_EOF_RETRIES)
+		for !timeout && processed < expectedEmitted {
+			select {
+			case msg := <-j.resultsChans[clientId][dataType]:
+				processed += msg.Processed
+				emitted += msg.Emitted
+				if msg.Payload != nil {
+					results = append(results, msg.Payload...)
+				}
+			case <-time.After(timeoutDuration):
+				j.log.Warningf("Timeout waiting for results response for client %s and datatype %s after %d seconds. Processed %d/%d", clientId, dataType, middleware.RESPONSE_TIMEOUT_SEC, processed, expectedEmitted)
+				timeout = true
+			}
 		}
-		err = j.middlewareHandler.BindQueue(broadcastResultsRequestSubQueueName, broadcastResultsRequestExchangeName, "")
-
-		if err != nil {
-			return fmt.Errorf("error preparing results request queue for %s: %v", j.conf.ofType, err)
-		}
-
-		j.middlewareHandlers = JoinMiddlewareHandlers{
-			prevStageSub:               *prevStageSub,
-			sideTableSub:               *sideTableSub,
-			nextStagePubs:              make(map[string]middleware.MessageMiddlewareExchange),
-			broadcastCountPub:          *broadcastCountPub,
-			broadcastCountSub:          *broadcastCountSub,
-			broadcastResultsRequestPub: *broadcastResultsRequestPub,
-			broadcastResultsRequestSub: *broadcastResultsRequestSub,
-		}
-	} else {
-		j.middlewareHandlers = JoinMiddlewareHandlers{
-			prevStageSub:      *prevStageSub,
-			sideTableSub:      *sideTableSub,
-			nextStagePubs:     make(map[string]middleware.MessageMiddlewareExchange),
-			broadcastCountPub: *broadcastCountPub,
-			broadcastCountSub: *broadcastCountSub,
+		if !timeout {
+			break
 		}
 	}
-
-	return nil
-}
-
-func (j *JoinGenericWorker) gatherAndMergePartialResults(message amqp.Delivery) error {
-
-	msg, err := middleware.NewMessageFromBytes(message.Body)
-	if err != nil {
-		j.log.Errorf("Failed to parse message: %v", err)
-		answerMessage(NACK_DISCARD, message)
-		return err
-	}
-	j.log.Infof("Gathering partial results for client %s and dataType %s", msg.ClientId, msg.DataType)
-
-	otherResults := msg.Payload
-
-	j.mutex.Lock()
-	_, exists := j.sideTable[msg.ClientId]
-	if !exists {
-		j.sideTable[msg.ClientId] = []string{}
-	}
-
-	j.sideTable[msg.ClientId] = append(j.parseOnlyAlreadyJoinedLines(j.sideTable[msg.ClientId]), otherResults...)
-	j.mutex.Unlock()
-
-	j.log.Infof("Partial results merged for client %s and dataType %s", msg.ClientId, msg.DataType)
-	// Signal that a result has been gathered
-	if ch, exists := j.gatherResultsChans[msg.ClientId]; exists {
-		ch <- 1
-	}
-	answerMessage(ACK, message)
-	return nil
-}
-
-func (j *JoinGenericWorker) gatherOtherPartialResults(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	countToWaitResults := j.conf.count - 1
-	if countToWaitResults <= 0 {
-		j.log.Infof("No need to gather other partial results, only one instance for client %s and dataType %s", "", "")
-		return
-	}
-
-	middlewareHandler, err := middleware.NewMiddlewareHandler(j.middlewareHandler.RabbitConn)
-	if err != nil {
-		j.log.Errorf("Failed to create middleware handler: %v", err)
-		answerMessage(NACK_REQUEUE, eofMessage)
-		return
-	}
-
-	// Create Ephemeral queue
-	queueName := fmt.Sprintf("join.%s.results.request.gather.%s", j.conf.ofType, eofMsg.ClientId)
-	j.middlewareMutex.Lock()
-	queue, err := middlewareHandler.CreateQueue(queueName)
-	j.middlewareMutex.Unlock()
-
-	if err != nil {
-		j.log.Errorf("Failed to declare ephemeral queue: %v", err)
-		answerMessage(NACK_REQUEUE, eofMessage)
-		return
-	}
-	j.log.Infof("Requesting results to receive in queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
-	requestMsg := middleware.NewMessageResultsRequest(j.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
-	requestBytes, err := requestMsg.ToBytes()
-	if err != nil {
-		j.log.Errorf("Failed to serialize message: %v", err)
-		answerMessage(NACK_REQUEUE, eofMessage)
-		return
-	}
-
-	// Broadcast results request
-	j.middlewareMutex.Lock()
-	j.middlewareHandlers.broadcastResultsRequestPub.Send(requestBytes)
-	j.middlewareMutex.Unlock()
-
-	// Create channel to gather results
-	j.gatherResultsChans[eofMsg.ClientId] = make(chan int, countToWaitResults)
-	// Consume from ephemeral queue
-	j.log.Infof("Consuming results from queue %s for client %s and dataType %s", queueName, eofMsg.ClientId, eofMsg.DataType)
-	queue.StartConsuming(j.gatherAndMergePartialResults, j.errChan)
-
-	for i := range countToWaitResults {
-		j.log.Infof("Waiting for partial results %d/%d clients for client %s and dataType %s", i+1, countToWaitResults, eofMsg.ClientId, eofMsg.DataType)
-		<-j.gatherResultsChans[eofMsg.ClientId]
-		j.log.Infof("Received partial results %d/%d clients for client %s and dataType %s", i+1, countToWaitResults, eofMsg.ClientId, eofMsg.DataType)
-	}
-	// Stop consuming and delete ephemeral queue
-	queue.StopConsuming()
-	queue.Delete()
-	j.log.Infof("All partial results received for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-	delete(j.gatherResultsChans, eofMsg.ClientId)
-}
-
-func (j *JoinGenericWorker) gatherResultsAndSendEof(eofMessage amqp.Delivery, eofMsg middleware.Message, clientStats *middleware.ClientStats) {
-	j.gatherOtherPartialResults(eofMessage, eofMsg)
-
-	// SEND RESULTS
-	j.mutex.Lock()
-	currentResults, exists := j.sideTable[eofMsg.ClientId]
-	if !exists {
-		j.sideTable[eofMsg.ClientId] = []string{}
-	}
-	j.mutex.Unlock()
-
-	response := middleware.NewMessage(eofMsg.DataType, eofMsg.ClientId, currentResults, false, eofMsg.QueryId)
-
-	destinationRouteKey, middleError := j.sendNextStage(*response)
-	if middleError != nil {
-		j.log.Errorf("problem while sending message to %s: %v", destinationRouteKey, middleError)
-		answerMessage(NACK_DISCARD, eofMessage)
-		return
-	}
-	j.log.Infof("Sent consolidated results: %s", destinationRouteKey)
-	emitted := 1
-
-	// update emitted count and send eof
-	eofMsg.TotalEmitted = emitted
-	_, err := j.sendNextStage(eofMsg)
-	if err != nil {
-		j.log.Errorf("Failed to send EOF message to next stage: %v", err)
-		answerMessage(NACK_DISCARD, eofMessage)
-		return
-	}
-
-	answerMessage(ACK, eofMessage)
-	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
-
-	// DELETE AFTER SENDING
-	j.mutex.Lock()
-	delete(j.sideTable, eofMsg.ClientId)
-	j.mutex.Unlock()
-}
-
-func (j *JoinGenericWorker) handleEofMessageForJoinerUsers(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	j.mutex.Lock()
-	clientStats := j.getClientStats(eofMsg.ClientId)
-	j.mutex.Unlock()
-
-	j.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
-
-	j.mutex.Lock()
-	processed := clientStats.GetProcessed(eofMsg.DataType)
-	j.mutex.Unlock()
-
-	if processed < eofMsg.TotalEmitted {
-		j.log.Infof("Not all messages processed yet for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-		j.log.Infof("Waiting for all messages to be processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-		clientStats.WaitForEofChan(eofMsg.DataType)
-	}
-
-	j.log.Infof("Initiating gathering results and sending EOF for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-	j.gatherResultsAndSendEof(eofMessage, eofMsg, clientStats)
+	return processed, emitted, results, timeout
 }
 
 func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
@@ -435,39 +216,32 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return err
 	}
 
+	j.log.Debugf("Received message for client %s and datatype %s", msg.ClientId, msg.DataType)
+
 	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
-	if !exists {
-		j.sideTable[msg.ClientId] = j.masterSideTable
+	if _, ok := j.sideTableReceived[msg.ClientId]; !ok {
+		j.sideTableReceived[msg.ClientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
 	}
 	j.mutex.Unlock()
+	if !exists {
+		j.log.Warning("Side table not ready!!!! Waiting...")
+		<-j.sideTableReceived[msg.ClientId]
+		j.log.Warning("Side table ready!!! Continuing...")
+	}
 
-	// Given this method is used only on the Users Joiner
-	msg.QueryId = 4
+	msg.QueryId = j.conf.queryId
 
 	if msg.IsEof {
-		j.mutex.Lock()
-		clientStats := j.getClientStats(msg.ClientId)
-		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
-		j.mutex.Unlock()
-		go j.handleEofMessageForJoinerUsers(message, *msg)
+		go j.handleEofMessage(message, *msg)
 		return nil
 	}
 
-	j.log.Debugf("Received payload: %v", msg.Payload)
 	j.mutex.Lock()
-	j.sideTable[msg.ClientId] = j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
+	partialUpdate := j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
+	j.sideTable[msg.ClientId] = partialUpdate
+	j.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	j.mutex.Unlock()
-
-	j.log.Debug("Partially updated side table")
-
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
-	err = j.sendProcessedMessage(msgProcessed)
-	if err != nil {
-		j.log.Errorf("Failed to send processed count message: %v", err)
-		answerMessage(NACK_REQUEUE, message)
-		return err
-	}
 
 	answerMessage(ACK, message)
 
@@ -475,124 +249,191 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 }
 
 func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
-	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
 		return err
 	}
-
-	j.mutex.Lock()
-	_, exists := j.sideTable[msg.ClientId]
-	if !exists {
-		j.sideTable[msg.ClientId] = j.masterSideTable
-	}
-	j.mutex.Unlock()
-
-	switch j.conf.ofType {
-	case JOIN_ITEMS_TYPE:
-		msg.QueryId = 2
-	case JOIN_STORE_Q3_TYPE:
-		msg.QueryId = 3
-	case JOIN_USERS_TYPE:
-		msg.QueryId = 4
-	}
+	msg.QueryId = j.conf.queryId
 
 	if msg.IsEof {
-		j.mutex.Lock()
-		clientStats := j.getClientStats(msg.ClientId)
-		clientStats.SetEof(msg.DataType, msg.TotalEmitted)
-		j.mutex.Unlock()
-		go j.handleEofMessage(message, *msg.ToMessage())
+		go j.handleEofMessage(message, *msg)
 		return nil
 	}
 
-	j.log.Debugf("Received payload: %v", msg.Payload)
-
+	flattenedPayload := flattenPayload(msg.GroupedPayload)
 	j.mutex.Lock()
-	j.log.Debugf("Current side table: %v for %s", j.sideTable[msg.ClientId], msg.ClientId)
-	joined := j.conf.messageCallback(NewJoiner(), j.sideTable[msg.ClientId], msg.Payload)
+	j.mainTable[msg.ClientId] = append(j.mainTable[msg.ClientId], flattenedPayload...)
+	j.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	j.mutex.Unlock()
 
-	j.log.Infof("Joined %v items", len(joined))
+	answerMessage(ACK, message)
+	return nil
+}
 
-	j.log.Infof("Message joined and sent: %v", joined)
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, joined, false, msg.QueryId)
-	destinationRouteKey, err := j.sendNextStage(*response)
+func (j *JoinGenericWorker) ensureResultsChanExists(clientId ClientId, dataType DataType) {
+	if _, exists := j.resultsChans[clientId]; !exists {
+		j.resultsChans[clientId] = make(map[DataType]chan middleware.MessageResultsResponse)
+	}
+	if _, exists := j.resultsChans[clientId][dataType]; !exists {
+		j.resultsChans[clientId][dataType] = make(chan middleware.MessageResultsResponse)
+	}
+}
+
+func (j *JoinGenericWorker) processResultsResponse(message amqp.Delivery) error {
+	msg, err := middleware.NewMessageResultsResponseFromBytes(message.Body)
 	if err != nil {
-		j.log.Errorf("Failed to send joined message to next stage: %v", err)
 		answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
-	msgProcessed := middleware.NewMessageProcessed(msg.DataType, msg.ClientId, true, msg.QueryId)
-	err = j.sendProcessedMessage(msgProcessed)
-	if err != nil {
-		j.log.Errorf("Failed to send processed count message: %v", err)
-		answerMessage(NACK_REQUEUE, message)
-		return err
-	}
-
+	j.log.Infof("Received results response from %s for client %s and datatype %s: processed=%d, emitted=%d", msg.Origin, msg.ClientId, msg.DataType, msg.Processed, msg.Emitted)
+	j.resultsChans[msg.ClientId][msg.DataType] <- *msg
 	answerMessage(ACK, message)
-	j.log.Infof("Joined message and sent to next stage: %s", destinationRouteKey)
 	return nil
 }
 
 func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg middleware.Message) {
-	j.mutex.Lock()
-	clientStats := j.getClientStats(eofMsg.ClientId)
-	j.mutex.Unlock()
-
 	j.log.Infof("Received EOF message for client %s and dataType %s. Expecting %d processed messages", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
-
-	j.mutex.Lock()
-	processed := clientStats.GetProcessed(eofMsg.DataType)
-	j.mutex.Unlock()
-
-	if processed < eofMsg.TotalEmitted {
-		j.log.Infof("Not all messages processed yet for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-		j.log.Infof("Waiting for all messages to be processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-		clientStats.WaitForEofChan(eofMsg.DataType)
-	}
-
-	j.log.Infof("All messages processed for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
-
-	// update emitted count
-	j.mutex.Lock()
-	eofMsg.TotalEmitted = clientStats.GetEmitted(eofMsg.DataType)
-	j.mutex.Unlock()
-	destinationRouteKey, err := j.sendNextStage(eofMsg)
+	mh, err := middleware.NewMiddlewareHandler(j.middlewareHandler.RabbitConn)
 	if err != nil {
-		j.log.Errorf("Failed to send EOF message to next stage: %v", err)
-		answerMessage(NACK_DISCARD, eofMessage)
+		j.log.Errorf("Failed to create middleware handler: %v", err)
+		answerMessage(NACK_REQUEUE, eofMessage)
 		return
 	}
-	answerMessage(ACK, eofMessage)
-	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s to %s. Emitted count: %d. From handleEofMessage", eofMsg.ClientId, eofMsg.DataType, destinationRouteKey, eofMsg.TotalEmitted)
+	queueName := fmt.Sprintf("join.%s.results.request.gather.%s", j.conf.ofType, eofMsg.ClientId)
+	queue, err := mh.CreateQueue(queueName)
+	if err != nil {
+		j.log.Errorf("Failed to create ephemeral queue %s: %v", queueName, err)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
 
-	j.mutex.Lock()
-	delete(j.sideTable, eofMsg.ClientId)
-	j.mutex.Unlock()
-	j.log.Infof("Deleted stored sideTable for client %s", eofMsg.ClientId)
+	requestMsg := middleware.NewGatherResultsRequest(j.conf.id, queueName, eofMsg.ClientId, eofMsg.DataType)
+	requestBytes, err := requestMsg.ToBytes()
+	if err != nil {
+		j.log.Errorf("Failed to serialize results request message: %v", err)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
+
+	j.ensureResultsChanExists(eofMsg.ClientId, eofMsg.DataType)
+	queue.StartConsuming(j.processResultsResponse, j.errChan)
+
+	processed, emitted, results, timeout := j.broadcastAndWaitForResults(requestBytes, eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
+	if processed == 0 {
+		j.log.Errorf("Unexpected error waiting results for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
+	if timeout {
+		j.log.Warningf("Could not gather all results for client %s and dataType %s after %d retries. Proceeding with partial results: processed %d/%d, emitted %d", eofMsg.ClientId, eofMsg.DataType, middleware.MAX_EOF_RETRIES, processed, eofMsg.TotalEmitted, emitted)
+	}
+	delete(j.resultsChans[eofMsg.ClientId], eofMsg.DataType)
+	delete(j.resultsChans, eofMsg.ClientId)
+	if err := queue.StopConsuming(); err != middleware.MessageMiddlewareSuccess {
+		j.log.Warningf("Failed to stop consuming ephemeral queue %s: %v", queueName, err)
+	}
+	if err := queue.Delete(); err != middleware.MessageMiddlewareSuccess {
+		j.log.Warningf("Failed to delete ephemeral queue %s: %v", queueName, err)
+	}
+
+	response := middleware.NewMessageWithPayload(eofMsg.DataType, eofMsg.ClientId, results, false, eofMsg.QueryId)
+
+	if middleError := j.sendNextStage(*response); middleError != nil {
+		j.log.Errorf("problem while sending message to %s: %v", j.conf.nextStagePubs[j.conf.ofType], middleError)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
+	emitted++
+
+	expectedTotal := eofMsg.TotalEmitted
+	eofMsg.TotalEmitted = emitted
+	if err := j.sendNextStage(eofMsg); err != nil {
+		j.log.Errorf("Failed to send EOF message to next stage: %v. Requeuing message...", err)
+		answerMessage(NACK_REQUEUE, eofMessage)
+		return
+	}
+
+	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Processed count: %d/%d, Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, processed, expectedTotal, emitted)
+	answerMessage(ACK, eofMessage)
+
+	clearMsg := middleware.NewClearResultsRequest(j.conf.id, "", eofMsg.ClientId, eofMsg.DataType)
+	clearMsgBytes, err := clearMsg.ToBytes()
+	if err != nil {
+		j.log.Warningf("Failed to serialize results request message: %v", err)
+	}
+	if sendErr := j.middlewareHandlers.broadcastResultsRequestPub.Send(clearMsgBytes); sendErr != middleware.MessageMiddlewareSuccess {
+		j.log.Warningf("Failed to send results request message to broadcast exchange: %v", sendErr)
+	}
 }
 
-func (j *JoinGenericWorker) sendProcessedMessage(msgProcessed *middleware.MessageProcessed) error {
-	msgProcessedBytes, err := msgProcessed.ToBytes()
+func (j *JoinGenericWorker) sendResultsRequest(message amqp.Delivery) error {
+	msg, err := middleware.NewMessageResultsRequestFromBytes(message.Body)
 	if err != nil {
+		answerMessage(NACK_DISCARD, message)
 		return err
 	}
-	j.middlewareMutex.Lock()
-	sendErr := j.middlewareHandlers.broadcastCountPub.Send(msgProcessedBytes)
-	j.middlewareMutex.Unlock()
-	if sendErr != middleware.MessageMiddlewareSuccess {
-		return fmt.Errorf("failed to send processed count message: %v", sendErr)
+
+	if msg.RequestType == middleware.RESULTS_REQUEST_TYPE_CLEAR {
+		j.getClientStats(msg.ClientId).Clear(msg.DataType)
+		delete(j.sideTable, msg.ClientId)
+		delete(j.mainTable, msg.ClientId)
+		delete(j.sideTableReceived, msg.ClientId)
+		j.log.Infof("Cleared stats for client %s and datatype %s", msg.ClientId, msg.DataType)
+		answerMessage(ACK, message)
+		return nil
 	}
+
+	j.log.Infof("Received results request message from %s for client %s and datatype %s", msg.Origin, msg.ClientId, msg.DataType)
+	processed, emitted := j.getClientStats(msg.ClientId).GetStats(msg.DataType)
+
+	responseMsg := middleware.MessageResultsResponse{
+		Origin:    j.conf.id,
+		ClientId:  msg.ClientId,
+		DataType:  msg.DataType,
+		Processed: processed,
+		Emitted:   emitted,
+	}
+
+	if j.conf.ofType == JOIN_USERS_TYPE {
+		j.mutex.Lock()
+		currentResults, exists := j.sideTable[msg.ClientId]
+		j.mutex.Unlock()
+		if !exists {
+			currentResults = []string{}
+		}
+		responseMsg.Payload = j.parseOnlyAlreadyJoinedLines(currentResults)
+	} else {
+		j.mutex.Lock()
+		currentResults, exists := j.mainTable[msg.ClientId]
+		sideTable := j.sideTable[msg.ClientId]
+		j.mutex.Unlock()
+		if !exists {
+			currentResults = []string{}
+		}
+		responseMsg.Payload = j.conf.joinTables(NewJoiner(), sideTable, currentResults)
+	}
+
+	responseBytes, err := responseMsg.ToBytes()
+	if err != nil {
+		answerMessage(NACK_DISCARD, message)
+		return err
+	}
+
+	if sendErr := j.SendToQueue(msg.QueueName, responseBytes); sendErr != middleware.MessageMiddlewareSuccess {
+		answerMessage(NACK_REQUEUE, message)
+		return fmt.Errorf("failed to send results response to queue %s", msg.QueueName)
+	}
+	j.log.Infof("Sent results response to %s for client %s and datatype %s: processed=%d, emitted=%d", msg.QueueName, msg.ClientId, msg.DataType, processed, emitted)
+	answerMessage(ACK, message)
 	return nil
 }
 
-func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextStagePubRouteKey string, err error) {
+func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (err error) {
 	msgBytes, err := msgToSend.ToBytes()
 	if err != nil {
-		return "", err
+		return err
 	}
 
 	var nextStagePub middleware.MessageMiddlewareExchange
@@ -602,9 +443,8 @@ func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextSta
 	if j.conf.ofType == JOIN_STORE_TYPE {
 		nextStagePub, exists = j.middlewareHandlers.nextStagePubs[j.conf.ofType]
 		if !exists {
-			return "", fmt.Errorf("received unprocessabble message in sendNextStage of type %s", msgToSend.DataType)
+			return fmt.Errorf("received unprocessabble message in sendNextStage of type %s", msgToSend.DataType)
 		}
-		routeKey = j.conf.nextStagePubs[j.conf.ofType]
 	} else {
 		nextStagePub, exists = j.middlewareHandlers.nextStagePubs[msgToSend.ClientId]
 		routeKey = fmt.Sprintf("results.%s", msgToSend.ClientId)
@@ -612,7 +452,7 @@ func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextSta
 			j.log.Infof("Next stage publishing for datatype %s on routeKey %s", msgToSend.DataType, routeKey)
 			exchange, err := j.middlewareHandler.CreateDirectExchangeStandalone(routeKey)
 			if err != nil {
-				return "", fmt.Errorf("error creating exchange handler for %s: %v", routeKey, err)
+				return fmt.Errorf("error creating exchange handler for %s: %v", routeKey, err)
 			}
 			j.middlewareHandlers.nextStagePubs[msgToSend.ClientId] = *exchange
 			nextStagePub = *exchange
@@ -622,7 +462,7 @@ func (j *JoinGenericWorker) sendNextStage(msgToSend middleware.Message) (nextSta
 	j.middlewareMutex.Lock()
 	nextStagePub.Send(msgBytes)
 	j.middlewareMutex.Unlock()
-	return routeKey, nil
+	return nil
 }
 
 func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
@@ -633,23 +473,24 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		return err
 	}
 
-	// j.mutex.Lock()
-	// _, exists := j.sideTable[msg.ClientId]
-	// if !exists {
-	// 	j.sideTable[msg.ClientId] = []string{}
-	// }
-	// j.mutex.Unlock()
-
 	if msg.IsEof {
 		j.log.Infof("Received EOF for %s. Ready to Join.", j.conf.ofType)
 		answerMessage(ACK, message)
-		j.sideTableReceived <- ACTIVITY
+		j.mutex.Lock()
+		if _, exists := j.sideTableReceived[msg.ClientId]; !exists {
+			j.sideTableReceived[msg.ClientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
+		}
+		j.mutex.Unlock()
+		j.sideTableReceived[msg.ClientId] <- ACTIVITY
 		return nil
 	}
 
 	j.mutex.Lock()
-	//j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
-	j.masterSideTable = msg.Payload
+	_, exists := j.sideTable[msg.ClientId]
+	if !exists {
+		j.sideTable[msg.ClientId] = []string{}
+	}
+	j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
 	j.mutex.Unlock()
 
 	j.log.Infof("Side table size for client %s: %d", msg.ClientId, len(j.sideTable[msg.ClientId]))
@@ -664,39 +505,8 @@ func (j *JoinGenericWorker) getClientStats(clientId string) *middleware.ClientSt
 	return j.clientsStats[clientId]
 }
 
-func (j *JoinGenericWorker) processedCountMessage(message amqp.Delivery) error {
-	msg, err := middleware.NewMessageProcessedFromBytes(message.Body)
-	if err != nil {
-		answerMessage(NACK_DISCARD, message)
-		return err
-	}
-
-	j.mutex.Lock()
-	clientStats := j.getClientStats(msg.ClientId)
-
-	clientStats.AddProcessed(msg.DataType)
-	if msg.Emitted {
-		clientStats.AddEmitted(msg.DataType)
-	}
-
-	if prevEofEmittedCount, exists := clientStats.GetEof(msg.DataType); exists {
-		// EOF ARRIVED!
-		if clientStats.GetProcessed(msg.DataType) == prevEofEmittedCount {
-			j.log.Infof("All messages processed for client %s and dataType %s from processedCountMessage", msg.ClientId, msg.DataType)
-			clientStats.SendEofChan(msg.DataType)
-		}
-	}
-
-	j.mutex.Unlock()
-
-	answerMessage(ACK, message)
-	return nil
-}
-
 func (j *JoinGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
 	// declare queue many to one (many publishers one consumer)
-	j.middlewareMutex.Lock()
-	defer j.middlewareMutex.Unlock()
 	queue, err := j.middlewareHandler.CreateQueue(queueName)
 
 	if err != nil {
@@ -724,85 +534,27 @@ func (j *JoinGenericWorker) parseOnlyAlreadyJoinedLines(lines []string) []string
 	return result
 }
 
-func (j *JoinGenericWorker) gatherAndSendPartialResults(message amqp.Delivery) error {
-	msg, err := middleware.NewMessageResultsRequestFromBytes(message.Body)
-	if err != nil {
-		answerMessage(NACK_DISCARD, message)
-		return err
-	}
-	j.log.Infof("Received request to gather and send partial results from %s to queue %s", msg.Origin, msg.QueueName)
-	if msg.Origin == j.conf.id {
-		j.log.Infof("Ignoring request to gather and send partial results from myself %s", msg.Origin)
-		answerMessage(ACK, message)
-		return nil
-	}
-
-	j.mutex.Lock()
-	_, exists := j.sideTable[msg.ClientId]
-	if !exists {
-		j.sideTable[msg.ClientId] = []string{}
-	}
-	partialResults := j.parseOnlyAlreadyJoinedLines(j.sideTable[msg.ClientId])
-	j.mutex.Unlock()
-
-	messageToSend := middleware.NewMessage(msg.DataType, msg.ClientId, partialResults, false, 0)
-	responseBytes, err := messageToSend.ToBytes()
-	if err != nil {
-		j.log.Errorf("%v", err)
-		answerMessage(NACK_DISCARD, message)
-		return err
-	}
-	j.log.Infof("Sending partial results to %s", msg.QueueName)
-
-	// SEND TO REQUESTOR
-	middleError := j.SendToQueue(msg.QueueName, responseBytes)
-	if middleError != middleware.MessageMiddlewareSuccess {
-		answerMessage(NACK_REQUEUE, message)
-		return fmt.Errorf("problem while sending message to %s", msg.QueueName)
-	}
-
-	j.log.Infof("Partial results successfully sent to %s", msg.QueueName)
-	// DELETE AFTER SENDING
-	// At this point, client has finished, results have been sent to the requester, so we can delete the stored group
-	j.mutex.Lock()
-	delete(j.sideTable, msg.ClientId)
-	j.mutex.Unlock()
-	j.log.Infof("Deleted stored sideTable for client %s", msg.ClientId)
-
-	answerMessage(ACK, message)
-	return nil
-}
-
 func (j *JoinGenericWorker) Run() error {
 	go j.handleSignal()
 
-	if j.conf.ofType == JOIN_STORE_TYPE {
-		err := j.createExchangeHandlers()
-		if err != nil {
-			return fmt.Errorf("failed to create exchange handlers: %v", err)
-		}
-	} else {
-		err := j.createExchangeHandlersForFinalStage()
-		if err != nil {
-			return fmt.Errorf("failed to create exchange handlers: %v", err)
-		}
+	err := j.createExchangeHandlers()
+	if err != nil {
+		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
 	j.log.Info("Waiting to receive side table...")
 	j.middlewareHandlers.sideTableSub.StartConsuming(j.saveSideTable, j.errChan)
-	<-j.sideTableReceived
 
 	if !j.isRunning {
 		return nil
 	}
 
-	j.middlewareHandlers.broadcastCountSub.StartConsuming(j.processedCountMessage, j.errChan)
 	if j.conf.ofType == JOIN_USERS_TYPE {
 		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithPayload, j.errChan)
-		j.middlewareHandlers.broadcastResultsRequestSub.StartConsuming(j.gatherAndSendPartialResults, j.errChan)
 	} else {
 		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithSideTable, j.errChan)
 	}
+	j.middlewareHandlers.broadcastResultsRequestSub.StartConsuming(j.sendResultsRequest, j.errChan)
 
 	j.log.Info("Started consuming messages. Ready to join!")
 	for err := range j.errChan {
@@ -823,7 +575,6 @@ func (j *JoinGenericWorker) Run() error {
 // Shutdown gracefully stops the acceptor, closing the listener and current client.
 func (j *JoinGenericWorker) Shutdown() {
 	j.isRunning = false
-	j.sideTableReceived <- ACTIVITY
 	j.errChan <- middleware.MessageMiddlewareSuccess
 
 	j.middlewareHandlers.Shutdown()

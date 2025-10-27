@@ -20,10 +20,11 @@ type JoinWorkerConfig struct {
 	id                             string
 	count                          int
 	ofType                         string
+	queryId                        int
 	prevStageSub                   string
 	sideTableSub                   string
 	nextStagePubs                  map[string]string
-	messageCallback                func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string)
+	joinTables                     func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string)
 	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
 }
 
@@ -32,17 +33,12 @@ func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
 		id:            joinId,
 		count:         joinCount,
 		ofType:        JOIN_ITEMS_TYPE,
+		queryId:       2,
 		prevStageSub:  "transactions.items.group.yearmonth",
 		sideTableSub:  "transactions.items.menu.items",
 		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
-		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
-			flattenedItems := make([]string, 0)
-			for yearMonth, items := range payload {
-				for _, item := range items {
-					flattenedItems = append(flattenedItems, fmt.Sprintf("%s,%s", yearMonth, item))
-				}
-			}
-			return joiner.JoinByIndex(sideTable, flattenedItems, 1, 0, 1)
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 1)
 		},
 	}
 }
@@ -57,14 +53,8 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 		nextStagePubs: map[string]string{
 			JOIN_STORE_TYPE: "transactions.transactions.join.store",
 		},
-		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
-			flattenedStores := make([]string, 0)
-			for store, users := range payload {
-				for _, user := range users {
-					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", store, user))
-				}
-			}
-			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 0)
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 0)
 		},
 	}
 }
@@ -74,17 +64,12 @@ func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
 		id:            joinId,
 		count:         joinCount,
 		ofType:        "store_q3",
+		queryId:       3,
 		prevStageSub:  "transactions.transactions.group.semester",
 		sideTableSub:  "transactions.store",
 		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
-		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
-			flattenedStores := make([]string, 0)
-			for semester, storesAndTPV := range payload {
-				for _, storeAndTPV := range storesAndTPV {
-					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", semester, storeAndTPV))
-				}
-			}
-			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 1)
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 1)
 		},
 	}
 }
@@ -94,6 +79,7 @@ func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
 		id:                             joinId,
 		count:                          joinCount,
 		ofType:                         "users",
+		queryId:                        4,
 		prevStageSub:                   "transactions.users",
 		sideTableSub:                   "transactions.transactions.join.store",
 		nextStagePubs:                  map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
@@ -109,34 +95,23 @@ func CreateJoinerWorker(joinItemsType string,
 
 	var joinItemsWorker JoinItemsWorker
 	var err error
+	var config JoinWorkerConfig
 
 	switch joinItemsType {
 	case JOIN_ITEMS_TYPE:
-		config := JoinItemsConfig(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinItemsConfig(joinerId, joinerCount)
 	case JOIN_STORE_TYPE:
-		config := JoinStoreConfig(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinStoreConfig(joinerId, joinerCount)
 	case JOIN_USERS_TYPE:
-		config := JoinUsersConfig(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinUsersConfig(joinerId, joinerCount)
 	case JOIN_STORE_Q3_TYPE:
-		config := JoinStoreQ3Config(joinerId, joinerCount)
-		joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
-		if err != nil {
-			return nil, err
-		}
+		config = JoinStoreQ3Config(joinerId, joinerCount)
 	default:
-		return nil, fmt.Errorf("Unknown joiner type: %s", joinItemsType)
+		return nil, fmt.Errorf("unknown joiner type: %s", joinItemsType)
+	}
+	joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+	if err != nil {
+		return nil, err
 	}
 
 	return &joinItemsWorker, nil

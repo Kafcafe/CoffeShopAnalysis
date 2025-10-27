@@ -1,6 +1,8 @@
 package join
 
 import (
+	"fmt"
+
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
@@ -24,4 +26,14 @@ func answerMessage(ackType int, message amqp.Delivery) {
 	case NACK_DISCARD:
 		message.Nack(false, false)
 	}
+}
+
+func flattenPayload(payload map[string][]string) (flattenedPayload []string) {
+	flattenedItems := make([]string, 0)
+	for key, values := range payload {
+		for _, value := range values {
+			flattenedItems = append(flattenedItems, fmt.Sprintf("%s,%s", key, value))
+		}
+	}
+	return flattenedItems
 }

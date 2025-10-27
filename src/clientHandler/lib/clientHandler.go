@@ -357,7 +357,7 @@ func (clh *ClientHandler) dispatchBatchToMiddleware(dataType string, batch []str
 		clh.emittedCount[dataType] = 0
 	}
 
-	msg := middleware.NewMessage(dataType, clh.ClientId.Full, cleanBatch, isEof, middleware.QUERY_ID_NOT_SET)
+	msg := middleware.NewMessageWithPayload(dataType, clh.ClientId.Full, cleanBatch, isEof, middleware.QUERY_ID_NOT_SET)
 	if isEof {
 		clh.log.Infof("Dispatching EOF for dataType %s with total emitted %d", dataType, clh.emittedCount[dataType])
 		msg.TotalEmitted = clh.emittedCount[dataType]
