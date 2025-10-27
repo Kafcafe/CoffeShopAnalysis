@@ -15,7 +15,7 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
-const BATCH_SIZE_GROUPED_MESSAGE = 100
+const BATCH_SIZE_GROUPED_MESSAGE = 1000
 
 type MiddlewareHandlers struct {
 	prevStageSub               middleware.MessageMiddlewareQueue
@@ -345,10 +345,12 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 	}
 
 	g.mutex.Lock()
-	currentGroup := g.group.Get(msg.ClientId, g.conf.factory)
 	processed, emitted := g.getClientStats(msg.ClientId).GetStats(msg.DataType)
+	currentMapString := g.group.Get(msg.ClientId, g.conf.factory).ToMapString()
 	g.mutex.Unlock()
-	g.sendResultsRequestBatched(msg, currentGroup, BATCH_SIZE_GROUPED_MESSAGE)
+
+	g.sendResultsRequestBatched(msg, currentMapString, BATCH_SIZE_GROUPED_MESSAGE)
+
 	responseMsg := middleware.MessageResultsResponse{
 		Origin:    g.conf.id,
 		ClientId:  msg.ClientId,
@@ -370,11 +372,10 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 	return nil
 }
 
-func (g *GroupByGenericWorker) sendResultsRequestBatched(msg *middleware.MessageResultsRequest, group structures.AllowedGroup, batchSize int) error {
-
-	currentGroupMap := group.ToMapString()
-	for key, value := range currentGroupMap {
+func (g *GroupByGenericWorker) sendResultsRequestBatched(msg *middleware.MessageResultsRequest, group map[string][]string, batchSize int) error {
+	for key, value := range group {
 		chunks := chunkSlice(value, batchSize)
+		g.log.Infof("Sending %d chunks", len(chunks))
 		for _, chunk := range chunks {
 			partialGroup := map[string][]string{key: chunk}
 			responseMsg := middleware.MessageResultsResponse{

@@ -6,7 +6,7 @@ import (
 	"strings"
 )
 
-type UserCount int
+type UserCount = int
 type StoreGroup map[StoreID]map[UserID]UserCount
 
 type TopKStoreGroup struct {
@@ -21,10 +21,6 @@ func NewTopKStoreGroup(k int) TopKStoreGroup {
 	}
 }
 
-func sumCount(existingCount, newCount UserCount) UserCount {
-	return existingCount + newCount
-}
-
 func (g TopKStoreGroup) AddBatch(records []Record) {
 	for _, record := range records {
 		g.add(record)
@@ -32,38 +28,26 @@ func (g TopKStoreGroup) AddBatch(records []Record) {
 }
 
 func (g *TopKStoreGroup) add(record Record) error {
-	parsedRecord, err := parseRecordForSemester(record)
-	if err != nil {
+	fields := strings.Split(record, ",")
+	storeID := fields[1]
+	userID := fields[2]
 
-		return err
-	}
-
-	_, exists := g.group[parsedRecord.StoreID]
-	if !exists {
-		g.group[parsedRecord.StoreID] = make(map[UserID]UserCount)
-	}
-
-	if parsedRecord.UserID == "" {
+	if userID == "" {
 		return nil
 	}
 
-	newCount := UserCount(1)
-	existingCount, exists := g.group[parsedRecord.StoreID][parsedRecord.UserID]
+	if _, exists := g.group[storeID]; !exists {
+		g.group[storeID] = make(map[UserID]UserCount)
+	}
+
+	existingCount, exists := g.group[storeID][userID]
 	if exists {
-		g.group[parsedRecord.StoreID][parsedRecord.UserID] = sumCount(existingCount, newCount)
+		g.group[storeID][userID] = existingCount + 1
 	} else {
-		g.group[parsedRecord.StoreID][parsedRecord.UserID] = newCount
+		g.group[storeID][userID] = 1
 	}
 
 	return nil
-}
-
-func (g *TopKStoreGroup) GetGroup() StoreGroup {
-	return g.group
-}
-
-func (g *TopKStoreGroup) GetK() int {
-	return g.k
 }
 
 /*
@@ -95,19 +79,19 @@ func (g TopKStoreGroup) AddMapString(data map[string][]string) {
 }
 
 func (g TopKStoreGroup) merge(other TopKStoreGroup) {
-	for storeId, users := range other.group {
+	for otherStoreId, otherUsers := range other.group {
 
-		if _, exists := g.group[storeId]; !exists {
-			g.group[storeId] = make(map[UserID]UserCount)
+		if _, exists := g.group[otherStoreId]; !exists {
+			g.group[otherStoreId] = make(map[UserID]UserCount)
 		}
 
-		for userId, count := range users {
-			existing, exists := g.group[storeId][userId]
+		for otherUserId, otherUserCount := range otherUsers {
+			userCount, userExists := g.group[otherStoreId][otherUserId]
 
-			if exists {
-				g.group[storeId][userId] = sumCount(existing, count)
+			if userExists {
+				g.group[otherStoreId][otherUserId] = userCount + otherUserCount
 			} else {
-				g.group[storeId][userId] = count
+				g.group[otherStoreId][otherUserId] = otherUserCount
 			}
 		}
 	}
@@ -119,23 +103,21 @@ func (g TopKStoreGroup) merge(other TopKStoreGroup) {
 
 func NewTopKStoreGroupFromMap(m map[string][]string, k int) TopKStoreGroup {
 	g := NewTopKStoreGroup(k)
-	for storeStr, userStrs := range m {
-		storeId := StoreID(storeStr)
+	for storeId, userStrs := range m {
 		g.group[storeId] = make(map[UserID]UserCount)
 
 		for _, userStr := range userStrs {
 			parts := strings.Split(userStr, ",")
-			if len(parts) != 2 {
-				continue
-			}
-
 			userId := UserID(parts[0])
 			count, err := strconv.Atoi(parts[1])
 			if err != nil {
-				continue
+				count = 0
 			}
-
-			g.group[storeId][userId] = UserCount(count)
+			if existingCount, exists := g.group[storeId][userId]; exists {
+				g.group[storeId][userId] = count + existingCount
+			} else {
+				g.group[storeId][userId] = count
+			}
 		}
 	}
 	return g

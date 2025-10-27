@@ -8,7 +8,7 @@ import (
 
 type Semester string
 type TPV float64
-type StoreID string
+type StoreID = string
 
 type SemesterGroup map[Semester]map[StoreID]TPV
 
