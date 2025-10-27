@@ -185,15 +185,7 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	return nil
 }
 
-func (g *GroupByGenericWorker) sendGroupedMessage(msgToSend middleware.MessageGrouped) error {
-	msgBytes, err := msgToSend.ToBytes()
-	if err != nil {
-		return err
-	}
-	return g.sendBytesNextStage(msgBytes)
-}
-
-func (g *GroupByGenericWorker) sendEof(msgToSend middleware.Message) error {
+func (g *GroupByGenericWorker) sendMessage(msgToSend middleware.Message) error {
 	msgBytes, err := msgToSend.ToBytes()
 	if err != nil {
 		return err
@@ -264,9 +256,9 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 	messageToSend := results.GetMessageToSend()
 	var emitted int = 0
 	for _, group := range messageToSend {
-		response := middleware.NewMessageGrouped(eofMsg.DataType, eofMsg.ClientId, group, false, eofMsg.QueryId)
+		response := middleware.NewMessageWithGroupedPayload(eofMsg.DataType, eofMsg.ClientId, group, false, eofMsg.QueryId)
 
-		middleError := g.sendGroupedMessage(*response)
+		middleError := g.sendMessage(*response)
 		if middleError != nil {
 			g.log.Errorf("problem while sending message to %s: %v", g.conf.nextStagePub, middleError)
 			continue
@@ -275,7 +267,7 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 	}
 
 	eofMsg.TotalEmitted = emitted
-	err = g.sendEof(eofMsg)
+	err = g.sendMessage(eofMsg)
 	if err != nil {
 		g.log.Errorf("Failed to send EOF message to next stage: %v", err)
 		answerMessage(NACK_DISCARD, eofMessage)

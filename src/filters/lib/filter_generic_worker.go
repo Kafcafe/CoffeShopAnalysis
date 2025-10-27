@@ -169,7 +169,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return nil
 	}
 
-	response := middleware.NewMessage(msg.DataType, msg.ClientId, filteredBatch, false, msg.QueryId)
+	response := middleware.NewMessageWithPayload(msg.DataType, msg.ClientId, filteredBatch, false, msg.QueryId)
 	err = f.sendNextStage(*response)
 	if err != nil {
 		f.log.Errorf("Failed to send message to next stage: %v", err)

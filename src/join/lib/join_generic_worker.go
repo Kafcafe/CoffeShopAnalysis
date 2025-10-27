@@ -249,7 +249,7 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 }
 
 func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
-	msg, err := middleware.NewMessageGroupedFromBytes(message.Body)
+	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
 		return err
@@ -257,11 +257,11 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	msg.QueryId = j.conf.queryId
 
 	if msg.IsEof {
-		go j.handleEofMessage(message, *msg.ToMessage())
+		go j.handleEofMessage(message, *msg)
 		return nil
 	}
 
-	flattenedPayload := j.conf.flattenPayload(msg.Payload)
+	flattenedPayload := j.conf.flattenPayload(msg.GroupedPayload)
 	j.mutex.Lock()
 	j.mainTable[msg.ClientId] = append(j.mainTable[msg.ClientId], flattenedPayload...)
 	j.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
@@ -338,7 +338,7 @@ func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg mi
 		j.log.Warningf("Failed to delete ephemeral queue %s: %v", queueName, err)
 	}
 
-	response := middleware.NewMessage(eofMsg.DataType, eofMsg.ClientId, results, false, eofMsg.QueryId)
+	response := middleware.NewMessageWithPayload(eofMsg.DataType, eofMsg.ClientId, results, false, eofMsg.QueryId)
 
 	if middleError := j.sendNextStage(*response); middleError != nil {
 		j.log.Errorf("problem while sending message to %s: %v", j.conf.nextStagePubs[j.conf.ofType], middleError)

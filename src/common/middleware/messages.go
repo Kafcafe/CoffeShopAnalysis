@@ -31,21 +31,32 @@ func FromBytes[T any](data []byte) (*T, error) {
 
 // Message
 type Message struct {
-	DataType     string
-	ClientId     string
-	Payload      []string
-	IsEof        bool
-	TotalEmitted int
-	QueryId      int
+	DataType       string
+	ClientId       string
+	Payload        []string
+	GroupedPayload map[string][]string
+	IsEof          bool
+	TotalEmitted   int
+	QueryId        int
 }
 
-func NewMessage(dataType, clientId string, payload []string, isEof bool, queryId int) *Message {
+func NewMessageWithPayload(dataType, clientId string, payload []string, isEof bool, queryId int) *Message {
 	return &Message{
 		DataType: dataType,
 		ClientId: clientId,
 		Payload:  payload,
 		IsEof:    isEof,
 		QueryId:  queryId,
+	}
+}
+
+func NewMessageWithGroupedPayload(dataType, clientId string, groupedPayload map[string][]string, isEof bool, queryId int) *Message {
+	return &Message{
+		DataType:       dataType,
+		ClientId:       clientId,
+		GroupedPayload: groupedPayload,
+		IsEof:          isEof,
+		QueryId:        queryId,
 	}
 }
 
@@ -54,44 +65,6 @@ func NewMessageFromBytes(msgBytes []byte) (*Message, error) {
 }
 
 func (m *Message) ToBytes() ([]byte, error) {
-	return ToBytes(m)
-}
-
-// MessageGrouped
-type MessageGrouped struct {
-	DataType     string
-	ClientId     string
-	Payload      map[string][]string
-	IsEof        bool
-	TotalEmitted int
-	QueryId      int
-}
-
-func NewMessageGrouped(dataType, clientId string, payload map[string][]string, isEof bool, queryId int) *MessageGrouped {
-	return &MessageGrouped{
-		DataType: dataType,
-		ClientId: clientId,
-		Payload:  payload,
-		IsEof:    isEof,
-		QueryId:  queryId,
-	}
-}
-
-func (m *MessageGrouped) ToMessage() *Message {
-	return &Message{
-		DataType:     m.DataType,
-		ClientId:     m.ClientId,
-		IsEof:        m.IsEof,
-		TotalEmitted: m.TotalEmitted,
-		QueryId:      m.QueryId,
-	}
-}
-
-func NewMessageGroupedFromBytes(msgBytes []byte) (*MessageGrouped, error) {
-	return FromBytes[MessageGrouped](msgBytes)
-}
-
-func (m *MessageGrouped) ToBytes() ([]byte, error) {
 	return ToBytes(m)
 }
 
