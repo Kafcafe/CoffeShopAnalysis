@@ -24,7 +24,8 @@ type JoinWorkerConfig struct {
 	prevStageSub                   string
 	sideTableSub                   string
 	nextStagePubs                  map[string]string
-	messageCallback                func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string)
+	flattenPayload                 func(payload map[string][]string) (flattenedPayload []string)
+	joinTables                     func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string)
 	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
 }
 
@@ -37,14 +38,17 @@ func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
 		prevStageSub:  "transactions.items.group.yearmonth",
 		sideTableSub:  "transactions.items.menu.items",
 		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
-		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+		flattenPayload: func(payload map[string][]string) (flattenedPayload []string) {
 			flattenedItems := make([]string, 0)
 			for yearMonth, items := range payload {
 				for _, item := range items {
 					flattenedItems = append(flattenedItems, fmt.Sprintf("%s,%s", yearMonth, item))
 				}
 			}
-			return joiner.JoinByIndex(sideTable, flattenedItems, 1, 0, 1)
+			return flattenedItems
+		},
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 1)
 		},
 	}
 }
@@ -59,14 +63,17 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 		nextStagePubs: map[string]string{
 			JOIN_STORE_TYPE: "transactions.transactions.join.store",
 		},
-		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+		flattenPayload: func(payload map[string][]string) (flattenedPayload []string) {
 			flattenedStores := make([]string, 0)
 			for store, users := range payload {
 				for _, user := range users {
 					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", store, user))
 				}
 			}
-			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 0)
+			return flattenedStores
+		},
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 0)
 		},
 	}
 }
@@ -80,14 +87,17 @@ func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
 		prevStageSub:  "transactions.transactions.group.semester",
 		sideTableSub:  "transactions.store",
 		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
-		messageCallback: func(joiner *Join, sideTable []string, payload map[string][]string) (joinedItems []string) {
+		flattenPayload: func(payload map[string][]string) (flattenedPayload []string) {
 			flattenedStores := make([]string, 0)
 			for semester, storesAndTPV := range payload {
 				for _, storeAndTPV := range storesAndTPV {
 					flattenedStores = append(flattenedStores, fmt.Sprintf("%s,%s", semester, storeAndTPV))
 				}
 			}
-			return joiner.JoinByIndex(sideTable, flattenedStores, 1, 0, 1)
+			return flattenedStores
+		},
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 1)
 		},
 	}
 }
