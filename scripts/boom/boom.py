@@ -8,8 +8,8 @@ DOCKER_COMPOSE_FILE = "docker-compose-dev.yaml"
 
 class Boom:
 
-    def __init__(self, target: dict[str, str] = {}) -> None:
-        self.target = target
+    def __init__(self, configs: dict[str, str] = {}) -> None:
+        self.configs = configs
 
     def __get_containers(self) -> list[str]:
         result = sp.run(
@@ -45,7 +45,7 @@ class Boom:
         self.__exec_command(commands.DOCKER_KILL, dead_man)
 
     def __with_target(self):
-        target = self.target.get("t", None)
+        target = self.configs.get("t", None)
         if target is None:
             raise ValueError("No target specified for 'with_target' method")
         self.__exec_command(commands.DOCKER_KILL, target)
@@ -67,5 +67,5 @@ class Boom:
             "target": self.__with_target,
             "group": self.__for_group,
         }
-        target = self.target.get("mode", "random")
-        cli[target]()
+        mode = self.configs.get("mode", "random")
+        cli[mode]()
