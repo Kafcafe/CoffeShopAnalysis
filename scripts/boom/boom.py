@@ -40,11 +40,32 @@ class Boom:
             raise RuntimeError("No suitable containers found to stop")
         return choice(candidates)
 
-    def run(self) -> None:
+    def __choose_random(self):
         dead_man = self.__choose_target()
-        print(f"Boombing container: {dead_man}")
+        self.__exec_command(commands.DOCKER_KILL, dead_man)
+
+    def __with_target(self):
+        target = self.target.get("t", None)
+        if target is None:
+            raise ValueError("No target specified for 'with_target' method")
+        self.__exec_command(commands.DOCKER_KILL, target)
+
+    def __exec_command(self, command: str, target: str):
         sp.run(
-            commands.DOCKER_KILL.format(compose=DOCKER_COMPOSE_FILE, dead_man=dead_man),
+            command.format(compose=DOCKER_COMPOSE_FILE, dead_man=target),
             shell=True,
             check=True,
         )
+
+    def __for_group(self):
+        ## target a group of nodes with a regex or similar
+        pass
+
+    def run(self) -> None:
+        cli = {
+            "random": self.__choose_random,
+            "target": self.__with_target,
+            "group": self.__for_group,
+        }
+        target = self.target.get("mode", "random")
+        cli[target]()
