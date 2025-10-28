@@ -1,0 +1,71 @@
+import subprocess as sp
+from random import choice
+import commands
+
+# TO DO: make this configurable from cli args
+DOCKER_COMPOSE_FILE = "docker-compose-dev.yaml"
+
+
+class Boom:
+
+    def __init__(self, target: dict[str, str] = {}) -> None:
+        self.target = target
+
+    def __get_containers(self) -> list[str]:
+        result = sp.run(
+            commands.DOCKER_SERVICES.format(compose=DOCKER_COMPOSE_FILE),
+            shell=True,
+            check=True,
+            stdout=sp.PIPE,
+        )
+        return result.stdout.decode().strip().split("\n")
+
+    def __is_a_posible_target(self, target: str) -> bool:
+        ## For now, just avoid stopping this containers, in the future we wil handle this cases
+        if "rabbitmq" in target:
+            return False
+
+        if "client" in target and "handler" not in target:
+            return False
+
+        if "client" in target and "handler" in target:
+            return False
+
+        return True
+
+    def __choose_target(self) -> str:
+        containers = self.__get_containers()
+        candidates = [c for c in containers if self.__is_a_posible_target(c)]
+        if not candidates:
+            raise RuntimeError("No suitable containers found to stop")
+        return choice(candidates)
+
+    def __choose_random(self):
+        dead_man = self.__choose_target()
+        self.__exec_command(commands.DOCKER_KILL, dead_man)
+
+    def __with_target(self):
+        target = self.target.get("t", None)
+        if target is None:
+            raise ValueError("No target specified for 'with_target' method")
+        self.__exec_command(commands.DOCKER_KILL, target)
+
+    def __exec_command(self, command: str, target: str):
+        sp.run(
+            command.format(compose=DOCKER_COMPOSE_FILE, dead_man=target),
+            shell=True,
+            check=True,
+        )
+
+    def __for_group(self):
+        ## target a group of nodes with a regex or similar
+        pass
+
+    def run(self) -> None:
+        cli = {
+            "random": self.__choose_random,
+            "target": self.__with_target,
+            "group": self.__for_group,
+        }
+        target = self.target.get("mode", "random")
+        cli[target]()
