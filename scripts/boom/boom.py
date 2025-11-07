@@ -1,8 +1,7 @@
 import subprocess as sp
 from random import choice
 import commands
-
-# TO DO: make this configurable from cli args
+import re
 DOCKER_COMPOSE_FILE = "docker-compose-dev.yaml"
 
 
@@ -38,7 +37,15 @@ class Boom:
         candidates = [c for c in containers if self.__is_a_posible_target(c)]
         if not candidates:
             raise RuntimeError("No suitable containers found to stop")
-        return choice(candidates)
+        is_a_valid_canditate = False
+        candidate = None
+        while not is_a_valid_canditate:
+            choose_candidate = choice(candidates)
+            filtered = [c for c in candidates if re.sub(r"\d", "", c) == re.sub(r"\d", "", choose_candidate)]
+            if len(filtered) > 1:
+                candidate = choose_candidate
+                break
+        return candidate
 
     def __choose_random(self):
         dead_man = self.__choose_target()
@@ -51,15 +58,24 @@ class Boom:
         self.__exec_command(commands.DOCKER_KILL, target)
 
     def __exec_command(self, command: str, target: str):
+        file = self.configs.get("f", DOCKER_COMPOSE_FILE)
         sp.run(
-            command.format(compose=DOCKER_COMPOSE_FILE, dead_man=target),
+            command.format(compose=file, dead_man=target),
             shell=True,
             check=True,
         )
 
     def __for_group(self):
-        ## target a group of nodes with a regex or similar
-        pass
+        if not self.configs.get("t", None):
+            print("No group specified")
+            return 
+        containers = self.__get_containers()
+        filtered = [c for c in containers if re.sub(r"\d", "", c) == self.configs.get("t")]
+        if len(filtered) <= 1:
+            print("Not enough containers in the group to choose from")
+            return
+        dead_man = choice(filtered)
+        self.__exec_command(commands.DOCKER_KILL, dead_man)
 
     def run(self) -> None:
         cli = {

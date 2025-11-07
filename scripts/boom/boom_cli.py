@@ -16,8 +16,13 @@ class BoomCli:
         )
         self.internal_parser.add_argument(
             "--mode",
-            choices=["random", "target"],
+            choices=["random", "target", "group"],
             default="random",
             help="The mode of operation for the boom script",
+        )
+        self.internal_parser.add_argument(
+            "-f",
+            type=str,
+            help="The docker compose file to use",
         )
         return self.internal_parser.parse_args()
