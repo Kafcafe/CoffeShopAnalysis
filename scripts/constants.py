@@ -68,6 +68,7 @@ CLIENT_HANDLER_TEMPLATE = """
           RABBITMQ_PORT: 5672
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
+          WATCH_MESH_UDP_PORT: 11000
         hostname: "server"
         build:
           context: ./src/
@@ -92,6 +93,7 @@ FILTER_TEMPLATE = """
           FILTER_TYPE: {filter_type}
           FILTER_ID: {id}
           FILTER_COUNT: {filter_count}
+          WATCH_MESH_UDP_PORT: 11000
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
@@ -154,6 +156,7 @@ GROUP_TEMPLATE = """
           GROUP_TYPE: {group_type}
           GROUP_ID: {id}
           GROUP_COUNT: {group_count}
+          WATCH_MESH_UDP_PORT: 11000
         build:
           context: ./src/
           dockerfile: group/Dockerfile
@@ -177,6 +180,7 @@ JOIN_TEMPLATE = """
           JOIN_TYPE: {join_type}
           JOIN_ID: {id}
           JOIN_COUNT: {join_count}
+          WATCH_MESH_UDP_PORT: 11000
         build:
           context: ./src/
           dockerfile: join/Dockerfile
