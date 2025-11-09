@@ -14,7 +14,11 @@ const (
 	Election    MessageType = 2
 	Coordinator MessageType = 3
 
-	Broadcast MessageType = 4
+	Broadcast  MessageType = 4
+	ElectionOk MessageType = 5
+
+	LeaderDiscovery MessageType = 6
+	LeaderResponse  MessageType = 7
 )
 
 type WatchMeshMessage struct {
@@ -60,6 +64,13 @@ func NewElectionMessage(senderID string) *WatchMeshMessage {
 	}
 }
 
+func NewElectionOkMessage(senderID string) *WatchMeshMessage {
+	return &WatchMeshMessage{
+		Type:     ElectionOk,
+		SenderID: senderID,
+	}
+}
+
 func NewCoordinatorMessage(senderID string) *WatchMeshMessage {
 	return &WatchMeshMessage{
 		Type:     Coordinator,
@@ -72,5 +83,20 @@ func NewBroadcastMessage(senderID, payload string) *WatchMeshMessage {
 		Type:     Broadcast,
 		SenderID: senderID,
 		Payload:  payload,
+	}
+}
+
+func NewLeaderDiscoveryMessage(senderID string) *WatchMeshMessage {
+	return &WatchMeshMessage{
+		Type:     LeaderDiscovery,
+		SenderID: senderID,
+	}
+}
+
+func NewLeaderResponseMessage(senderID, leaderID string) *WatchMeshMessage {
+	return &WatchMeshMessage{
+		Type:     LeaderResponse,
+		SenderID: senderID,
+		Payload:  leaderID,
 	}
 }
