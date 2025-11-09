@@ -69,8 +69,6 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
-	log.Info(watchMeshConfig)
-
 	return &FilterGenericWorker{
 		log:               log,
 		middlewareHandler: middlewareHandler,

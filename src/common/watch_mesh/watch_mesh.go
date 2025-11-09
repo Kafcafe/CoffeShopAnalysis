@@ -4,6 +4,7 @@ import (
 	"common/logger"
 	"fmt"
 	"net"
+	"strconv"
 	"sync"
 	"time"
 
@@ -17,6 +18,28 @@ const (
 )
 
 type NodeId string
+
+// compareNodeIDs compares two NodeIds based on the last character as a number
+func compareNodeIDs(a, b NodeId) int {
+	aStr := string(a)
+	bStr := string(b)
+	if len(aStr) == 0 || len(bStr) == 0 {
+		return 0
+	}
+	aLast := aStr[len(aStr)-1]
+	bLast := bStr[len(bStr)-1]
+	aNum, errA := strconv.Atoi(string(aLast))
+	bNum, errB := strconv.Atoi(string(bLast))
+	if errA != nil || errB != nil {
+		return 0
+	}
+	if aNum < bNum {
+		return -1
+	} else if aNum > bNum {
+		return 1
+	}
+	return 0
+}
 
 // Config holds the configuration for a distributed node
 type WatchMeshConfig struct {
@@ -147,12 +170,23 @@ func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) 
 // SetupPeers configures the peer addresses from the configuration
 func (wm *WatchMesh) setupPeers() {
 	for _, peerAddress := range wm.config.PeerAddresses {
-		addrWithPort, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerAddress, wm.config.WatchMeshPort))
+		addrWithPort := fmt.Sprintf("%s:%d", peerAddress, wm.config.WatchMeshPort)
+		var addrWithPortResolved *net.UDPAddr
+		var err error
+		for retry := 0; retry < 3; retry++ {
+			addrWithPortResolved, err = net.ResolveUDPAddr("udp", addrWithPort)
+			if err == nil {
+				break
+			}
+			if retry < 2 {
+				time.Sleep(1 * time.Second)
+			}
+		}
 		if err != nil {
-			wm.log.Warningf("Failed to resolve peer address '%v': %v", addrWithPort, err)
+			wm.log.Warningf("Failed to resolve peer address '%v' after 3 retries: %v", addrWithPort, err)
 			continue
 		}
-		wm.peers[NodeId(peerAddress)] = addrWithPort
+		wm.peers[NodeId(peerAddress)] = addrWithPortResolved
 	}
 }
 
@@ -220,7 +254,15 @@ func (wm *WatchMesh) startUDPListener() error {
 }
 
 func (wm *WatchMesh) sendHeartbeatPings() {
+	amILeaderPrefix := "   "
 	wm.mutex.Lock()
+
+	if wm.isLeader {
+		amILeaderPrefix = "[L]"
+	}
+
+	wm.log.Infof("%s Sending heartbeat to peers", amILeaderPrefix)
+
 	for _, addr := range wm.peers {
 		msg := NewHeartbeatMessage(string(wm.config.CurrentNodeID))
 		wm.sendMessage(addr, msg)
@@ -229,21 +271,36 @@ func (wm *WatchMesh) sendHeartbeatPings() {
 }
 
 func (wm *WatchMesh) checkLiveness() {
+	shouldResurrectPeer := false
+	peerIdToResurrect := NodeId("")
+	shouldStartElections := false
+
 	wm.mutex.Lock()
 	now := time.Now()
+
 	for id, last := range wm.lastSeen {
 		if now.Sub(last) > wm.config.Timeout {
-			wm.log.Warningf("Heartbeat check: Node %s is down (last seen: %v)", id, last)
+			wm.log.Warningf("Heartbeat check: Node %s is down (last seen: %.0f seconds ago)", id, now.Sub(last).Seconds())
 
 			if id == wm.leaderID {
-				wm.startElection()
+				shouldStartElections = true
+			} else if wm.isLeader {
+				shouldResurrectPeer = true
+				peerIdToResurrect = id
 			}
 		}
 	}
 	wm.mutex.Unlock()
+
+	if shouldResurrectPeer {
+		wm.resurrectPeer(peerIdToResurrect)
+	} else if shouldStartElections {
+		wm.startElection()
+	}
 }
 
 func (wm *WatchMesh) startHeartbeat() {
+	wm.log.Info("Starting Heartbeat")
 	ticker := time.NewTicker(wm.config.HeartbeatInterval)
 	defer ticker.Stop()
 
@@ -254,6 +311,7 @@ func (wm *WatchMesh) startHeartbeat() {
 }
 
 func (wm *WatchMesh) startElectionMonitor() {
+	wm.log.Info("Starting election monitoring")
 	ticker := time.NewTicker(wm.config.HeartbeatInterval)
 	defer ticker.Stop()
 
@@ -302,6 +360,7 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 		wm.mutex.Lock()
 		wm.lastSeen[NodeId(msg.SenderID)] = time.Now()
 		wm.mutex.Unlock()
+		wm.log.Infof("HeartbeatAck from '%s'", msg.SenderID)
 
 	case Election:
 		wm.handleElection(msg.SenderID)
@@ -384,7 +443,7 @@ func (wm *WatchMesh) startElection() {
 	wm.log.Info("Starting election")
 	higherPeers := []NodeId{}
 	for id := range wm.peers {
-		if id > wm.config.CurrentNodeID {
+		if compareNodeIDs(id, wm.config.CurrentNodeID) > 0 {
 			higherPeers = append(higherPeers, id)
 		}
 	}
@@ -447,7 +506,7 @@ func (wm *WatchMesh) handleElection(senderID string) {
 	wm.log.Infof("Received election message from node %s", senderID)
 	senderNodeID := NodeId(senderID)
 
-	if senderNodeID < wm.config.CurrentNodeID {
+	if compareNodeIDs(senderNodeID, wm.config.CurrentNodeID) < 0 {
 		wm.log.Infof("Responding to lower ID node %s with ElectionOk", senderID)
 		// Respond to lower ID node
 		if addr, ok := wm.peers[senderNodeID]; ok {
@@ -492,7 +551,13 @@ func (wm *WatchMesh) becomeLeader() {
 	wm.electionInProgress = false
 	wm.electionReceivedOK = false
 	wm.mutex.Unlock()
-	wm.log.Info("Broadcasting coordinator message to all peers")
+
+	var peer_keys []string
+	for k := range wm.peers {
+		peer_keys = append(peer_keys, string(k))
+	}
+
+	wm.log.Infof("Broadcasting coordinator message to all %d peers", len(peer_keys))
 
 	// Broadcast to all peers
 	for id, addr := range wm.peers {
@@ -500,26 +565,16 @@ func (wm *WatchMesh) becomeLeader() {
 		wm.sendMessage(addr, msg)
 		wm.log.Infof("Sent coordinator message to node %s", id)
 	}
-
-	// Start leader tasks
-	wm.log.Info("Starting leader tasks")
-	go wm.leaderTask()
 }
 
-// leaderTask performs leader-specific tasks
-func (wm *WatchMesh) leaderTask() {
-	ticker := time.NewTicker(10 * time.Second)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		wm.mutex.Lock()
-		if wm.isLeader {
-			wm.log.Info("Leader broadcasting status")
-			for _, addr := range wm.peers {
-				msg := NewBroadcastMessage(string(wm.config.CurrentNodeID), "Leader status update")
-				wm.sendMessage(addr, msg)
-			}
-		}
-		wm.mutex.Unlock()
+func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
+	wm.mutex.Lock()
+	if !wm.isLeader || string(peerId) == "" {
+		wm.log.Warning("Cannot resurrect")
+		return
 	}
+
+	wm.log.Infof("Trying to resurrect peer with ID '%s'. FEATURE NOT IMPLEMENTED", string(peerId))
+
+	wm.mutex.Unlock()
 }
