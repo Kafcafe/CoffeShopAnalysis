@@ -1,12 +1,14 @@
 package watch_mesh
 
 import (
+	"common/logger"
 	"fmt"
-	"log"
 	"net"
 	"strconv"
 	"sync"
 	"time"
+
+	"github.com/op/go-logging"
 )
 
 const (
@@ -27,12 +29,11 @@ type WatchMeshConfig struct {
 }
 
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
-func NewWatchMeshConfig(currentNodeID string, watchMeshPort int, peerIPs []string, nodeType string, heartbeatInt, timeout time.Duration) WatchMeshConfig {
+func NewWatchMeshConfig(currentNodeID string, watchMeshPort int, peerIPs []string, heartbeatInt, timeout time.Duration) WatchMeshConfig {
 	return WatchMeshConfig{
 		CurrentNodeID:     NodeId(currentNodeID),
 		WatchMeshPort:     watchMeshPort,
 		PeerIPs:           peerIPs,
-		NodeType:          nodeType,
 		HeartbeatInterval: heartbeatInt,
 		Timeout:           timeout,
 	}
@@ -50,11 +51,11 @@ type WatchMesh struct {
 	electionReceivedOK bool
 	discoverResult     chan NodeId
 	mutex              sync.Mutex
-	logger             *log.Logger
+	log                *logging.Logger
 }
 
 // NewNode creates a new distributed node
-func NewWatchMesh(config WatchMeshConfig, logger *log.Logger) *WatchMesh {
+func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 	return &WatchMesh{
 		config:             config,
 		conn:               nil,
@@ -66,7 +67,7 @@ func NewWatchMesh(config WatchMeshConfig, logger *log.Logger) *WatchMesh {
 		electionReceivedOK: false,
 		discoverResult:     make(chan NodeId, 1),
 		mutex:              sync.Mutex{},
-		logger:             logger,
+		log:                logger.GetLoggerWithPrefix("[WATCH-MESH]"),
 	}
 }
 
@@ -82,7 +83,7 @@ func (wm *WatchMesh) Start() {
 
 // discoverLeader queries all peers for the current leader
 func (wm *WatchMesh) discoverLeader() {
-	wm.logger.Printf("LeaderDiscovery: Starting leader discovery")
+	wm.log.Info("LeaderDiscovery: Starting leader discovery")
 
 	select {
 	case discoveredLeaderID := <-wm.discoverResult:
@@ -91,7 +92,7 @@ func (wm *WatchMesh) discoverLeader() {
 		wm.leaderID = discoveredLeaderID
 		wm.isLeader = false
 		wm.mutex.Unlock()
-		wm.logger.Printf("LeaderDiscovery: Leader discovered and validated: %s", discoveredLeaderID)
+		wm.log.Infof("LeaderDiscovery: Leader discovered and validated: %s", discoveredLeaderID)
 		return
 	case <-time.After(wm.config.Timeout):
 		// Timeout - no validated leader received
@@ -100,22 +101,22 @@ func (wm *WatchMesh) discoverLeader() {
 		wm.mutex.Unlock()
 
 		if notInProgress {
-			wm.logger.Printf("LeaderDiscovery: No leader discovered within timeout, starting election")
+			wm.log.Info("LeaderDiscovery: No leader discovered within timeout, starting election")
 			wm.startElection()
 		} else {
-			wm.logger.Printf("LeaderDiscovery: Timeout but election already in progress")
+			wm.log.Info("LeaderDiscovery: Timeout but election already in progress")
 		}
 	}
 }
 
 // validateLeader performs a heartbeat check on a discovered leader
 func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) {
-	wm.logger.Printf("LeaderDiscovery: Validating leader %s", leaderID)
+	wm.log.Infof("LeaderDiscovery: Validating leader %s", leaderID)
 
 	// Send a specific heartbeat to validate the leader
 	msg := NewHeartbeatMessage(string(wm.config.CurrentNodeID))
 	if err := wm.sendMessage(responseAddr, msg); err != nil {
-		wm.logger.Printf("LeaderDiscovery: Failed to send validation heartbeat: %v", err)
+		wm.log.Errorf("LeaderDiscovery: Failed to send validation heartbeat: %v", err)
 		return
 	}
 
@@ -127,11 +128,11 @@ func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) 
 	select {
 	case <-time.After(timeout):
 		// Timeout - no acknowledgment
-		wm.logger.Printf("LeaderDiscovery: No acknowledgment from %s within timeout", leaderID)
+		wm.log.Warningf("LeaderDiscovery: No acknowledgment from %s within timeout", leaderID)
 		return
 	case <-timer.C:
 		// We could check lastSeen here, but for simplicity assume success
-		wm.logger.Printf("LeaderDiscovery: Leader %s validated successfully", leaderID)
+		wm.log.Infof("LeaderDiscovery: Leader %s validated successfully", leaderID)
 		// Send the validated leader ID through the channel
 		select {
 		case wm.discoverResult <- leaderID:
@@ -146,7 +147,7 @@ func (wm *WatchMesh) setupPeers() {
 	for _, peerIp := range wm.config.PeerIPs {
 		addr, err := net.ResolveUDPAddr("udp", fmt.Sprintf("%s:%d", peerIp, wm.config.WatchMeshPort))
 		if err != nil {
-			wm.logger.Printf("Failed to resolve peer address: %v", err)
+			wm.log.Warningf("Failed to resolve peer address: %v", err)
 			continue
 		}
 		wm.peers[NodeId(peerIp)] = addr
@@ -170,14 +171,14 @@ func (wm *WatchMesh) listenFromSocket(conn *net.UDPConn) {
 		// length of the OOB data, flags, remote address, and error.
 		size, _, _, remoteAddr, err := conn.ReadMsgUDP(buffer, oob)
 		if err != nil {
-			wm.logger.Printf("Error reading UDP: %v", err)
+			wm.log.Warningf("Error reading UDP: %v", err)
 			continue
 		}
 
 		// If the returned size exceeds our buffer length, it means
 		// the incoming packet was truncated. The excess bytes are lost.
 		if size > len(buffer) {
-			wm.logger.Printf(
+			wm.log.Warningf(
 				"Truncated UDP packet from %s (message too large: %d bytes > buffer %d)",
 				remoteAddr, size, len(buffer),
 			)
@@ -207,7 +208,7 @@ func (wm *WatchMesh) startUDPListener() error {
 	}
 
 	wm.conn = conn
-	wm.logger.Printf("Listening on port %d", wm.config.WatchMeshPort)
+	wm.log.Infof("Listening on port %d", wm.config.WatchMeshPort)
 
 	go func() {
 		wm.listenFromSocket(conn)
@@ -230,7 +231,7 @@ func (wm *WatchMesh) checkLiveness() {
 	now := time.Now()
 	for id, last := range wm.lastSeen {
 		if now.Sub(last) > wm.config.Timeout {
-			wm.logger.Printf("Heartbeat check: Node %s is down (last seen: %v)", id, last)
+			wm.log.Warningf("Heartbeat check: Node %s is down (last seen: %v)", id, last)
 
 			if id == wm.leaderID {
 				wm.startElection()
@@ -261,7 +262,7 @@ func (wm *WatchMesh) startElectionMonitor() {
 		wm.mutex.Unlock()
 
 		if noLeader && !inProgress {
-			wm.logger.Printf("ElectionMonitor: No leader known, triggering election")
+			wm.log.Info("ElectionMonitor: No leader known, triggering election")
 			wm.startElection()
 		}
 	}
@@ -285,7 +286,7 @@ func (wm *WatchMesh) GetLeaderID() string {
 func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 	msg, err := FromBytes(msgBytes)
 	if err != nil {
-		wm.logger.Printf("Failed to deserialize message: %v", err)
+		wm.log.Warningf("Failed to deserialize message: %v", err)
 		return
 	}
 
@@ -309,7 +310,7 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 		wm.handleCoordinator(senderID)
 
 	case ElectionOk:
-		wm.logger.Printf("Election: Received OK from node %s", msg.SenderID)
+		wm.log.Infof("Election: Received OK from node %s", msg.SenderID)
 
 	case LeaderDiscovery:
 		// If this node is a leader, respond with leader response
@@ -317,7 +318,7 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 			wm.mutex.Lock()
 			leaderID := wm.leaderID
 			wm.mutex.Unlock()
-			wm.logger.Printf("LeaderDiscovery: Responding to discovery from %s as leader %s", msg.SenderID, leaderID)
+			wm.log.Infof("LeaderDiscovery: Responding to discovery from %s as leader %s", msg.SenderID, leaderID)
 			msg := NewLeaderResponseMessage(string(wm.config.CurrentNodeID), string(leaderID))
 			wm.sendMessage(addr, msg)
 		}
@@ -325,12 +326,12 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 	case LeaderResponse:
 		leaderID := NodeId(msg.Payload)
 		if leaderID != "" {
-			wm.logger.Printf("LeaderDiscovery: Received response from %s claiming leader is %s, validating...", msg.SenderID, leaderID)
+			wm.log.Infof("LeaderDiscovery: Received response from %s claiming leader is %s, validating...", msg.SenderID, leaderID)
 			go wm.validateLeader(leaderID, addr)
 		}
 
 	case Broadcast:
-		wm.logger.Printf("Received broadcast from leader %s: %s", msg.SenderID, msg.Payload)
+		wm.log.Infof("Received broadcast from leader %s: %s", msg.SenderID, msg.Payload)
 	}
 }
 
@@ -372,7 +373,7 @@ func (wm *WatchMesh) startElection() {
 	// Guard against concurrent elections
 	wm.mutex.Lock()
 	if wm.electionInProgress {
-		wm.logger.Printf("Election: Already in progress, ignoring start request")
+		wm.log.Warning("Election: Already in progress, ignoring start request")
 		wm.mutex.Unlock()
 		return
 	}
@@ -380,7 +381,7 @@ func (wm *WatchMesh) startElection() {
 	wm.electionReceivedOK = false
 	wm.mutex.Unlock()
 
-	wm.logger.Printf("Starting election")
+	wm.log.Info("Starting election")
 	higherPeers := []NodeId{}
 	for id := range wm.peers {
 		if id > wm.config.CurrentNodeID {
@@ -389,7 +390,7 @@ func (wm *WatchMesh) startElection() {
 	}
 
 	if len(higherPeers) == 0 {
-		wm.logger.Printf("Election: No higher ID peers found, becoming leader")
+		wm.log.Info("Election: No higher ID peers found, becoming leader")
 		// End election and become leader
 		wm.mutex.Lock()
 		wm.electionInProgress = false
@@ -398,18 +399,18 @@ func (wm *WatchMesh) startElection() {
 		return
 	}
 
-	wm.logger.Printf("Election: Sending election messages to higher ID peers: %v", higherPeers)
+	wm.log.Infof("Election: Sending election messages to higher ID peers: %v", higherPeers)
 	// Send election messages to higher ID peers
 	for _, id := range higherPeers {
 		if addr, ok := wm.peers[id]; ok {
 			// Sender must be this node's ID
 			msg := NewElectionMessage(string(wm.config.CurrentNodeID))
 			wm.sendMessage(addr, msg)
-			wm.logger.Printf("Election: Sent election message to node %s", id)
+			wm.log.Infof("Election: Sent election message to node %s", id)
 		}
 	}
 
-	wm.logger.Printf("Election: Waiting up to %v for coordinator (non-blocking)", wm.config.Timeout)
+	wm.log.Infof("Election: Waiting up to %v for coordinator (non-blocking)", wm.config.Timeout)
 	// Non-blocking wait for coordinator: use a timer in a goroutine
 	go func(timeout time.Duration) {
 		timer := time.NewTimer(timeout)
@@ -422,11 +423,11 @@ func (wm *WatchMesh) startElection() {
 		wm.mutex.Lock()
 		if wm.electionInProgress && !wm.isLeader {
 			if !wm.electionReceivedOK {
-				wm.logger.Printf("Election: No OK and no coordinator within timeout; becoming leader")
+				wm.log.Info("Election: No OK and no coordinator within timeout; becoming leader")
 				wm.electionInProgress = false
 				shouldBecomeLeader = true
 			} else {
-				wm.logger.Printf("Election: Received OK but no coordinator within timeout; restarting election")
+				wm.log.Info("Election: Received OK but no coordinator within timeout; restarting election")
 				wm.electionInProgress = false
 				shouldRestartElection = true
 			}
@@ -443,11 +444,11 @@ func (wm *WatchMesh) startElection() {
 
 // handleElection handles incoming election messages
 func (wm *WatchMesh) handleElection(senderID int) {
-	wm.logger.Printf("Election: Received election message from node %d", senderID)
+	wm.log.Infof("Election: Received election message from node %d", senderID)
 	senderNodeID := NodeId(strconv.Itoa(senderID))
 
 	if senderNodeID < wm.config.CurrentNodeID {
-		wm.logger.Printf("Election: Responding to lower ID node %d with OK", senderID)
+		wm.log.Infof("Election: Responding to lower ID node %d with OK", senderID)
 		// Respond to lower ID node
 		if addr, ok := wm.peers[senderNodeID]; ok {
 			msg := NewElectionOkMessage(string(wm.config.CurrentNodeID))
@@ -460,48 +461,48 @@ func (wm *WatchMesh) handleElection(senderID int) {
 		wm.mutex.Unlock()
 
 		if !alreadyLeader && !inProgress {
-			wm.logger.Printf("Election: Starting own election as response to lower ID node")
+			wm.log.Info("Election: Starting own election as response to lower ID node")
 			wm.startElection()
 		} else if inProgress {
-			wm.logger.Printf("Election: Election already in progress, not starting another")
+			wm.log.Warning("Election: Election already in progress, not starting another")
 		}
 	} else {
-		wm.logger.Printf("Election: Ignoring election message from higher/equal ID node %d", senderID)
+		wm.log.Infof("Election: Ignoring election message from higher/equal ID node %d", senderID)
 	}
 }
 
 // handleCoordinator handles incoming coordinator messages
 func (wm *WatchMesh) handleCoordinator(senderID int) {
-	wm.logger.Printf("Election: Received coordinator message from node %d", senderID)
+	wm.log.Infof("Election: Received coordinator message from node %d", senderID)
 	wm.mutex.Lock()
 	wm.leaderID = NodeId(strconv.Itoa(senderID))
 	wm.isLeader = false
 	wm.electionInProgress = false
 	wm.electionReceivedOK = false
 	wm.mutex.Unlock()
-	wm.logger.Printf("Election: New leader elected - node %d", senderID)
+	wm.log.Infof("Election: New leader elected - node %d", senderID)
 }
 
 // becomeLeader sets this node as the leader
 func (wm *WatchMesh) becomeLeader() {
-	wm.logger.Printf("Election: Becoming leader")
+	wm.log.Info("Election: Becoming leader")
 	wm.mutex.Lock()
 	wm.isLeader = true
 	wm.leaderID = wm.config.CurrentNodeID
 	wm.electionInProgress = false
 	wm.electionReceivedOK = false
 	wm.mutex.Unlock()
-	wm.logger.Printf("Election: Broadcasting coordinator message to all peers")
+	wm.log.Info("Election: Broadcasting coordinator message to all peers")
 
 	// Broadcast to all peers
 	for id, addr := range wm.peers {
 		msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
 		wm.sendMessage(addr, msg)
-		wm.logger.Printf("Election: Sent coordinator message to node %s", id)
+		wm.log.Infof("Election: Sent coordinator message to node %s", id)
 	}
 
 	// Start leader tasks
-	wm.logger.Printf("Election: Starting leader tasks")
+	wm.log.Info("Election: Starting leader tasks")
 	go wm.leaderTask()
 }
 
@@ -513,7 +514,7 @@ func (wm *WatchMesh) leaderTask() {
 	for range ticker.C {
 		wm.mutex.Lock()
 		if wm.isLeader {
-			wm.logger.Printf("Leader broadcasting status")
+			wm.log.Info("Leader broadcasting status")
 			for _, addr := range wm.peers {
 				msg := NewBroadcastMessage(string(wm.config.CurrentNodeID), "Leader status update")
 				wm.sendMessage(addr, msg)
