@@ -68,11 +68,17 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetFloat64("filter.amount.minAmount"),
 	)
 
-	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
+	logger.Infof("RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
 		v.GetString("rabbitmq.host"),
 		v.GetInt("rabbitmq.port"),
 		v.GetString("rabbitmq.user"),
 		v.GetString("rabbitmq.pass"),
+	)
+
+	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs",
+		v.GetInt("watch_mesh.udp.port"),
+		v.GetInt("watchMesh.heartbeatIntervalSeconds"),
+		v.GetInt("watchMesh.heartbeatTimeoutSeconds"),
 	)
 }
 
@@ -119,7 +125,25 @@ func main() {
 
 	filterType := config.GetString("filter.type")
 
-	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig, amountConfig, filterId, filterCount)
+	watchMeshPort := config.GetInt("watch.mesh.udp.port")
+	heartbeatIntervalSecs := config.GetInt("watchMesh.heartbeatIntervalSeconds")
+	heartbeatTimeoutSecs := config.GetInt("watchMesh.heartbeatTimeoutSeconds")
+
+	basicWatchMeshConfig := filters.BasicWatchMeshConfig{
+		Port:                     watchMeshPort,
+		HeartbeatIntervalSeconds: heartbeatIntervalSecs,
+		HeartbeatTimeoutSeconds:  heartbeatTimeoutSecs,
+	}
+
+	filterWorker, err := filters.CreateFilterWorker(filterType,
+		rabbitConf,
+		yearConfig,
+		hourConfig,
+		amountConfig,
+		filterId,
+		filterCount,
+		basicWatchMeshConfig)
+
 	if err != nil {
 		logger.Errorf("Failed creating new filter worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)

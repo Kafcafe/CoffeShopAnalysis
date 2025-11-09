@@ -13,3 +13,9 @@ type HourFilterConfig struct {
 type AmountFilterConfig struct {
 	MinAmount float64
 }
+
+type BasicWatchMeshConfig struct {
+	Port                     int
+	HeartbeatIntervalSeconds int
+	HeartbeatTimeoutSeconds  int
+}

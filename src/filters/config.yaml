@@ -9,3 +9,6 @@ filter:
     minAmount: 75.0
 log:
   level: "INFO"
+watchMesh:
+  heartbeatIntervalSeconds: 3
+  heartbeatTimeoutSeconds: 10

@@ -3,6 +3,7 @@ package filters
 import (
 	"common/logger"
 	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
 	"os"
 	"os/signal"
@@ -31,6 +32,7 @@ type FilterGenericWorker struct {
 	clientsStatsMutex sync.Mutex
 	clientsStats      map[ClientId]*middleware.ClientStats
 	resultsChans      map[ClientId]map[DataType]chan middleware.MessageResultsResponse
+	watchMesh         *watch_mesh.WatchMesh
 }
 
 type MiddlewareHandlers struct {
@@ -47,7 +49,7 @@ func (f *FilterGenericWorker) handleSignal() {
 	f.Shutdown()
 }
 
-func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterConfig) (*FilterGenericWorker, error) {
+func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterConfig, watchMeshConfig watch_mesh.WatchMeshConfig) (*FilterGenericWorker, error) {
 	log := logger.GetLoggerWithPrefix("[FILTER" + config.id + "] ")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
@@ -67,6 +69,8 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
+	log.Info(watchMeshConfig)
+
 	return &FilterGenericWorker{
 		log:               log,
 		middlewareHandler: middlewareHandler,
@@ -78,6 +82,7 @@ func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterCon
 		clientsStatsMutex: sync.Mutex{},
 		clientsStats:      make(map[ClientId]*middleware.ClientStats),
 		resultsChans:      make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		watchMesh:         watch_mesh.NewWatchMesh(watchMeshConfig),
 	}, nil
 }
 
@@ -400,6 +405,8 @@ func (f *FilterGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 func (f *FilterGenericWorker) Run() error {
 	defer f.Shutdown()
 	go f.handleSignal()
+
+	f.watchMesh.Start()
 
 	err := f.createExchangeHandlers()
 	if err != nil {

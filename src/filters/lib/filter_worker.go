@@ -2,7 +2,9 @@ package filters
 
 import (
 	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
+	"time"
 )
 
 const (
@@ -75,6 +77,7 @@ func CreateFilterWorker(filterType string,
 	amountConfig AmountFilterConfig,
 	filterId string,
 	filterCount int,
+	basicWatchMeshConfig BasicWatchMeshConfig,
 ) (*FilterGenericWorker, error) {
 	var config FilterConfig
 
@@ -89,7 +92,27 @@ func CreateFilterWorker(filterType string,
 		return nil, fmt.Errorf("unknown filter type: %s", filterType)
 	}
 
-	filterWorker, err := NewFilterGenericWorker(rabbitConf, config)
+	// Prepare addresses for WatchMesh
+	peerAddresses := []string{}
+	myAddress := fmt.Sprintf("filter%s", config.id)
+	for i := 1; i < config.filtersCount+1; i++ {
+		peerIp := fmt.Sprintf("filter-%s%d", config.ofType, i)
+
+		if peerIp != myAddress {
+			peerAddresses = append(peerAddresses, peerIp)
+		}
+	}
+
+	heartbeatIntervalSeconds := time.Duration(basicWatchMeshConfig.HeartbeatIntervalSeconds) * time.Second
+	heartbeatTimeoutSeconds := time.Duration(basicWatchMeshConfig.HeartbeatTimeoutSeconds) * time.Second
+
+	watchMeshConfig := watch_mesh.NewWatchMeshConfig(config.id,
+		basicWatchMeshConfig.Port,
+		peerAddresses,
+		heartbeatIntervalSeconds,
+		heartbeatTimeoutSeconds)
+
+	filterWorker, err := NewFilterGenericWorker(rabbitConf, config, watchMeshConfig)
 	if err != nil {
 		return nil, err
 	}
