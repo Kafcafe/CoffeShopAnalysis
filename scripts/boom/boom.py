@@ -38,7 +38,7 @@ class Boom:
         if not candidates:
             raise RuntimeError("No suitable containers found to stop")
         is_a_valid_canditate = False
-        candidate = None
+        candidate = ""
         while not is_a_valid_canditate:
             choose_candidate = choice(candidates)
             filtered = [c for c in candidates if re.sub(r"\d", "", c) == re.sub(r"\d", "", choose_candidate)]
@@ -58,6 +58,7 @@ class Boom:
         self.__exec_command(commands.DOCKER_KILL, target)
 
     def __exec_command(self, command: str, target: str):
+        print(f"[+] 💥💀 Booming '{target}' 💀💥")
         file = self.configs.get("f", DOCKER_COMPOSE_FILE)
         sp.run(
             command.format(compose=file, dead_man=target),
@@ -68,7 +69,7 @@ class Boom:
     def __for_group(self):
         if not self.configs.get("t", None):
             print("No group specified")
-            return 
+            return
         containers = self.__get_containers()
         filtered = [c for c in containers if re.sub(r"\d", "", c) == self.configs.get("t")]
         if len(filtered) <= 1:
