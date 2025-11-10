@@ -19,50 +19,61 @@ const (
 
 type NodeId string
 
-// compareNodeIDs compares two NodeIds based on the last character as a number
+// compareNodeIDs compares two NodeIds based on the last character as a number.
+// Returns:
+//
+//	-1 if a < b
+//	 0 if a == b or if either ID is empty or the last character is not a digit
+//	 1 if a > b
 func compareNodeIDs(a, b NodeId) int {
 	aStr := string(a)
 	bStr := string(b)
+
 	if len(aStr) == 0 || len(bStr) == 0 {
 		return 0
 	}
+
 	aLast := aStr[len(aStr)-1]
 	bLast := bStr[len(bStr)-1]
+
 	aNum, errA := strconv.Atoi(string(aLast))
 	bNum, errB := strconv.Atoi(string(bLast))
+
 	if errA != nil || errB != nil {
 		return 0
 	}
+
 	if aNum < bNum {
 		return -1
 	} else if aNum > bNum {
 		return 1
 	}
+
 	return 0
 }
 
 // Config holds the configuration for a distributed node
 type WatchMeshConfig struct {
-	CurrentNodeID                   NodeId
-	WatchMeshPort                   int
-	PeerAddresses                   []string
-	NodeType                        string
-	HeartbeatInterval               time.Duration
-	HeartbeatTimeout                time.Duration
-	AddressResolvingRetries         int
-	AddressResolvingIntervalSeconds time.Duration
+	CurrentNodeID            NodeId
+	WatchMeshPort            int
+	PeerAddresses            []string
+	NodeType                 string
+	HeartbeatInterval        time.Duration
+	HeartbeatTimeout         time.Duration
+	AddressResolvingRetries  int
+	AddressResolvingInterval time.Duration
 }
 
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
-func NewWatchMeshConfig(currentNodeID string, watchMeshPort int, peerAddresses []string, heartbeatInt, timeout time.Duration, addressResolvingRetries int, addressResolvingIntervalSeconds time.Duration) WatchMeshConfig {
+func NewWatchMeshConfig(currentNodeID string, watchMeshPort int, peerAddresses []string, heartbeatInterval, heartbeatTimeout time.Duration, addressResolvingRetries int, addressResolvingInterval time.Duration) WatchMeshConfig {
 	return WatchMeshConfig{
-		CurrentNodeID:                   NodeId(currentNodeID),
-		WatchMeshPort:                   watchMeshPort,
-		PeerAddresses:                   peerAddresses,
-		HeartbeatInterval:               heartbeatInt,
-		HeartbeatTimeout:                timeout,
-		AddressResolvingRetries:         addressResolvingRetries,
-		AddressResolvingIntervalSeconds: addressResolvingIntervalSeconds,
+		CurrentNodeID:            NodeId(currentNodeID),
+		WatchMeshPort:            watchMeshPort,
+		PeerAddresses:            peerAddresses,
+		HeartbeatInterval:        heartbeatInterval,
+		HeartbeatTimeout:         heartbeatTimeout,
+		AddressResolvingRetries:  addressResolvingRetries,
+		AddressResolvingInterval: addressResolvingInterval,
 	}
 }
 
@@ -185,7 +196,7 @@ func (wm *WatchMesh) setupPeers() {
 				break
 			}
 			if retry < (wm.config.AddressResolvingRetries - 1) {
-				time.Sleep(wm.config.AddressResolvingIntervalSeconds)
+				time.Sleep(wm.config.AddressResolvingInterval)
 			}
 			wm.log.Infof("Retrying address resolution for '%v'", addrWithPort)
 		}

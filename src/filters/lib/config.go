@@ -16,8 +16,8 @@ type AmountFilterConfig struct {
 
 type BasicWatchMeshConfig struct {
 	Port                            int
-	HeartbeatIntervalSeconds        int
-	HeartbeatTimeoutSeconds         int
+	HeartbeatIntervalSeconds        float64
+	HeartbeatTimeoutSeconds         float64
 	AddressResolvingRetries         int
-	AddressResolvingIntervalSeconds int
+	AddressResolvingIntervalSeconds float64
 }

@@ -77,10 +77,10 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 
 	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs | addressResolvingRetries: %d | addressResolvingIntervalSeconds: %d",
 		v.GetInt("watch_mesh.udp.port"),
-		v.GetInt("watchMesh.heartbeatIntervalSeconds"),
-		v.GetInt("watchMesh.heartbeatTimeoutSeconds"),
+		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
+		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
 		v.GetInt("watchMesh.addressResolvingRetries"),
-		v.GetInt("watchMesh.addressResolvingIntervalSeconds"),
+		v.GetFloat64("watchMesh.addressResolvingIntervalSeconds"),
 	)
 }
 
@@ -128,10 +128,10 @@ func main() {
 	filterType := config.GetString("filter.type")
 
 	watchMeshPort := config.GetInt("watch.mesh.udp.port")
-	heartbeatIntervalSecs := config.GetInt("watchMesh.heartbeatIntervalSeconds")
-	heartbeatTimeoutSecs := config.GetInt("watchMesh.heartbeatTimeoutSeconds")
+	heartbeatIntervalSecs := config.GetFloat64("watchMesh.heartbeatIntervalSeconds")
+	heartbeatTimeoutSecs := config.GetFloat64("watchMesh.heartbeatTimeoutSeconds")
 	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
-	addressResolvingIntervalSeconds := config.GetInt("watchMesh.addressResolvingIntervalSeconds")
+	addressResolvingIntervalSeconds := config.GetFloat64("watchMesh.addressResolvingIntervalSeconds")
 
 	basicWatchMeshConfig := filters.BasicWatchMeshConfig{
 		Port:                            watchMeshPort,

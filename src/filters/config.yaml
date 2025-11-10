@@ -10,7 +10,7 @@ filter:
 log:
   level: "INFO"
 watchMesh:
-  heartbeatIntervalSeconds: 3
-  heartbeatTimeoutSeconds: 10
+  heartbeatIntervalSeconds: 2.0
+  heartbeatTimeoutSeconds: 10.0
   addressResolvingRetries: 3
-  addressResolvingIntervalSeconds: 1
+  addressResolvingIntervalSeconds: 1.0
