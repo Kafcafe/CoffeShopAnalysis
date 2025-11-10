@@ -72,6 +72,10 @@ func (wm *WatchMesh) Start() {
 func (wm *WatchMesh) discoverLeader() {
 	wm.log.Info("Starting LeaderDiscovery")
 
+	// Send LeaderDiscovery messages to all peers
+	wm.sendLeaderDiscoveryToPeers()
+
+	// Wait for discovery results with timeout
 	select {
 	case discoveredLeaderID := <-wm.discoverResultChan:
 		// Validated leader received
@@ -96,6 +100,40 @@ func (wm *WatchMesh) discoverLeader() {
 			wm.log.Info("Timeout but election already in progress")
 		}
 	}
+
+	// Mark discovery as finished
+	wm.mutex.Lock()
+	wm.leaderDiscoveryFinished = true
+	wm.mutex.Unlock()
+}
+
+// sendLeaderDiscoveryToPeers sends leader discovery messages to all peers
+func (wm *WatchMesh) sendLeaderDiscoveryToPeers() {
+	wm.log.Info("Sending LeaderDiscovery messages to all peers")
+
+	// Reset discovery state
+	wm.mutex.Lock()
+	wm.leaderDiscoveryFinished = false
+	wm.mutex.Unlock()
+
+	// Copy peers to avoid holding lock during I/O
+	wm.mutex.Lock()
+	peerAddrs := make([]*net.UDPAddr, 0, len(wm.peers))
+	for _, addr := range wm.peers {
+		peerAddrs = append(peerAddrs, addr)
+	}
+	wm.mutex.Unlock()
+
+	// Send LeaderDiscovery messages to all peers
+	for _, addr := range peerAddrs {
+		msg := NewLeaderDiscoveryMessage(string(wm.config.CurrentNodeID))
+		err := wm.sendMessage(addr, msg)
+		if err != nil {
+			wm.log.Errorf("Failed to send LeaderDiscovery to %s: %v", addr, err)
+		} else {
+			wm.log.Infof("Sent LeaderDiscovery to %s", addr)
+		}
+	}
 }
 
 func (wm *WatchMesh) validateFromChan(leaderID NodeId) {
@@ -107,6 +145,14 @@ func (wm *WatchMesh) validateFromChan(leaderID NodeId) {
 	for {
 		select {
 		case <-timer.C:
+			wm.mutex.Lock()
+			leaderDiscoveryFinished := wm.leaderDiscoveryFinished
+			wm.mutex.Unlock()
+
+			if leaderDiscoveryFinished {
+				return
+			}
+
 			// Timeout - no acknowledgment
 			wm.log.Warningf("No acknowledgment from %s within timeout", leaderID)
 			return
@@ -118,7 +164,13 @@ func (wm *WatchMesh) validateFromChan(leaderID NodeId) {
 			// We could check lastSeen here, but for simplicity assume success
 			wm.log.Infof("Leader %s validated successfully", leaderID)
 			// Send the validated leader ID through the channel
+
+			wm.mutex.Lock()
+			wm.leaderDiscoveryFinished = true
+			wm.mutex.Unlock()
+
 			wm.discoverResultChan <- leaderID
+			return
 		}
 	}
 }
@@ -137,9 +189,6 @@ func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) 
 		return
 	}
 	wm.validateFromChan(leaderID)
-	wm.mutex.Lock()
-	wm.leaderDiscoveryFinished = true
-	wm.mutex.Unlock()
 }
 
 // compareNodeIDs compares two NodeIds based on the last character as a number.
