@@ -21,7 +21,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o bin/zombie .
 
 # FROM busybox:latest
 
-FROM golang:1.25.1-alpine3.21
+FROM builder
 RUN apk add docker
 COPY --from=builder /build/bin/zombie /zombie
 RUN chmod +x /zombie
