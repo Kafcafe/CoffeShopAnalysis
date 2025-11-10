@@ -77,7 +77,7 @@ func CreateFilterWorker(filterType string,
 	amountConfig AmountFilterConfig,
 	filterId string,
 	filterCount int,
-	basicWatchMeshConfig BasicWatchMeshConfig,
+	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
 ) (*FilterGenericWorker, error) {
 	var config FilterConfig
 

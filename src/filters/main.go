@@ -3,6 +3,7 @@ package main
 import (
 	logger "common/logger"
 	middleware "common/middleware"
+	"common/watch_mesh"
 	filters "filters/lib"
 	"fmt"
 	"os"
@@ -133,13 +134,13 @@ func main() {
 	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
 	addressResolvingIntervalSeconds := config.GetFloat64("watchMesh.addressResolvingIntervalSeconds")
 
-	basicWatchMeshConfig := filters.BasicWatchMeshConfig{
-		Port:                            watchMeshPort,
-		HeartbeatIntervalSeconds:        heartbeatIntervalSecs,
-		HeartbeatTimeoutSeconds:         heartbeatTimeoutSecs,
-		AddressResolvingRetries:         addressResolvingRetries,
-		AddressResolvingIntervalSeconds: addressResolvingIntervalSeconds,
-	}
+	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
+		watchMeshPort,
+		heartbeatIntervalSecs,
+		heartbeatTimeoutSecs,
+		addressResolvingRetries,
+		addressResolvingIntervalSeconds,
+	)
 
 	filterWorker, err := filters.CreateFilterWorker(filterType,
 		rabbitConf,
