@@ -49,7 +49,11 @@ func (f *FilterGenericWorker) handleSignal() {
 	f.Shutdown()
 }
 
-func NewFilterGenericWorker(rabbitConf middleware.RabbitConfig, config FilterConfig, watchMeshConfig watch_mesh.WatchMeshConfig) (*FilterGenericWorker, error) {
+func NewFilterGenericWorker(
+	rabbitConf middleware.RabbitConfig,
+	config FilterConfig,
+	watchMeshConfig watch_mesh.WatchMeshConfig,
+) (*FilterGenericWorker, error) {
 	log := logger.GetLoggerWithPrefix("[FILTER" + config.id + "] ")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
