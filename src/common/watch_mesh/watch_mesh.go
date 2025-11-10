@@ -59,13 +59,15 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 }
 
 func (wm *WatchMesh) Start() {
-	wm.setupPeers()
-	wm.startUDPListener()
+	go func() {
+		wm.setupPeers()
+		wm.startUDPListener()
 
-	wm.discoverLeader()
+		wm.discoverLeader()
 
-	go wm.runHeartbeat()
-	go wm.runElectionMonitor()
+		go wm.runHeartbeat()
+		go wm.runElectionMonitor()
+	}()
 }
 
 // discoverLeader queries all peers for the current leader
