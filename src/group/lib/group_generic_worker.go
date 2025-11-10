@@ -3,6 +3,7 @@ package group
 import (
 	"common/logger"
 	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
 	"group/structures"
 	"os"
@@ -43,9 +44,14 @@ type GroupByGenericWorker struct {
 	// new eof
 	clientsStats map[ClientId]*middleware.ClientStats
 	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
+	watchMesh    *watch_mesh.WatchMesh
 }
 
-func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByConfig) (*GroupByGenericWorker, error) {
+func NewGroupByGenericWorker(
+	rabbitConf middleware.RabbitConfig,
+	conf GroupByConfig,
+	watchMeshConfig watch_mesh.WatchMeshConfig,
+) (*GroupByGenericWorker, error) {
 	log := logger.GetLoggerWithPrefix("[GROUP-" + conf.id + "] ")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
@@ -79,6 +85,7 @@ func NewGroupByGenericWorker(rabbitConf middleware.RabbitConfig, conf GroupByCon
 
 		clientsStats: make(map[ClientId]*middleware.ClientStats),
 		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		watchMesh:    watch_mesh.NewWatchMesh(watchMeshConfig),
 	}, nil
 }
 
@@ -409,6 +416,8 @@ func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) mid
 func (g *GroupByGenericWorker) Run() error {
 	defer g.Shutdown()
 	go g.handleSignal()
+
+	g.watchMesh.Start()
 
 	err := g.createExchangeHandlers()
 	if err != nil {

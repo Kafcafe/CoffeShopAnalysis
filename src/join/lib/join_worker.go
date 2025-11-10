@@ -2,7 +2,9 @@ package join
 
 import (
 	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
+	"time"
 )
 
 const (
@@ -87,10 +89,12 @@ func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
-func CreateJoinerWorker(joinItemsType string,
+func CreateJoinerWorker(
+	joinItemsType string,
 	rabbitConf middleware.RabbitConfig,
 	joinerId string,
 	joinerCount int,
+	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
 ) (*JoinItemsWorker, error) {
 
 	var joinItemsWorker JoinItemsWorker
@@ -109,7 +113,34 @@ func CreateJoinerWorker(joinItemsType string,
 	default:
 		return nil, fmt.Errorf("unknown joiner type: %s", joinItemsType)
 	}
-	joinItemsWorker, err = NewJoinWorker(rabbitConf, config)
+
+	// Prepare addresses for WatchMesh
+	peerAddresses := []string{}
+	myAddress := fmt.Sprintf("join%s", config.id)
+	for i := 1; i < config.count+1; i++ {
+		peerIp := fmt.Sprintf("join-%s%d", config.ofType, i)
+
+		if peerIp != myAddress {
+			peerAddresses = append(peerAddresses, peerIp)
+		}
+	}
+
+	heartbeatIntervalSeconds := time.Duration(basicWatchMeshConfig.HeartbeatIntervalSeconds) * time.Second
+	heartbeatTimeoutSeconds := time.Duration(basicWatchMeshConfig.HeartbeatTimeoutSeconds) * time.Second
+	addressResolvingIntervalSeconds := time.Duration(basicWatchMeshConfig.AddressResolvingIntervalSeconds) * 1000 * time.Millisecond
+
+	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
+		config.id,
+		basicWatchMeshConfig.Port,
+		peerAddresses,
+		heartbeatIntervalSeconds,
+		heartbeatTimeoutSeconds,
+		basicWatchMeshConfig.AddressResolvingRetries,
+		addressResolvingIntervalSeconds,
+		basicWatchMeshConfig.ShowHeartbeatLogs,
+	)
+
+	joinItemsWorker, err = NewJoinWorker(rabbitConf, config, watchMeshConfig)
 	if err != nil {
 		return nil, err
 	}

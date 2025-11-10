@@ -3,6 +3,7 @@ package main
 import (
 	logger "common/logger"
 	middleware "common/middleware"
+	"common/watch_mesh"
 	"fmt"
 	join "join/lib"
 	"os"
@@ -60,6 +61,17 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetString("rabbitmq.user"),
 		v.GetString("rabbitmq.pass"),
 	)
+
+	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | "+
+		"heartbeatTimeous: %d secs | addressResolvingRetries: %.1f | "+
+		"addressResolvingIntervalSeconds: %d | showHeartbeatLogs: %v",
+		v.GetInt("watch_mesh.udp.port"),
+		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
+		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
+		v.GetInt("watchMesh.addressResolvingRetries"),
+		v.GetFloat64("watchMesh.addressResolvingIntervalSeconds"),
+		v.GetBool("watchMesh.showHeartbeatLogs"),
+	)
 }
 
 func main() {
@@ -90,7 +102,30 @@ func main() {
 	joinerCount := config.GetInt("join.count")
 	joinerType := config.GetString("join.type")
 
-	joinItemsWorker, err := join.CreateJoinerWorker(joinerType, rabbitConf, joinerId, joinerCount)
+	watchMeshPort := config.GetInt("watch.mesh.udp.port")
+	heartbeatIntervalSecs := config.GetFloat64("watchMesh.heartbeatIntervalSeconds")
+	heartbeatTimeoutSecs := config.GetFloat64("watchMesh.heartbeatTimeoutSeconds")
+	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
+	addressResolvingIntervalSeconds := config.GetFloat64("watchMesh.addressResolvingIntervalSeconds")
+	showHeartbeatLogs := config.GetBool("watchMesh.showHeartbeatLogs")
+
+	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
+		watchMeshPort,
+		heartbeatIntervalSecs,
+		heartbeatTimeoutSecs,
+		addressResolvingRetries,
+		addressResolvingIntervalSeconds,
+		showHeartbeatLogs,
+	)
+
+	joinItemsWorker, err := join.CreateJoinerWorker(
+		joinerType,
+		rabbitConf,
+		joinerId,
+		joinerCount,
+		basicWatchMeshConfig,
+	)
+
 	if err != nil {
 		logger.Errorf("Failed creating new joiner worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)

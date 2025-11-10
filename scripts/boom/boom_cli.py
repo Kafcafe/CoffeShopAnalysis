@@ -25,4 +25,10 @@ class BoomCli:
             type=str,
             help="The docker compose file to use",
         )
-        return self.internal_parser.parse_args()
+        args = self.internal_parser.parse_args()
+        
+        # Infer mode="target" when a target is provided
+        if hasattr(args, 't') and args.t is not None and args.mode == "random":
+            args.mode = "target"
+        
+        return args

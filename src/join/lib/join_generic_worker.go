@@ -3,6 +3,7 @@ package join
 import (
 	"common/logger"
 	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
 	"os"
 	"os/signal"
@@ -37,6 +38,7 @@ type JoinGenericWorker struct {
 	sideTableReceived map[ClientId]chan int
 
 	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
+	watchMesh    *watch_mesh.WatchMesh
 }
 
 type JoinMiddlewareHandlers struct {
@@ -62,7 +64,11 @@ func (j *JoinGenericWorker) handleSignal() {
 	j.Shutdown()
 }
 
-func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) (*JoinGenericWorker, error) {
+func NewJoinWorker(
+	rabbitConf middleware.RabbitConfig,
+	config JoinWorkerConfig,
+	watchMeshConfig watch_mesh.WatchMeshConfig,
+) (*JoinGenericWorker, error) {
 	log := logger.GetLoggerWithPrefix("[JOINER-" + config.id + "]")
 
 	log.Infof("Establishing connection with RabbitMQ on address %s:%d", rabbitConf.Host, rabbitConf.Port)
@@ -100,6 +106,7 @@ func NewJoinWorker(rabbitConf middleware.RabbitConfig, config JoinWorkerConfig) 
 		sideTableReceived: make(map[ClientId]chan int),
 
 		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		watchMesh:    watch_mesh.NewWatchMesh(watchMeshConfig),
 	}, nil
 }
 
@@ -536,6 +543,8 @@ func (j *JoinGenericWorker) parseOnlyAlreadyJoinedLines(lines []string) []string
 
 func (j *JoinGenericWorker) Run() error {
 	go j.handleSignal()
+
+	j.watchMesh.Start()
 
 	err := j.createExchangeHandlers()
 	if err != nil {

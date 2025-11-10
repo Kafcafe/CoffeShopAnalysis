@@ -2,8 +2,10 @@ package group
 
 import (
 	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
 	"group/structures"
+	"time"
 
 	"github.com/op/go-logging"
 	"github.com/spf13/viper"
@@ -62,38 +64,80 @@ func GroupByTopKConfig(groupId string, groupCount int, k int) GroupByConfig {
 	}
 }
 
-func CreateGroupByWorker(groupType string,
+func createWatchMeshConfig(
+	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
+	id string,
+	groupsCount int,
+	ofType string,
+) watch_mesh.WatchMeshConfig {
+	// Prepare addresses for WatchMesh
+	peerAddresses := []string{}
+	myAddress := fmt.Sprintf("group%s", id)
+	for i := 1; i < groupsCount+1; i++ {
+		peerIp := fmt.Sprintf("group-%s%d", ofType, i)
+
+		if peerIp != myAddress {
+			peerAddresses = append(peerAddresses, peerIp)
+		}
+	}
+
+	heartbeatIntervalSeconds := time.Duration(basicWatchMeshConfig.HeartbeatIntervalSeconds) * time.Second
+	heartbeatTimeoutSeconds := time.Duration(basicWatchMeshConfig.HeartbeatTimeoutSeconds) * time.Second
+	addressResolvingIntervalSeconds := time.Duration(basicWatchMeshConfig.AddressResolvingIntervalSeconds) * 1000 * time.Millisecond
+
+	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
+		id,
+		basicWatchMeshConfig.Port,
+		peerAddresses,
+		heartbeatIntervalSeconds,
+		heartbeatTimeoutSeconds,
+		basicWatchMeshConfig.AddressResolvingRetries,
+		addressResolvingIntervalSeconds,
+		basicWatchMeshConfig.ShowHeartbeatLogs,
+	)
+
+	return watchMeshConfig
+}
+
+func CreateGroupByWorker(
+	groupType string,
 	rabbitConf middleware.RabbitConfig,
 	groupId string,
 	groupCount int,
 	envConfig *viper.Viper,
 	logger *logging.Logger,
+	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
 ) (*GroupByWorker, error) {
-
 	var groupByWorker GroupByWorker
 	var err error
 
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:
 		config := GroupByYearMonthConfig(groupId, groupCount)
-		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config)
+		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
+		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 		if err != nil {
 			return nil, err
 		}
+
 	case GROUP_TYPE_SEMESTER:
 		config := GroupBySemesterConfig(groupId, groupCount)
-		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config)
+		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
+		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 		if err != nil {
 			return nil, err
 		}
+
 	case GROUP_TYPE_TOPK:
 		Kconfig := envConfig.GetInt("k")
 		logger.Infof("GroupBy type %s using k: %d", GROUP_TYPE_TOPK, Kconfig)
 		config := GroupByTopKConfig(groupId, groupCount, Kconfig)
-		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config)
+		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
+		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 		if err != nil {
 			return nil, err
 		}
+
 	default:
 		return nil, fmt.Errorf("unknown groupBy type: %s", groupType)
 	}
