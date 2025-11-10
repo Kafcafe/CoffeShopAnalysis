@@ -75,7 +75,7 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetString("rabbitmq.pass"),
 	)
 
-	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs | addressResolvingRetries: %d | addressResolvingIntervalSeconds: %d",
+	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs | addressResolvingRetries: %.1f | addressResolvingIntervalSeconds: %d",
 		v.GetInt("watch_mesh.udp.port"),
 		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
 		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
