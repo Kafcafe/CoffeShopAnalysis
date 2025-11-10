@@ -70,7 +70,8 @@ func FilterByAmountConfig(filterId string, filterCount int, amountConfig AmountF
 	}
 }
 
-func CreateFilterWorker(filterType string,
+func CreateFilterWorker(
+	filterType string,
 	rabbitConf middleware.RabbitConfig,
 	yearConfig YearFilterConfig,
 	hourConfig HourFilterConfig,
