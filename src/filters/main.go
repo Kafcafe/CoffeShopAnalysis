@@ -50,7 +50,7 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("Filter startup with: id: %s | filterCount : %d",
+	logger.Infof("Filter startup with: id: %s | filterCount: %d",
 		v.GetString("filter.id"), v.GetInt("filter.count"),
 	)
 
@@ -59,7 +59,7 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetInt("filter.year.toYear"),
 	)
 
-	logger.Infof("Config for filter by hour: fromYear: fromHour: %d | toHour: %d",
+	logger.Infof("Config for filter by hour: fromHour: %d | toHour: %d",
 		v.GetInt("filter.hour.fromHour"),
 		v.GetInt("filter.hour.toHour"),
 	)
@@ -75,10 +75,12 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetString("rabbitmq.pass"),
 	)
 
-	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs",
+	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs | addressResolvingRetries: %d | addressResolvingIntervalSeconds: %d",
 		v.GetInt("watch_mesh.udp.port"),
 		v.GetInt("watchMesh.heartbeatIntervalSeconds"),
 		v.GetInt("watchMesh.heartbeatTimeoutSeconds"),
+		v.GetInt("watchMesh.addressResolvingRetries"),
+		v.GetInt("watchMesh.addressResolvingIntervalSeconds"),
 	)
 }
 
@@ -128,11 +130,15 @@ func main() {
 	watchMeshPort := config.GetInt("watch.mesh.udp.port")
 	heartbeatIntervalSecs := config.GetInt("watchMesh.heartbeatIntervalSeconds")
 	heartbeatTimeoutSecs := config.GetInt("watchMesh.heartbeatTimeoutSeconds")
+	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
+	addressResolvingIntervalSeconds := config.GetInt("watchMesh.addressResolvingIntervalSeconds")
 
 	basicWatchMeshConfig := filters.BasicWatchMeshConfig{
-		Port:                     watchMeshPort,
-		HeartbeatIntervalSeconds: heartbeatIntervalSecs,
-		HeartbeatTimeoutSeconds:  heartbeatTimeoutSecs,
+		Port:                            watchMeshPort,
+		HeartbeatIntervalSeconds:        heartbeatIntervalSecs,
+		HeartbeatTimeoutSeconds:         heartbeatTimeoutSecs,
+		AddressResolvingRetries:         addressResolvingRetries,
+		AddressResolvingIntervalSeconds: addressResolvingIntervalSeconds,
 	}
 
 	filterWorker, err := filters.CreateFilterWorker(filterType,

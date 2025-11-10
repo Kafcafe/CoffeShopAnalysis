@@ -43,22 +43,26 @@ func compareNodeIDs(a, b NodeId) int {
 
 // Config holds the configuration for a distributed node
 type WatchMeshConfig struct {
-	CurrentNodeID     NodeId
-	WatchMeshPort     int
-	PeerAddresses     []string
-	NodeType          string
-	HeartbeatInterval time.Duration
-	Timeout           time.Duration
+	CurrentNodeID                   NodeId
+	WatchMeshPort                   int
+	PeerAddresses                   []string
+	NodeType                        string
+	HeartbeatInterval               time.Duration
+	HeartbeatTimeout                time.Duration
+	AddressResolvingRetries         int
+	AddressResolvingIntervalSeconds time.Duration
 }
 
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
-func NewWatchMeshConfig(currentNodeID string, watchMeshPort int, peerAddresses []string, heartbeatInt, timeout time.Duration) WatchMeshConfig {
+func NewWatchMeshConfig(currentNodeID string, watchMeshPort int, peerAddresses []string, heartbeatInt, timeout time.Duration, addressResolvingRetries int, addressResolvingIntervalSeconds time.Duration) WatchMeshConfig {
 	return WatchMeshConfig{
-		CurrentNodeID:     NodeId(currentNodeID),
-		WatchMeshPort:     watchMeshPort,
-		PeerAddresses:     peerAddresses,
-		HeartbeatInterval: heartbeatInt,
-		Timeout:           timeout,
+		CurrentNodeID:                   NodeId(currentNodeID),
+		WatchMeshPort:                   watchMeshPort,
+		PeerAddresses:                   peerAddresses,
+		HeartbeatInterval:               heartbeatInt,
+		HeartbeatTimeout:                timeout,
+		AddressResolvingRetries:         addressResolvingRetries,
+		AddressResolvingIntervalSeconds: addressResolvingIntervalSeconds,
 	}
 }
 
@@ -119,7 +123,7 @@ func (wm *WatchMesh) discoverLeader() {
 		wm.mutex.Unlock()
 		wm.log.Infof("Leader discovered and validated: %s", discoveredLeaderID)
 		return
-	case <-time.After(wm.config.Timeout):
+	case <-time.After(wm.config.HeartbeatTimeout):
 		// Timeout - no validated leader received
 		wm.mutex.Lock()
 		notInProgress := !wm.electionInProgress
@@ -146,7 +150,7 @@ func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) 
 	}
 
 	// Wait for heartbeat acknowledgment with timeout
-	timeout := wm.config.Timeout
+	timeout := wm.config.HeartbeatTimeout
 	timer := time.NewTimer(timeout)
 	defer timer.Stop()
 
@@ -171,21 +175,25 @@ func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) 
 func (wm *WatchMesh) setupPeers() {
 	for _, peerAddress := range wm.config.PeerAddresses {
 		addrWithPort := fmt.Sprintf("%s:%d", peerAddress, wm.config.WatchMeshPort)
+
 		var addrWithPortResolved *net.UDPAddr
 		var err error
-		for retry := 0; retry < 3; retry++ {
+
+		for retry := 0; retry < wm.config.AddressResolvingRetries; retry++ {
 			addrWithPortResolved, err = net.ResolveUDPAddr("udp", addrWithPort)
 			if err == nil {
 				break
 			}
-			if retry < 2 {
-				time.Sleep(1 * time.Second)
+			if retry < (wm.config.AddressResolvingRetries - 1) {
+				time.Sleep(wm.config.AddressResolvingIntervalSeconds)
 			}
+			wm.log.Infof("Retrying address resolution for '%v'", addrWithPort)
 		}
 		if err != nil {
 			wm.log.Warningf("Failed to resolve peer address '%v' after 3 retries: %v", addrWithPort, err)
 			continue
 		}
+		wm.log.Infof("Resolved address for '%v': %v", addrWithPort, addrWithPortResolved)
 		wm.peers[NodeId(peerAddress)] = addrWithPortResolved
 	}
 }
@@ -279,7 +287,7 @@ func (wm *WatchMesh) checkLiveness() {
 	now := time.Now()
 
 	for id, last := range wm.lastSeen {
-		if now.Sub(last) > wm.config.Timeout {
+		if now.Sub(last) > wm.config.HeartbeatTimeout {
 			wm.log.Warningf("Heartbeat check: Node %s is down (last seen: %.0f seconds ago)", id, now.Sub(last).Seconds())
 
 			if id == wm.leaderID {
@@ -469,7 +477,7 @@ func (wm *WatchMesh) startElection() {
 		}
 	}
 
-	wm.log.Infof("Waiting up to %v for coordinator message", wm.config.Timeout)
+	wm.log.Infof("Waiting up to %v for coordinator message", wm.config.HeartbeatTimeout)
 	// Non-blocking wait for coordinator: use a timer in a goroutine
 	go func(timeout time.Duration) {
 		timer := time.NewTimer(timeout)
@@ -498,7 +506,7 @@ func (wm *WatchMesh) startElection() {
 		} else if shouldRestartElection {
 			wm.startElection()
 		}
-	}(wm.config.Timeout)
+	}(wm.config.HeartbeatTimeout)
 }
 
 // handleElection handles incoming election messages
