@@ -64,8 +64,8 @@ func (wm *WatchMesh) Start() {
 
 	wm.discoverLeader()
 
-	go wm.startHeartbeat()
-	go wm.startElectionMonitor()
+	go wm.runHeartbeat()
+	go wm.runElectionMonitor()
 }
 
 // discoverLeader queries all peers for the current leader
@@ -243,7 +243,7 @@ func (wm *WatchMesh) setupPeers() {
 			wm.log.Infof("Retrying address resolution for '%v'", addrWithPort)
 		}
 		if err != nil {
-			wm.log.Warningf("Failed to resolve peer address '%v' after 3 retries: %v", addrWithPort, err)
+			wm.log.Warningf("Failed to resolve peer address '%v' after %d retries: %v", addrWithPort, wm.config.AddressResolvingRetries, err)
 			continue
 		}
 		wm.log.Infof("Resolved address for '%v': %v", addrWithPort, addrWithPortResolved)
@@ -322,7 +322,9 @@ func (wm *WatchMesh) sendHeartbeatPings() {
 		amILeaderPrefix = "[L]"
 	}
 
-	wm.log.Infof("%s Sending heartbeat to peers", amILeaderPrefix)
+	if wm.config.ShowHeartbeatLogs {
+		wm.log.Infof("%s Sending heartbeat to peers", amILeaderPrefix)
+	}
 
 	// Copy peers to avoid holding lock during I/O
 	peerAddrs := make([]*net.UDPAddr, 0, len(wm.peers))
@@ -370,7 +372,7 @@ func (wm *WatchMesh) checkLiveness() {
 	}
 }
 
-func (wm *WatchMesh) startHeartbeat() {
+func (wm *WatchMesh) runHeartbeat() {
 	wm.log.Info("Starting Heartbeat")
 	ticker := time.NewTicker(wm.config.HeartbeatInterval)
 	defer ticker.Stop()
@@ -381,7 +383,7 @@ func (wm *WatchMesh) startHeartbeat() {
 	}
 }
 
-func (wm *WatchMesh) startElectionMonitor() {
+func (wm *WatchMesh) runElectionMonitor() {
 	wm.log.Info("Starting election monitoring")
 	ticker := time.NewTicker(wm.config.HeartbeatInterval)
 	defer ticker.Stop()
@@ -447,7 +449,9 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 			}
 		}
 
-		wm.log.Infof("HeartbeatAck from '%s'", msg.SenderID)
+		if wm.config.ShowHeartbeatLogs {
+			wm.log.Infof("HeartbeatAck from '%s'", msg.SenderID)
+		}
 
 	case Election:
 		wm.handleElection(msg.SenderID)
@@ -537,7 +541,7 @@ func (wm *WatchMesh) startElection() {
 	// Guard against concurrent elections
 	wm.mutex.Lock()
 	if wm.electionInProgress {
-		wm.log.Warning("Election already in progress, ignoring election start request")
+		wm.log.Info("Election already in progress, ignoring election start request")
 		wm.mutex.Unlock()
 		return
 	}
@@ -575,7 +579,7 @@ func (wm *WatchMesh) startElection() {
 		}
 	}
 
-	wm.log.Infof("Waiting up to %v for coordinator message", wm.config.HeartbeatTimeout)
+	wm.log.Infof("Waiting up to %v for coordinator message", wm.config.HeartbeatInterval)
 	// Non-blocking wait for coordinator: use a timer in a goroutine
 	go func(timeout time.Duration) {
 		timer := time.NewTimer(timeout)
@@ -606,7 +610,7 @@ func (wm *WatchMesh) startElection() {
 			// This is safe because we set electionInProgress=false above
 			wm.startElection()
 		}
-	}(wm.config.HeartbeatTimeout)
+	}(wm.config.HeartbeatInterval)
 }
 
 // handleElection handles incoming election messages

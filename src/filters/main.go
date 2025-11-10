@@ -76,12 +76,15 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetString("rabbitmq.pass"),
 	)
 
-	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | heartbeatTimeous: %d secs | addressResolvingRetries: %.1f | addressResolvingIntervalSeconds: %d",
+	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %d secs | "+
+		"heartbeatTimeous: %d secs | addressResolvingRetries: %.1f | "+
+		"addressResolvingIntervalSeconds: %d | showHeartbeatLogs: %v",
 		v.GetInt("watch_mesh.udp.port"),
 		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
 		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
 		v.GetInt("watchMesh.addressResolvingRetries"),
 		v.GetFloat64("watchMesh.addressResolvingIntervalSeconds"),
+		v.GetBool("watchMesh.showHeartbeatLogs"),
 	)
 }
 
@@ -133,6 +136,7 @@ func main() {
 	heartbeatTimeoutSecs := config.GetFloat64("watchMesh.heartbeatTimeoutSeconds")
 	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
 	addressResolvingIntervalSeconds := config.GetFloat64("watchMesh.addressResolvingIntervalSeconds")
+	showHeartbeatLogs := config.GetBool("watchMesh.showHeartbeatLogs")
 
 	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
 		watchMeshPort,
@@ -140,16 +144,19 @@ func main() {
 		heartbeatTimeoutSecs,
 		addressResolvingRetries,
 		addressResolvingIntervalSeconds,
+		showHeartbeatLogs,
 	)
 
-	filterWorker, err := filters.CreateFilterWorker(filterType,
+	filterWorker, err := filters.CreateFilterWorker(
+		filterType,
 		rabbitConf,
 		yearConfig,
 		hourConfig,
 		amountConfig,
 		filterId,
 		filterCount,
-		basicWatchMeshConfig)
+		basicWatchMeshConfig,
+	)
 
 	if err != nil {
 		logger.Errorf("Failed creating new filter worker: %s", err)

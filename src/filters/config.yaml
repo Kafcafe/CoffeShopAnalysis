@@ -14,3 +14,4 @@ watchMesh:
   heartbeatTimeoutSeconds: 10.0
   addressResolvingRetries: 3
   addressResolvingIntervalSeconds: 1.0
+  showHeartbeatLogs: true

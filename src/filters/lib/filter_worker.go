@@ -107,13 +107,16 @@ func CreateFilterWorker(filterType string,
 	heartbeatTimeoutSeconds := time.Duration(basicWatchMeshConfig.HeartbeatTimeoutSeconds) * time.Second
 	addressResolvingIntervalSeconds := time.Duration(basicWatchMeshConfig.AddressResolvingIntervalSeconds) * 1000 * time.Millisecond
 
-	watchMeshConfig := watch_mesh.NewWatchMeshConfig(config.id,
+	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
+		config.id,
 		basicWatchMeshConfig.Port,
 		peerAddresses,
 		heartbeatIntervalSeconds,
 		heartbeatTimeoutSeconds,
 		basicWatchMeshConfig.AddressResolvingRetries,
-		addressResolvingIntervalSeconds)
+		addressResolvingIntervalSeconds,
+		basicWatchMeshConfig.ShowHeartbeatLogs,
+	)
 
 	filterWorker, err := NewFilterGenericWorker(rabbitConf, config, watchMeshConfig)
 	if err != nil {
