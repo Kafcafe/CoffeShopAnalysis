@@ -20,8 +20,7 @@ COPY ./join .
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/join .
 
 
-FROM builder
-RUN apk add docker
+FROM docker:28.5.2-dind-alpine3.22
 COPY --from=builder /build/bin/join /join
 RUN chmod +x /join
 ENTRYPOINT ["/join"]

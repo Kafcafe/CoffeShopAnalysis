@@ -20,8 +20,7 @@ COPY ./filters .
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/filter .
 
 
-FROM builder
-RUN apk add docker
+FROM docker:28.5.2-dind-alpine3.22 
 COPY --from=builder /build/bin/filter /filter
 RUN chmod +x /filter
 ENTRYPOINT ["/filter"]
