@@ -712,8 +712,6 @@ func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
 		return
 	}
 
-	wm.log.Infof("Trying to resurrect peer with ID '%s'. FEATURE NOT IMPLEMENTED", string(peerId))
-	// Respawn currently does not return an error, so call it directly.
 	node := fmt.Sprintf("%s%s", wm.config.NodeType, string(peerId))
 	wm.log.Infof("Resurrecting peer with type '%s'", wm.config.NodeType)
 	wm.respawner.Respawn(node)
