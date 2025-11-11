@@ -117,6 +117,7 @@ func CreateFilterWorker(
 		basicWatchMeshConfig.AddressResolvingRetries,
 		addressResolvingIntervalSeconds,
 		basicWatchMeshConfig.ShowHeartbeatLogs,
+		"filter",
 	)
 
 	filterWorker, err := NewFilterGenericWorker(rabbitConf, config, watchMeshConfig)

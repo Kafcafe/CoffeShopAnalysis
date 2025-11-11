@@ -60,6 +60,8 @@ class Boom:
     def __exec_command(self, command: str, target: str):
         print(f"[+] 💥💀 Booming '{target}' 💀💥")
         file = self.configs.get("f", DOCKER_COMPOSE_FILE)
+        if not file: 
+            file = DOCKER_COMPOSE_FILE
         sp.run(
             command.format(compose=file, dead_man=target),
             shell=True,

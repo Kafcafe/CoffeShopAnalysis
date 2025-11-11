@@ -2,6 +2,7 @@ package watch_mesh
 
 import (
 	"common/logger"
+	"common/respawner"
 	"fmt"
 	"net"
 	"strconv"
@@ -35,6 +36,7 @@ type WatchMesh struct {
 	leaderDiscoveryFinished         bool
 	mutex                           sync.Mutex
 	log                             *logging.Logger
+	respawner                       *respawner.Respawner
 }
 
 // NewNode creates a new distributed node
@@ -55,6 +57,7 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 		leaderDiscoveryFinished:         false,
 		mutex:                           sync.Mutex{},
 		log:                             logger,
+		respawner:                       respawner.NewRespawner(),
 	}
 }
 
@@ -338,7 +341,10 @@ func (wm *WatchMesh) sendHeartbeatPings() {
 	// Send messages WITHOUT holding the lock
 	for _, addr := range peerAddrs {
 		msg := NewHeartbeatMessage(string(wm.config.CurrentNodeID))
-		wm.sendMessage(addr, msg)
+		err := wm.sendMessage(addr, msg)
+		if err != nil {
+			wm.log.Warningf("Failed to send heartbeat to %s: %v", addr, err)
+		}
 	}
 }
 
@@ -706,5 +712,8 @@ func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
 		return
 	}
 
-	wm.log.Infof("Trying to resurrect peer with ID '%s'. FEATURE NOT IMPLEMENTED", string(peerId))
+	node := fmt.Sprintf("%s%s", wm.config.NodeType, string(peerId))
+	wm.log.Infof("Resurrecting peer with type '%s'", wm.config.NodeType)
+	wm.respawner.Respawn(node)
+	wm.log.Infof("Resurrect command issued for peer with ID '%s'", node)
 }
