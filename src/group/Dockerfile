@@ -20,7 +20,8 @@ COPY ./group .
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/group .
 
 
-FROM busybox:latest
+FROM builder
+RUN apk add docker
 COPY --from=builder /build/bin/group /group
 RUN chmod +x /group
 ENTRYPOINT ["/group"]

@@ -2,6 +2,7 @@ package respawner
 
 import (
 	"common/logger"
+	"fmt"
 	"os/exec"
 	"strings"
 
@@ -18,23 +19,29 @@ func NewRespawner() *Respawner {
 	}
 }
 
-func (rswp *Respawner) BringBack(target string) {
+func (rswp *Respawner) Respawn(target string) error {
 	cmd := "docker start " + target
-	rswp.executeCommand(cmd)
+	return rswp.executeCommand(cmd)
 }
 
-func (rswp *Respawner) executeCommand(cmd string) {
+func (rswp *Respawner) TestCommand() error {
+	cmd := "docker ps -a"
+	return rswp.executeCommand(cmd)
+}
+
+func (rswp *Respawner) executeCommand(cmd string) error {
 	parts := strings.Split(cmd, " ")
-	println(parts)
+	rswp.log.Infof("Executing command: %s", cmd)
 	if len(parts) == 0 {
 		rswp.log.Warningf("Command is empty")
-		return
+		return fmt.Errorf("no command was executed")
 	}
 	command := exec.Command(parts[0], parts[1:]...)
 	output, err := command.CombinedOutput()
 	if err != nil {
 		rswp.log.Errorf("Error executing command: %v. Output: %s", err, strings.TrimSpace(string(output)))
-		return
+		return err
 	}
 	rswp.log.Infof("Command executed successfully: %s", output)
+	return nil
 }

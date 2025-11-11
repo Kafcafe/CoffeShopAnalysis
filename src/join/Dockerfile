@@ -20,7 +20,8 @@ COPY ./join .
 RUN CGO_ENABLED=0 GOOS=linux go build -o bin/join .
 
 
-FROM busybox:latest
+FROM builder
+RUN apk add docker
 COPY --from=builder /build/bin/join /join
 RUN chmod +x /join
 ENTRYPOINT ["/join"]

@@ -25,6 +25,7 @@ func NewWatchMeshConfig(
 	addressResolvingRetries int,
 	addressResolvingInterval time.Duration,
 	showHeartbeatLogs bool,
+	nodeType string,
 ) WatchMeshConfig {
 
 	return WatchMeshConfig{
@@ -36,6 +37,7 @@ func NewWatchMeshConfig(
 		AddressResolvingRetries:  addressResolvingRetries,
 		AddressResolvingInterval: addressResolvingInterval,
 		ShowHeartbeatLogs:        showHeartbeatLogs,
+		NodeType:                 nodeType,
 	}
 }
 
