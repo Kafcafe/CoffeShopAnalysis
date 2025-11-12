@@ -99,6 +99,7 @@ FILTER_TEMPLATE = """
           dockerfile: filters/Dockerfile
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
+          - /var/run/docker.sock:/var/run/docker.sock
 """
 
 # Client service template (parameterized by client ID)
@@ -162,6 +163,7 @@ GROUP_TEMPLATE = """
           dockerfile: group/Dockerfile
         volumes:
           - ./src/group/config.yaml:/config.yaml 
+          - /var/run/docker.sock:/var/run/docker.sock
 """
 
 JOIN_TEMPLATE = """
@@ -186,4 +188,5 @@ JOIN_TEMPLATE = """
           dockerfile: join/Dockerfile
         volumes:
           - ./src/join/config.yaml:/config.yaml 
+          - /var/run/docker.sock:/var/run/docker.sock
 """

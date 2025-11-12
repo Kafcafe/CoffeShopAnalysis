@@ -138,6 +138,7 @@ func CreateJoinerWorker(
 		basicWatchMeshConfig.AddressResolvingRetries,
 		addressResolvingIntervalSeconds,
 		basicWatchMeshConfig.ShowHeartbeatLogs,
+		"join",
 	)
 
 	joinItemsWorker, err = NewJoinWorker(rabbitConf, config, watchMeshConfig)

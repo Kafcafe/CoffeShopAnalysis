@@ -94,6 +94,7 @@ func createWatchMeshConfig(
 		basicWatchMeshConfig.AddressResolvingRetries,
 		addressResolvingIntervalSeconds,
 		basicWatchMeshConfig.ShowHeartbeatLogs,
+		"group",
 	)
 
 	return watchMeshConfig
