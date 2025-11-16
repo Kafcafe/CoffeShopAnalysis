@@ -97,6 +97,17 @@ func (g TopKStoreGroup) merge(other TopKStoreGroup) {
 	}
 }
 
+func (g TopKStoreGroup) ToFullStringList() []string {
+	out := []string{}
+	maps := g.ToMapString()
+	for storeId, users := range maps {
+		for _, userStr := range users {
+			out = append(out, fmt.Sprintf("%s,%s", storeId, userStr))
+		}
+	}
+	return out
+}
+
 ////////////////////////////////////////////
 ////////////////////////////////////////////
 ////////////////////////////////////////////

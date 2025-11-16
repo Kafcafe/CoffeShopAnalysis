@@ -119,3 +119,15 @@ func (g SemesterGroup) GetMessageToSend() []map[string][]string {
 	messages = append(messages, g.ToMapString())
 	return messages
 }
+
+func (g SemesterGroup) ToFullStringList() []string {
+	out := []string{}
+	mapInfo := g.ToMapString()
+	for sem, storeStrs := range mapInfo {
+		for _, storeStr := range storeStrs {
+			line := fmt.Sprintf("%s,%s", sem, storeStr)
+			out = append(out, line)
+		}
+	}
+	return out
+}

@@ -227,3 +227,15 @@ func (g YearMonthGroup) getBestSeller() YearMonthGroup {
 	}
 	return result
 }
+
+func (g YearMonthGroup) ToFullStringList() []string {
+	out := []string{}
+	mapInfo := g.ToMapString()
+	for ym, itemStrs := range mapInfo {
+		for _, itemStr := range itemStrs {
+			line := fmt.Sprintf("%s,%s", ym, itemStr)
+			out = append(out, line)
+		}
+	}
+	return out
+}
