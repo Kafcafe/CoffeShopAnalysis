@@ -35,7 +35,7 @@ func (m *WatchMeshMessage) ToBytes() ([]byte, error) {
 	return msgBytes, nil
 }
 
-func FromBytes(data []byte) (*WatchMeshMessage, error) {
+func WatchMeshMessageFromBytes(data []byte) (*WatchMeshMessage, error) {
 	var msg WatchMeshMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil, fmt.Errorf("failed deserialization: %w", err)

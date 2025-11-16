@@ -99,7 +99,6 @@ func (wm *WatchMesh) discoverLeader() {
 
 		if !electionInProgress && currentLeader == "" {
 			wm.log.Info("No leader discovered within timeout, starting election")
-			// Start election - not holding lock
 			wm.startElection()
 		} else if electionInProgress && currentLeader == "" {
 			wm.log.Info("Timeout but election already in progress")
@@ -231,29 +230,51 @@ func compareNodeIDs(a, b NodeId) int {
 
 // SetupPeers configures the peer addresses from the configuration
 func (wm *WatchMesh) setupPeers() {
+	var wg sync.WaitGroup
 	for _, peerAddress := range wm.config.PeerAddresses {
-		addrWithPort := fmt.Sprintf("%s:%d", peerAddress, wm.config.WatchMeshPort)
-
-		var addrWithPortResolved *net.UDPAddr
-		var err error
-
-		for retry := 0; retry < wm.config.AddressResolvingRetries; retry++ {
-			addrWithPortResolved, err = net.ResolveUDPAddr("udp", addrWithPort)
-			if err == nil {
-				break
-			}
-			if retry < (wm.config.AddressResolvingRetries - 1) {
-				time.Sleep(wm.config.AddressResolvingInterval)
-			}
-			wm.log.Infof("Retrying address resolution for '%v'", addrWithPort)
-		}
-		if err != nil {
-			wm.log.Warningf("Failed to resolve peer address '%v' after %d retries: %v", addrWithPort, wm.config.AddressResolvingRetries, err)
-			continue
-		}
-		wm.log.Infof("Resolved address for '%v': %v", addrWithPort, addrWithPortResolved)
-		wm.peers[NodeId(peerAddress)] = addrWithPortResolved
+		wg.Add(1)
+		go func(addr string) {
+			defer wg.Done()
+			wm.resolveAndAddPeer(addr)
+		}(peerAddress)
 	}
+	wg.Wait()
+}
+
+// resolveAndAddPeer handles resolving a single peer address with retries
+func (wm *WatchMesh) resolveAndAddPeer(peerAddress string) {
+	addrWithPort := fmt.Sprintf("%s:%d", peerAddress, wm.config.WatchMeshPort)
+
+	var addrWithPortResolved *net.UDPAddr
+	var err error
+
+	for retry := 0; retry < wm.config.AddressResolvingRetries; retry++ {
+		addrWithPortResolved, err = net.ResolveUDPAddr("udp", addrWithPort)
+		if err == nil {
+			break
+		}
+		if retry < (wm.config.AddressResolvingRetries - 1) {
+			time.Sleep(wm.config.AddressResolvingInterval)
+		}
+		wm.log.Infof(
+			"Retrying address resolution for '%v' (%d/%d)",
+			addrWithPort, retry+1, wm.config.AddressResolvingRetries,
+		)
+	}
+
+	if err != nil {
+		wm.log.Warningf(
+			"Failed to resolve peer address '%v' after %d retries: %v",
+			addrWithPort, wm.config.AddressResolvingRetries, err,
+		)
+		return
+	}
+
+	wm.log.Infof("Resolved address for '%v': %v", addrWithPort, addrWithPortResolved)
+
+	wm.mutex.Lock()
+	wm.peers[NodeId(peerAddress)] = addrWithPortResolved
+	wm.mutex.Unlock()
 }
 
 // listenFromSocket continuously reads UDP packets from the connection
@@ -312,9 +333,7 @@ func (wm *WatchMesh) startUDPListener() error {
 	wm.conn = conn
 	wm.log.Infof("Listening on port %d", wm.config.WatchMeshPort)
 
-	go func() {
-		wm.listenFromSocket(conn)
-	}()
+	go wm.listenFromSocket(conn)
 
 	return nil
 }
@@ -426,7 +445,7 @@ func (wm *WatchMesh) GetLeaderID() string {
 
 // handleMessage processes incoming UDP messages
 func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
-	msg, err := FromBytes(msgBytes)
+	msg, err := WatchMeshMessageFromBytes(msgBytes)
 	if err != nil {
 		wm.log.Warningf("Failed to deserialize message: %v", err)
 		return
@@ -434,32 +453,10 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 
 	switch msg.Type {
 	case Heartbeat:
-		// Respond to heartbeat - no lock needed for sendMessage
-		ackMsg := NewHeartbeatAckMessage(string(wm.config.CurrentNodeID))
-		wm.sendMessage(addr, ackMsg)
+		wm.handleHeartbeatMessage(addr)
 
 	case HeartbeatAck:
-		// Update last seen time - do this quickly and unlock
-		wm.mutex.Lock()
-		nodeId := NodeId(msg.SenderID)
-		wm.lastSeen[nodeId] = time.Now()
-
-		// Don't block on channel send - use non-blocking approach
-		shouldNotify := !wm.leaderDiscoveryFinished
-		wm.mutex.Unlock()
-
-		// Try to send to channel without holding lock
-		if shouldNotify {
-			select {
-			case wm.leaderDiscoveryHeartbeatAckChan <- nodeId:
-			default:
-				// Channel full, skip notification
-			}
-		}
-
-		if wm.config.ShowHeartbeatLogs {
-			wm.log.Infof("HeartbeatAck from '%s'", msg.SenderID)
-		}
+		wm.handleHeartbeatAckMessage(msg)
 
 	case Election:
 		wm.handleElection(msg.SenderID)
@@ -468,43 +465,13 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 		wm.handleCoordinator(msg.SenderID)
 
 	case ElectionOk:
-		wm.log.Infof("Received ElectionOk from node %s", msg.SenderID)
+		wm.handleElectionOkMessage(msg)
 
 	case LeaderDiscovery:
-		// Read state without holding lock
-		wm.mutex.Lock()
-		leaderID := wm.leaderID
-		amILeader := wm.isLeader
-		wm.mutex.Unlock()
-
-		if leaderID != "" {
-			nodeCondition := "follower"
-			if amILeader {
-				nodeCondition = "leader"
-			}
-
-			wm.log.Infof("Responding to LeaderDiscovery request from %s as %s, the leader is '%s'", msg.SenderID, nodeCondition, leaderID)
-			msg := NewLeaderResponseMessage(string(wm.config.CurrentNodeID), string(leaderID))
-			wm.sendMessage(addr, msg)
-		}
+		wm.handleLeaderDiscoveryMessage(msg, addr)
 
 	case LeaderResponse:
-		leaderID := NodeId(msg.Payload)
-		if leaderID != "" {
-			wm.log.Infof("Received LeaderDiscovery response from %s claiming leader is %s, validating...", msg.SenderID, leaderID)
-			// validateLeader is called in a goroutine to avoid blocking message handling
-			// But we need to be careful about leaderDiscoveryFinished flag
-			wm.mutex.Lock()
-			discoveryInProgress := !wm.leaderDiscoveryFinished
-			wm.mutex.Unlock()
-
-			if discoveryInProgress {
-				go wm.validateLeader(leaderID, addr)
-			}
-		}
-
-	case Broadcast:
-		wm.log.Infof("Received broadcast from leader %s: %s", msg.SenderID, msg.Payload)
+		wm.handleLeaderResponseMessage(msg, addr)
 	}
 }
 
@@ -582,8 +549,13 @@ func (wm *WatchMesh) startElection() {
 		if addr, ok := wm.peers[id]; ok {
 			// Sender must be this node's ID
 			msg := NewElectionMessage(string(wm.config.CurrentNodeID))
-			wm.sendMessage(addr, msg)
-			wm.log.Infof("Sent election message to node %s", id)
+
+			err := wm.sendMessage(addr, msg)
+			if err != nil {
+				wm.log.Warningf("Failed to send ElectionMessage: %v", err)
+			} else {
+				wm.log.Infof("Sent election message to node %s", id)
+			}
 		}
 	}
 
@@ -636,7 +608,11 @@ func (wm *WatchMesh) handleElection(senderID string) {
 		// Send message WITHOUT holding lock
 		if ok {
 			msg := NewElectionOkMessage(string(wm.config.CurrentNodeID))
-			wm.sendMessage(addr, msg)
+
+			err := wm.sendMessage(addr, msg)
+			if err != nil {
+				wm.log.Warningf("Failed to send ElectionOk: %v", err)
+			}
 		}
 
 		// Check if we should start election (don't hold lock during this check to avoid nested locks)
@@ -698,7 +674,11 @@ func (wm *WatchMesh) becomeLeader() {
 	// Send messages WITHOUT holding the lock
 	for id, addr := range peerList {
 		msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
-		wm.sendMessage(addr, msg)
+		err := wm.sendMessage(addr, msg)
+		if err != nil {
+			wm.log.Warningf("Failed to send CoordinatorMessage: %v", err)
+		}
+
 		wm.log.Infof("Sent coordinator message to node %s", id)
 	}
 }
@@ -716,4 +696,80 @@ func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
 	wm.log.Infof("Resurrecting peer with type '%s'", wm.config.NodeType)
 	wm.respawner.Respawn(node)
 	wm.log.Infof("Resurrect command issued for peer with ID '%s'", node)
+}
+
+func (wm *WatchMesh) handleHeartbeatMessage(addr *net.UDPAddr) {
+	// Respond to heartbeat - no lock needed for sendMessage
+	ackMsg := NewHeartbeatAckMessage(string(wm.config.CurrentNodeID))
+
+	err := wm.sendMessage(addr, ackMsg)
+	if err != nil {
+		wm.log.Warningf("Failed to send HeartbeatAck: %v", err)
+	}
+}
+
+func (wm *WatchMesh) handleHeartbeatAckMessage(msg *WatchMeshMessage) {
+	// Update last seen time - do this quickly and unlock
+	wm.mutex.Lock()
+	nodeId := NodeId(msg.SenderID)
+	wm.lastSeen[nodeId] = time.Now()
+	shouldNotify := !wm.leaderDiscoveryFinished
+	wm.mutex.Unlock()
+
+	// Try to send to channel without holding lock
+	if shouldNotify {
+		select {
+		case wm.leaderDiscoveryHeartbeatAckChan <- nodeId:
+		default:
+			// Channel full, skip notification
+		}
+	}
+
+	if wm.config.ShowHeartbeatLogs {
+		wm.log.Infof("HeartbeatAck from '%s'", msg.SenderID)
+	}
+}
+
+func (wm *WatchMesh) handleElectionOkMessage(msg *WatchMeshMessage) {
+	wm.log.Infof("Received ElectionOk from node %s", msg.SenderID)
+}
+
+func (wm *WatchMesh) handleLeaderDiscoveryMessage(msg *WatchMeshMessage, addr *net.UDPAddr) {
+	// Read state without holding lock
+	wm.mutex.Lock()
+	leaderID := wm.leaderID
+	amILeader := wm.isLeader
+	wm.mutex.Unlock()
+
+	if leaderID != "" {
+		nodeCondition := "follower"
+		if amILeader {
+			nodeCondition = "leader"
+		}
+
+		wm.log.Infof("Responding to LeaderDiscovery request from %s as %s, the leader is '%s'", msg.SenderID, nodeCondition, leaderID)
+		msg := NewLeaderResponseMessage(string(wm.config.CurrentNodeID), string(leaderID))
+
+		err := wm.sendMessage(addr, msg)
+		if err != nil {
+			wm.log.Warningf("Failed to send LeaderResponse: %v", err)
+		}
+	}
+}
+
+func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage, addr *net.UDPAddr) {
+	leaderID := NodeId(msg.Payload)
+
+	if leaderID != "" {
+		wm.log.Infof("Received LeaderDiscovery response from %s claiming leader is %s, validating...", msg.SenderID, leaderID)
+		// validateLeader is called in a goroutine to avoid blocking message handling
+		// But we need to be careful about leaderDiscoveryFinished flag
+		wm.mutex.Lock()
+		discoveryInProgress := !wm.leaderDiscoveryFinished
+		wm.mutex.Unlock()
+
+		if discoveryInProgress {
+			go wm.validateLeader(leaderID, addr)
+		}
+	}
 }
