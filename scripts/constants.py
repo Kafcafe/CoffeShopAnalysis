@@ -164,7 +164,7 @@ GROUP_TEMPLATE = """
         volumes:
           - ./src/group/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
-          - ./processed_data:/processed_data/{group_type}_{id}
+          - ./processed_data:/processed_data/{group_type}_{group_count}
 """
 
 JOIN_TEMPLATE = """
