@@ -8,17 +8,19 @@ import (
 )
 
 type AtomicWriter struct {
-	path string
+	path   string
+	prefix string
 }
 
-func NewAtomicWriter(path string) *AtomicWriter {
-	return &AtomicWriter{path: path}
+func NewAtomicWriter(path string, prefix string) *AtomicWriter {
+	return &AtomicWriter{path: path, prefix: prefix}
 }
 
 func (aw *AtomicWriter) Write(data []string) error {
 	dir := filepath.Dir(aw.path)
 
-	tmpDirName := "tmp_" + filepath.Base(dir) + strconv.FormatInt(time.Now().UnixNano(), 10)
+	time := strconv.FormatInt(time.Now().UnixNano(), 10)
+	tmpDirName := "tmp_" + filepath.Base(dir) + time
 	tmpFile, err := os.CreateTemp(dir, tmpDirName)
 
 	if err != nil {
@@ -44,7 +46,7 @@ func (aw *AtomicWriter) Write(data []string) error {
 
 	tmpDirName = tmpFile.Name()
 
-	return os.Rename(tmpDirName, aw.path)
+	return os.Rename(tmpDirName, aw.path+time)
 }
 
 func (aw *AtomicWriter) Recover() ([]string, error) {

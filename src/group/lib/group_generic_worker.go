@@ -1,6 +1,7 @@
 package group
 
 import (
+	atomicwritter "common/atomic_writter"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -42,9 +43,10 @@ type GroupByGenericWorker struct {
 	middlewareMutex sync.Mutex
 	group           structures.GrouperPerClient[structures.AllowedGroup]
 	// new eof
-	clientsStats map[ClientId]*middleware.ClientStats
-	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
-	watchMesh    *watch_mesh.WatchMesh
+	clientsStats  map[ClientId]*middleware.ClientStats
+	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
+	watchMesh     *watch_mesh.WatchMesh
+	atomicWritter *atomicwritter.AtomicWriter
 }
 
 func NewGroupByGenericWorker(
@@ -83,9 +85,10 @@ func NewGroupByGenericWorker(
 		middlewareMutex: sync.Mutex{},
 		group:           structures.NewGrouperPerClient[structures.AllowedGroup](),
 
-		clientsStats: make(map[ClientId]*middleware.ClientStats),
-		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
-		watchMesh:    watch_mesh.NewWatchMesh(watchMeshConfig),
+		clientsStats:  make(map[ClientId]*middleware.ClientStats),
+		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
+		atomicWritter: atomicwritter.NewAtomicWriter(conf.persistencePath, conf.id),
 	}, nil
 }
 
