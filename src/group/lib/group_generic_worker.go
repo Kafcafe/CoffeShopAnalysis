@@ -5,6 +5,7 @@ import (
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
+	"crypto/sha256"
 	"fmt"
 	"group/structures"
 	"os"
@@ -191,13 +192,14 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
 	if g.conf.ofType == GROUP_TYPE_TOPK {
-		g.atomicWritter.Write(msg.Payload, msg.ClientId)
-
-		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+message.MessageId); err != nil {
+		sum := sha256.Sum256(message.Body)
+		fakeId := fmt.Sprintf("%x", sum)
+		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+"_"+fakeId); err != nil {
 			g.mutex.Unlock()
 			answerMessage(NACK_REQUEUE, message)
 			panic(fmt.Sprintf("error writing grouped data to file for client %s: %v", msg.ClientId, err))
 		}
+		g.log.Infof("Wrote TOPK grouped data to file for client %s (part %s)", msg.ClientId, fakeId)
 	} else {
 
 		toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()

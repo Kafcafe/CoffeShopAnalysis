@@ -52,6 +52,11 @@ func (aw *AtomicWriter) Write(data []string, clientId string) error {
 		return err
 	}
 
+	if err := os.Chmod(tmpFile.Name(), 0644); err != nil {
+		os.Remove(tmpFile.Name())
+		return err
+	}
+
 	return os.Rename(tmpFile.Name(), dstFile)
 }
 
