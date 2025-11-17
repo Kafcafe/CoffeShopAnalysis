@@ -73,6 +73,8 @@ func NewGroupByGenericWorker(
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
+	prefix := fmt.Sprintf("%s_%d", conf.ofType, conf.idNum)
+	path := fmt.Sprintf("processed_data/%s", prefix)
 	return &GroupByGenericWorker{
 		log:               log,
 		middlewareHandler: middlewareHandler,
@@ -88,7 +90,7 @@ func NewGroupByGenericWorker(
 		clientsStats:  make(map[ClientId]*middleware.ClientStats),
 		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
-		atomicWritter: atomicwritter.NewAtomicWriter(conf.persistencePath, conf.id),
+		atomicWritter: atomicwritter.NewAtomicWriter(path),
 	}, nil
 }
 
@@ -188,6 +190,23 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
+	if g.conf.ofType == GROUP_TYPE_TOPK {
+		g.atomicWritter.Write(msg.Payload, msg.ClientId)
+
+		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+message.MessageId); err != nil {
+			g.mutex.Unlock()
+			answerMessage(NACK_REQUEUE, message)
+			panic(fmt.Sprintf("error writing grouped data to file for client %s: %v", msg.ClientId, err))
+		}
+	} else {
+
+		toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()
+		if err := g.atomicWritter.Write(toSave, msg.ClientId); err != nil {
+			g.mutex.Unlock()
+			answerMessage(NACK_REQUEUE, message)
+			panic(fmt.Sprintf("error writing grouped data to file for client %s: %v", msg.ClientId, err))
+		}
+	}
 	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	g.mutex.Unlock()
 

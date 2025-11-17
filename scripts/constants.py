@@ -157,6 +157,7 @@ GROUP_TEMPLATE = """
           GROUP_TYPE: {group_type}
           GROUP_ID: {id}
           GROUP_COUNT: {group_count}
+          IDNUM: {idnum}
           WATCH_MESH_UDP_PORT: 11000
         build:
           context: ./src/
@@ -164,7 +165,7 @@ GROUP_TEMPLATE = """
         volumes:
           - ./src/group/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
-          - ./processed_data:/processed_data/{group_type}_{group_count}
+          - ./processed_data/{group_type}_{idnum}:/processed_data/{group_type}_{idnum}
 """
 
 JOIN_TEMPLATE = """

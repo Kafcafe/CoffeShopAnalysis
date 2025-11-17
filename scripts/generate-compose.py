@@ -71,7 +71,7 @@ def generate_compose(
     for i in range(filter_by_year_nums):
         filter_type = FILTER_BY_YEAR_TYPE
         compose += constants.FILTER_TEMPLATE.format(
-            id=f"-{filter_type}{i+1}",
+            id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_year_nums,
         )
@@ -79,7 +79,7 @@ def generate_compose(
     for i in range(filter_by_hour_nums):
         filter_type = FILTER_BY_HOUR_TYPE
         compose += constants.FILTER_TEMPLATE.format(
-            id=f"-{filter_type}{i+1}",
+            id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_hour_nums,
         )
@@ -87,7 +87,7 @@ def generate_compose(
     for i in range(filter_by_amount_nums):
         filter_type = FILTER_BY_AMOUNT_TYPE
         compose += constants.FILTER_TEMPLATE.format(
-            id=f"-{filter_type}{i+1}",
+            id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_amount_nums,
         )
@@ -95,42 +95,44 @@ def generate_compose(
     for i in range(group_by_year_month_nums):
         group_type = GROUP_BY_YEAR_MONTH
         compose += constants.GROUP_TEMPLATE.format(
-            id=f"-{group_type}{i+1}",
+            id=f"-{group_type}{i + 1}",
             group_type=group_type,
             group_count=group_by_year_month_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(group_by_semester_nums):
         group_type = GROUP_BY_SEMESTER
         compose += constants.GROUP_TEMPLATE.format(
-            id=f"-{group_type}{i+1}",
+            id=f"-{group_type}{i + 1}",
             group_type=group_type,
             group_count=group_by_semester_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(join_items_nums):
         join_type = JOIN_ITEMS_TYPE
         compose += constants.JOIN_TEMPLATE.format(
-            id=f"-{join_type}{i+1}", join_type=join_type, join_count=join_items_nums
+            id=f"-{join_type}{i + 1}", join_type=join_type, join_count=join_items_nums
         )
 
     for i in range(join_store_nums):
         compose += constants.JOIN_TEMPLATE.format(
-            id=f"-{JOIN_STORE_TYPE}{i+1}",
+            id=f"-{JOIN_STORE_TYPE}{i + 1}",
             join_type=JOIN_STORE_TYPE,
             join_count=join_store_nums,
         )
 
     for i in range(join_store_nums):
         compose += constants.JOIN_TEMPLATE.format(
-            id=f"-{JOIN_STORE_Q3_TYPE}{i+1}",
+            id=f"-{JOIN_STORE_Q3_TYPE}{i + 1}",
             join_type=JOIN_STORE_Q3_TYPE,
             join_count=join_store_nums,
         )
 
     for i in range(join_users_nums):
         compose += constants.JOIN_TEMPLATE.format(
-            id=f"-{JOIN_USERS_TYPE}{i+1}",
+            id=f"-{JOIN_USERS_TYPE}{i + 1}",
             join_type=JOIN_USERS_TYPE,
             join_count=join_users_nums,
         )
@@ -138,7 +140,10 @@ def generate_compose(
     for i in range(topk_nums):
         group_type = GROUP_BY_TOPK_BEST_CLIENTS
         compose += constants.GROUP_TEMPLATE.format(
-            id=f"-{group_type}{i+1}", group_type=group_type, group_count=topk_nums
+            id=f"-{group_type}{i + 1}", 
+            group_type=group_type,
+            group_count=topk_nums, 
+            idnum=f"{i + 1}"
         )
 
     # Write the complete compose file to disk
@@ -169,7 +174,7 @@ def main():
             print(
                 "Usage: ./generar-compose.py <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_join_items> <num_join_store> <num_topk>"
             )
-            print(f"\nYour input of length { len(sys.argv)}: {sys.argv}")
+            print(f"\nYour input of length {len(sys.argv)}: {sys.argv}")
             sys.exit(INVALID_ARGS_EXIT_CODE)
 
         # Debug: show received arguments

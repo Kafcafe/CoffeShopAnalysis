@@ -102,6 +102,7 @@ func main() {
 	groupId := config.GetString("group.id")
 	groupCount := config.GetInt("group.count")
 	groupType := config.GetString("group.type")
+	groupIdNum := config.GetInt("idnum")
 
 	watchMeshPort := config.GetInt("watch.mesh.udp.port")
 	heartbeatIntervalSecs := config.GetFloat64("watchMesh.heartbeatIntervalSeconds")
@@ -119,7 +120,7 @@ func main() {
 		showHeartbeatLogs,
 	)
 
-	groupByWorker, err := group.CreateGroupByWorker(groupType, rabbitConf, groupId, groupCount, config, logger, basicWatchMeshConfig)
+	groupByWorker, err := group.CreateGroupByWorker(groupType, rabbitConf, groupId, groupCount, config, logger, basicWatchMeshConfig, groupIdNum)
 	if err != nil {
 		logger.Errorf("Failed creating new groupBy worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)

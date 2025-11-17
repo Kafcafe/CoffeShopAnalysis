@@ -3,50 +3,76 @@ package atomicwritter
 import (
 	"os"
 	"path/filepath"
-	"strconv"
-	"time"
+	"strings"
 )
 
 type AtomicWriter struct {
-	path   string
-	prefix string
+	path string
 }
 
-func NewAtomicWriter(path string, prefix string) *AtomicWriter {
-	return &AtomicWriter{path: path, prefix: prefix}
+func NewAtomicWriter(path string) *AtomicWriter {
+	return &AtomicWriter{path: path}
 }
 
-func (aw *AtomicWriter) Write(data []string) error {
-	dir := filepath.Dir(aw.path)
+func (aw *AtomicWriter) Write(data []string, clientId string) error {
 
-	time := strconv.FormatInt(time.Now().UnixNano(), 10)
-	tmpDirName := "tmp_" + filepath.Base(dir) + time
-	tmpFile, err := os.CreateTemp(dir, tmpDirName)
+	dstFile, err := aw.findFile(clientId)
 
 	if err != nil {
 		return err
 	}
 
-	defer os.Remove(tmpFile.Name())
+	if dstFile == "" {
+		dstFile = filepath.Join(aw.path, clientId+".csv")
+	}
 
-	for i := range data {
-		if _, err = tmpFile.WriteString(data[i]); err != nil {
+	tmpFile, err := os.CreateTemp(aw.path, "tmpfile_*.csv")
+
+	if err != nil {
+		return err
+	}
+
+	for _, line := range data {
+		if _, err := tmpFile.WriteString(line + "\n"); err != nil {
 			tmpFile.Close()
+			os.Remove(tmpFile.Name())
 			return err
 		}
 	}
 
-	if err = tmpFile.Sync(); err != nil {
+	if err := tmpFile.Sync(); err != nil {
 		tmpFile.Close()
-		return err
-	}
-	if err = tmpFile.Close(); err != nil {
+		os.Remove(tmpFile.Name())
 		return err
 	}
 
-	tmpDirName = tmpFile.Name()
+	if err := tmpFile.Close(); err != nil {
+		tmpFile.Close()
+		os.Remove(tmpFile.Name())
+		return err
+	}
 
-	return os.Rename(tmpDirName, aw.path+time)
+	return os.Rename(tmpFile.Name(), dstFile)
+}
+
+func (aw *AtomicWriter) findFile(index string) (string, error) {
+	entries, err := os.ReadDir(aw.path)
+
+	if err != nil {
+		return "", err
+	}
+
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		if strings.Contains(entry.Name(), index) {
+			return filepath.Join(aw.path, entry.Name()), nil
+		}
+	}
+
+	return "", nil
 }
 
 func (aw *AtomicWriter) Recover() ([]string, error) {
