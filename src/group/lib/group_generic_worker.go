@@ -21,6 +21,8 @@ const BATCH_SIZE_GROUPED_MESSAGE = 1000
 type MiddlewareHandlers struct {
 	prevStageSub               middleware.MessageMiddlewareQueue
 	nextStagePub               middleware.MessageMiddlewareExchange
+	privateQueueSub            middleware.MessageMiddlewareQueue
+	privateQueuesPub           map[int]*middleware.MessageMiddlewareQueue
 	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
 	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
 }
@@ -118,6 +120,27 @@ func (g *GroupByGenericWorker) createExchangeHandlers() error {
 		return fmt.Errorf("error binding queue for previous stage: %v", err)
 	}
 
+	// TODO: change to id num
+	privateQueueName := fmt.Sprintf("group.%s.private.%s", g.conf.ofType, g.conf.id)
+	g.log.Infof("Creating private queue handler for group %s: %s", g.conf.id, privateQueueName)
+	privateQueueSub, err := g.middlewareHandler.CreateQueue(privateQueueName)
+	if err != nil {
+		return fmt.Errorf("error creating private queue for group %s: %v", g.conf.id, err)
+	}
+
+	privateQueuesPub := make(map[int]*middleware.MessageMiddlewareQueue)
+	for i := range g.conf.count {
+		// TODO: change to id num
+		id := "-" + g.conf.ofType + fmt.Sprintf("%d", i+1)
+		privateQueuePubName := fmt.Sprintf("group.%s.private.%s", g.conf.ofType, id)
+		g.log.Infof("Creating private queue PUB handler for group %s: %s", g.conf.id, privateQueuePubName)
+		queue, err := g.middlewareHandler.CreateQueue(privateQueuePubName)
+		if err != nil {
+			return fmt.Errorf("error creating private queue PUB for group %s: %v", g.conf.id, err)
+		}
+		privateQueuesPub[i+1] = queue
+	}
+
 	// NEXT STAGE PUB
 	g.log.Infof("Creating exchange handler for next stage publication: %s", g.conf.nextStagePub)
 	nextStagePub, err := g.middlewareHandler.CreateDirectExchangeStandalone(g.conf.nextStagePub)
@@ -148,6 +171,8 @@ func (g *GroupByGenericWorker) createExchangeHandlers() error {
 	g.exchangeHandlers = MiddlewareHandlers{
 		prevStageSub:               *prevStageSub,
 		nextStagePub:               *nextStagePub,
+		privateQueueSub:            *privateQueueSub,
+		privateQueuesPub:           privateQueuesPub,
 		broadcastResultsRequestPub: *broadcastResultsRequestPub,
 		broadcastResultsRequestSub: *broadcastResultsRequestSub,
 	}
@@ -413,6 +438,17 @@ func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) mid
 	return middleware.MessageMiddlewareSuccess
 }
 
+func (g *GroupByGenericWorker) dispatchMessage(message amqp.Delivery) error {
+	message_id, destination_id := middleware.GetMessageId(message.Body, g.conf.count)
+	err := g.exchangeHandlers.privateQueuesPub[destination_id].SendWithId(message.Body, message_id)
+	if err != middleware.MessageMiddlewareSuccess {
+		answerMessage(NACK_REQUEUE, message)
+		return fmt.Errorf("failed to dispatch message to private queue %d: %v", destination_id, err)
+	}
+	answerMessage(ACK, message)
+	return nil
+}
+
 func (g *GroupByGenericWorker) Run() error {
 	defer g.Shutdown()
 	go g.handleSignal()
@@ -425,7 +461,8 @@ func (g *GroupByGenericWorker) Run() error {
 	}
 
 	g.log.Infof("Starting to consume messages from %s", g.conf.prevStageSub)
-	g.exchangeHandlers.prevStageSub.StartConsuming(g.groupMessage, g.errChan)
+	g.exchangeHandlers.privateQueueSub.StartConsuming(g.groupMessage, g.errChan)
+	g.exchangeHandlers.prevStageSub.StartConsuming(g.dispatchMessage, g.errChan)
 	g.exchangeHandlers.broadcastResultsRequestSub.StartConsuming(g.sendResultsRequest, g.errChan)
 
 	for err := range g.errChan {
