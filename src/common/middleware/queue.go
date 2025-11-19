@@ -82,6 +82,26 @@ func (m *MessageMiddlewareQueue) Send(message []byte) (middlewareError MessageMi
 	return MessageMiddlewareSuccess
 }
 
+func (m *MessageMiddlewareQueue) SendWithId(message []byte, messageId string) (middlewareError MessageMiddlewareError) {
+	err := m.channel.Publish(
+		"",          // exchange
+		m.queueName, // routing key (queue name)
+		false,       // mandatory
+		false,       // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        message,
+			MessageId:   messageId,
+		},
+	)
+
+	if err != nil {
+		return MessageMiddlewareMessageError
+	}
+
+	return MessageMiddlewareSuccess
+}
+
 func (m *MessageMiddlewareQueue) Close() (middlewareError MessageMiddlewareError) {
 	if m.channel == nil || m.channel.IsClosed() {
 		return MessageMiddlewareSuccess
