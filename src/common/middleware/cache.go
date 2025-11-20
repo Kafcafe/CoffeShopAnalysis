@@ -1,5 +1,7 @@
 package middleware
 
+const DEFAULT_CACHE_CAPACITY = 1000
+
 type Cache struct {
 	capacity int
 	buffer   []string

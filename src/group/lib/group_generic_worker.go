@@ -47,6 +47,7 @@ type GroupByGenericWorker struct {
 	clientsStats map[ClientId]*middleware.ClientStats
 	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh    *watch_mesh.WatchMesh
+	cache        *middleware.Cache
 }
 
 func NewGroupByGenericWorker(
@@ -88,6 +89,7 @@ func NewGroupByGenericWorker(
 		clientsStats: make(map[ClientId]*middleware.ClientStats),
 		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:    watch_mesh.NewWatchMesh(watchMeshConfig),
+		cache:        middleware.NewCache(middleware.DEFAULT_CACHE_CAPACITY),
 	}, nil
 }
 
@@ -197,6 +199,12 @@ func (g *GroupByGenericWorker) ensureResultsChanExists(clientId ClientId, dataTy
 }
 
 func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
+	message_id := message.MessageId
+	if g.cache.Contains(message_id) {
+		answerMessage(ACK, message)
+		return nil
+	}
+
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
@@ -212,6 +220,7 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
 	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	g.mutex.Unlock()
+	g.cache.Add(message_id)
 
 	answerMessage(ACK, message)
 	return nil
