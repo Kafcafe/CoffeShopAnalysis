@@ -75,7 +75,7 @@ func TestCache_Rotation(t *testing.T) {
 	}
 
 	// Rotate
-	iterations := 100
+	iterations := 1000
 	for i := capacity; i < capacity+iterations; i++ {
 		newKey := fmt.Sprintf("%d", i)
 		oldestKey := fmt.Sprintf("%d", i-capacity)
@@ -91,5 +91,3 @@ func TestCache_Rotation(t *testing.T) {
 		}
 	}
 }
-
-

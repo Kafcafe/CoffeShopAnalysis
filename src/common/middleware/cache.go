@@ -22,7 +22,7 @@ func (c *Cache) Contains(key string) bool {
 }
 
 func (c *Cache) Add(key string) {
-	if _, exists := c.items[key]; exists {
+	if c.Contains(key) {
 		return
 	}
 
