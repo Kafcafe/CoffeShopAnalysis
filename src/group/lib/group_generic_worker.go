@@ -16,6 +16,8 @@ import (
 	amqp "github.com/rabbitmq/amqp091-go"
 )
 
+const REQUEUE_PROBABILITY = 0.1
+
 const BATCH_SIZE_GROUPED_MESSAGE = 1000
 
 type MiddlewareHandlers struct {
@@ -201,6 +203,7 @@ func (g *GroupByGenericWorker) ensureResultsChanExists(clientId ClientId, dataTy
 func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	message_id := message.MessageId
 	if g.cache.Contains(message_id) {
+		g.log.Infof("Message %s already processed", message_id)
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -454,6 +457,12 @@ func (g *GroupByGenericWorker) dispatchMessage(message amqp.Delivery) error {
 		answerMessage(NACK_REQUEUE, message)
 		return fmt.Errorf("failed to dispatch message to private queue %d: %v", destination_id, err)
 	}
+	// DISCLAMER: This is just for simulation purposes
+	// if rand.Float64() < REQUEUE_PROBABILITY {
+	// 	answerMessage(NACK_REQUEUE, message)
+	// 	g.log.Warningf("Simulating message requeue for message %s", message_id)
+	// 	return fmt.Errorf("simulated message requeue for message %s", message_id)
+	// }
 	answerMessage(ACK, message)
 	return nil
 }
