@@ -52,7 +52,7 @@ def test_two_clients_one_each():
 
 def test_three():
     docker.down()
-    gen_compose.gen_docker_compose(3, 3, 3, 3, 3, 3, 3, 3, 3)
+    gen_compose.gen_docker_compose(3, 3, 3, 3, 3, 3, 3, 3, 3, 3)
     docker.up()
     docker.wait_for_clients(3)
     read_logs('client1')
