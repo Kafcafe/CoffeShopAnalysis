@@ -189,30 +189,34 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 		return nil
 	}
 
+	hash := sha256.Sum256(message.Body)
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
-	if g.conf.ofType == GROUP_TYPE_TOPK {
-		sum := sha256.Sum256(message.Body)
-		fakeId := fmt.Sprintf("%x", sum)
-		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+"_"+fakeId); err != nil {
-			g.mutex.Unlock()
-			answerMessage(NACK_REQUEUE, message)
-			panic(fmt.Sprintf("error writing grouped data to file for client %s: %v", msg.ClientId, err))
-		}
-		g.log.Infof("Wrote TOPK grouped data to file for client %s (part %s)", msg.ClientId, fakeId)
-	} else {
-
-		toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()
-		if err := g.atomicWritter.Write(toSave, msg.ClientId); err != nil {
-			g.mutex.Unlock()
-			answerMessage(NACK_REQUEUE, message)
-			panic(fmt.Sprintf("error writing grouped data to file for client %s: %v", msg.ClientId, err))
-		}
-	}
 	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
+	if err := g.dumpData(msg, hash); err != nil {
+		g.mutex.Unlock()
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
 	g.mutex.Unlock()
-
 	answerMessage(ACK, message)
+	return nil
+}
+
+func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash [32]byte) error {
+	if g.conf.ofType == GROUP_TYPE_TOPK {
+		fakeId := fmt.Sprintf("%x", hash)
+		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+"_"+fakeId); err != nil {
+			return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
+		}
+		return nil
+	}
+
+	toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()
+	if err := g.atomicWritter.Write(toSave, msg.ClientId); err != nil {
+		return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
+	}
+
 	return nil
 }
 
@@ -361,6 +365,7 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		g.log.Infof("Clearing stored group for client %s as per request from %s", msg.ClientId, msg.Origin)
 		g.mutex.Lock()
 		g.group.Delete(msg.ClientId)
+		g.atomicWritter.CleanClient(msg.ClientId)
 		g.getClientStats(msg.ClientId).Clear(msg.DataType)
 		g.mutex.Unlock()
 		answerMessage(ACK, message)
@@ -478,6 +483,8 @@ func (g *GroupByGenericWorker) Shutdown() {
 	g.exchangeHandlers.broadcastResultsRequestSub.StopConsuming()
 	g.exchangeHandlers.broadcastResultsRequestSub.Close()
 	g.middlewareHandler.Close()
-
+	if err := g.atomicWritter.CleanAll(); err != nil {
+		g.log.Errorf("Error during atomic writter cleanup: %v", err)
+	}
 	g.log.Info("Shutdown complete")
 }

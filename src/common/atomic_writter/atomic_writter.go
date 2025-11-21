@@ -4,14 +4,17 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"github.com/op/go-logging"
 )
 
 type AtomicWriter struct {
 	path string
+	log  *logging.Logger
 }
 
 func NewAtomicWriter(path string) *AtomicWriter {
-	return &AtomicWriter{path: path}
+	return &AtomicWriter{path: path, log: logging.MustGetLogger("WRITTER")}
 }
 
 func (aw *AtomicWriter) Write(data []string, clientId string) error {
@@ -82,4 +85,43 @@ func (aw *AtomicWriter) findFile(index string) (string, error) {
 
 func (aw *AtomicWriter) Recover() ([]string, error) {
 	return nil, nil
+}
+
+func (aw *AtomicWriter) CleanClient(clientID string) error {
+	files, err := os.ReadDir(aw.path)
+
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if !file.IsDir() && strings.Contains(file.Name(), clientID) {
+			filepath := filepath.Join(aw.path, file.Name())
+			err := os.Remove(filepath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+func (aw *AtomicWriter) CleanAll() error {
+	files, err := os.ReadDir(aw.path)
+
+	if err != nil {
+		return err
+	}
+
+	for _, file := range files {
+		if !file.IsDir() {
+			filepath := filepath.Join(aw.path, file.Name())
+			err := os.Remove(filepath)
+			if err != nil {
+				return err
+			}
+		}
+	}
+
+	return nil
 }
