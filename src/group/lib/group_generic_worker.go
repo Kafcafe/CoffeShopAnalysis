@@ -453,6 +453,19 @@ func (g *GroupByGenericWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
+	data, err := g.atomicWritter.Recover()
+
+	for clientId, data := range data {
+		g.log.Infof("Recovering data for client %s", clientId)
+		group := g.group.Get(clientId, g.conf.factory)
+		group.AddBatch(data.GetData())
+		g.getClientStats(clientId).SetCount("transactions", data.GetCount())
+	}
+
+	if err != nil {
+		return fmt.Errorf("error during atomic writter recovery: %v", err)
+	}
+
 	g.log.Infof("Starting to consume messages from %s", g.conf.prevStageSub)
 	g.exchangeHandlers.prevStageSub.StartConsuming(g.groupMessage, g.errChan)
 	g.exchangeHandlers.broadcastResultsRequestSub.StartConsuming(g.sendResultsRequest, g.errChan)

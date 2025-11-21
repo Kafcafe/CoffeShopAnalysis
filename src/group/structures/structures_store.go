@@ -166,3 +166,13 @@ func (g TopKStoreGroup) GetMessageToSend() []map[string][]string {
 	messages = append(messages, result)
 	return messages
 }
+
+func (g TopKStoreGroup) Recover(data []string) error {
+	for _, record := range data {
+		err := g.add(Record(record))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

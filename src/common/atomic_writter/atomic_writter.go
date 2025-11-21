@@ -1,6 +1,7 @@
 package atomicwritter
 
 import (
+	"bufio"
 	"os"
 	"path/filepath"
 	"strings"
@@ -83,8 +84,61 @@ func (aw *AtomicWriter) findFile(index string) (string, error) {
 	return "", nil
 }
 
-func (aw *AtomicWriter) Recover() ([]string, error) {
-	return nil, nil
+func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
+	results := make(map[string]*SavedInfo)
+	files, err := os.ReadDir(aw.path)
+
+	if err != nil {
+		return nil, err
+	}
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+
+		if strings.Contains(file.Name(), "tmpfile_") {
+			continue
+		}
+
+		clientID := strings.Split(file.Name(), "_")[0]
+
+		filepath := filepath.Join(aw.path, file.Name())
+		lines, err := aw.ReadFileLines(filepath)
+		if err != nil {
+			return nil, err
+		}
+
+		if _, exists := results[clientID]; !exists {
+			results[clientID] = NewSavedInfo([]string{})
+		}
+
+		results[clientID].Add(lines)
+	}
+	return results, nil
+}
+
+func (aw *AtomicWriter) ReadFileLines(filePath string) ([]string, error) {
+	file, err := os.Open(filePath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	results := []string{}
+
+	scanner := bufio.NewScanner(file)
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		results = append(results, line)
+	}
+
+	if err := scanner.Err(); err != nil {
+		return nil, err
+	}
+
+	return results, nil
 }
 
 func (aw *AtomicWriter) CleanClient(clientID string) error {
@@ -118,7 +172,8 @@ func (aw *AtomicWriter) CleanAll() error {
 			filepath := filepath.Join(aw.path, file.Name())
 			err := os.Remove(filepath)
 			if err != nil {
-				return err
+				aw.log.Errorf("Error removing file %s: %v", filepath, err)
+				continue
 			}
 		}
 	}

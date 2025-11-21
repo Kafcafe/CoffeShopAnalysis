@@ -6,6 +6,7 @@ type AllowedGroup interface {
 	AddMapString(data map[string][]string)
 	GetMessageToSend() []map[string][]string
 	ToFullStringList() []string
+	Recover([]string) error
 }
 
 // Mapa genérico parametrizado

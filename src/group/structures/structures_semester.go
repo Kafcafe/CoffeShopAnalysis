@@ -131,3 +131,13 @@ func (g SemesterGroup) ToFullStringList() []string {
 	}
 	return out
 }
+
+func (g SemesterGroup) Recover(data []string) error {
+	for _, record := range data {
+		err := g.add(Record(record))
+		if err != nil {
+			return err
+		}
+	}
+	return nil
+}

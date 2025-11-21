@@ -61,3 +61,10 @@ func (cs *ClientStats) Clear(dataType DataType) {
 	cs.processed[dataType] = 0
 	cs.emitted[dataType] = 0
 }
+
+func (cs *ClientStats) SetCount(dataType DataType, emitted int) {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+	cs.ensureDatatypeExists(dataType)
+	cs.processed[dataType] = emitted
+}
