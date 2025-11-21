@@ -123,15 +123,15 @@ func (f *FilterGenericWorker) createExchangeHandlers() error {
 		nextStagePubs[datatype] = *exchange
 	}
 
-	f.log.Infof("Setting up results request Exchange for group %s", f.conf.id)
-	broadcastResultsRequestExchangeName := fmt.Sprintf("group.%s.results.request", f.conf.ofType)
+	f.log.Infof("Setting up results request Exchange for filter %s", f.conf.id)
+	broadcastResultsRequestExchangeName := fmt.Sprintf("filter.%s.results.request", f.conf.ofType)
 	broadcastResultsRequestPub, err := mh.CreateFanoutExchangeStandalone(broadcastResultsRequestExchangeName)
 	if err != nil {
 		return fmt.Errorf("error creating exchange handler for %s: %v", broadcastResultsRequestExchangeName, err)
 	}
 
-	f.log.Infof("Setting up results request SUB for group %s", f.conf.id)
-	broadcastResultsRequestSubQueueName := fmt.Sprintf("group.%s.results.request.%s", f.conf.ofType, f.conf.id)
+	f.log.Infof("Setting up results request SUB for filter %s", f.conf.id)
+	broadcastResultsRequestSubQueueName := fmt.Sprintf("filter.%s.results.request.%s", f.conf.ofType, f.conf.id)
 	broadcastResultsRequestSub, err := mh.CreateQueue(broadcastResultsRequestSubQueueName)
 	if err != nil {
 		return fmt.Errorf("error creating results request queue for %s: %v", broadcastResultsRequestSubQueueName, err)
