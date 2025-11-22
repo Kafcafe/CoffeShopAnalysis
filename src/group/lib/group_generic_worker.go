@@ -512,9 +512,9 @@ func (g *GroupByGenericWorker) Run() error {
 
 	for clientId, data := range data {
 		g.log.Infof("Recovering data for client %s", clientId)
-		group := g.group.Get(clientId, g.conf.factory)
-		group.AddBatch(data.GetData())
+		g.group.Add(clientId, data.GetData(), g.conf.factory)
 		g.getClientStats(clientId).SetCount("transactions", data.GetCount())
+		g.log.Infof("recovered data: %d", len(g.group.Get(clientId, g.conf.factory).ToFullStringList()))
 	}
 
 	if err != nil {

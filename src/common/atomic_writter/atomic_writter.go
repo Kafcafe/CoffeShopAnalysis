@@ -87,7 +87,7 @@ func (aw *AtomicWriter) findFile(index string) (string, error) {
 func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 	results := make(map[string]*SavedInfo)
 	files, err := os.ReadDir(aw.path)
-
+	aw.log.Infof("Starting recovery from path: %s", aw.path)
 	if err != nil {
 		return nil, err
 	}
@@ -104,6 +104,7 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 		clientID := strings.Split(file.Name(), "_")[0]
 
 		filepath := filepath.Join(aw.path, file.Name())
+		aw.log.Infof("Recovering data from file: %s and client: %s", filepath, clientID)
 		lines, err := aw.ReadFileLines(filepath)
 		if err != nil {
 			return nil, err
