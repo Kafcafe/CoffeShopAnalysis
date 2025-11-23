@@ -9,6 +9,8 @@ import (
 	"github.com/op/go-logging"
 )
 
+const separator = "@"
+
 type AtomicWriter struct {
 	path string
 	log  *logging.Logger
@@ -18,7 +20,7 @@ func NewAtomicWriter(path string) *AtomicWriter {
 	return &AtomicWriter{path: path, log: logging.MustGetLogger("WRITTER")}
 }
 
-func (aw *AtomicWriter) Write(data []string, clientId string) error {
+func (aw *AtomicWriter) Write(data []string, clientId, dataType string) error {
 
 	dstFile, err := aw.findFile(clientId)
 
@@ -27,7 +29,7 @@ func (aw *AtomicWriter) Write(data []string, clientId string) error {
 	}
 
 	if dstFile == "" {
-		dstFile = filepath.Join(aw.path, clientId+".csv")
+		dstFile = filepath.Join(aw.path, clientId+separator+dataType+".csv")
 	}
 
 	tmpFile, err := os.CreateTemp(aw.path, "tmpfile_*.csv")
@@ -97,11 +99,13 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 			continue
 		}
 
-		if strings.Contains(file.Name(), "tmpfile_") {
+		parts := strings.Split(file.Name(), separator)
+		clientID := parts[0]
+		dataType := parts[len(parts)-1]
+
+		if strings.Contains(file.Name(), "tmpfile") {
 			continue
 		}
-
-		clientID := strings.Split(file.Name(), "_")[0]
 
 		filepath := filepath.Join(aw.path, file.Name())
 		aw.log.Infof("Recovering data from file: %s and client: %s", filepath, clientID)
@@ -114,7 +118,7 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 			results[clientID] = NewSavedInfo([]string{})
 		}
 
-		results[clientID].Add(lines)
+		results[clientID].Add(lines, dataType)
 	}
 	return results, nil
 }

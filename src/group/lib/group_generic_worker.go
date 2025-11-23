@@ -229,7 +229,8 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
 	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
-	if err := g.dumpData(msg, hash); err != nil {
+	dataType := msg.DataType
+	if err := g.dumpData(msg, hash, dataType); err != nil {
 		g.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
 		return err
@@ -241,17 +242,17 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	return nil
 }
 
-func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash [32]byte) error {
+func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash [32]byte, dataType DataType) error {
 	if g.conf.ofType == GROUP_TYPE_TOPK {
 		fakeId := fmt.Sprintf("%x", hash)
-		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+"_"+fakeId); err != nil {
+		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+"@"+fakeId, dataType); err != nil {
 			return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
 		}
 		return nil
 	}
 
 	toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()
-	if err := g.atomicWritter.Write(toSave, msg.ClientId); err != nil {
+	if err := g.atomicWritter.Write(toSave, msg.ClientId, dataType); err != nil {
 		return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
 	}
 
@@ -513,7 +514,7 @@ func (g *GroupByGenericWorker) Run() error {
 	for clientId, data := range data {
 		g.log.Infof("Recovering data for client %s", clientId)
 		g.group.Add(clientId, data.GetData(), g.conf.factory)
-		g.getClientStats(clientId).SetCount("transactions", data.GetCount())
+		g.getClientStats(clientId).SetCount(data.GetDataType(), data.GetCount())
 		g.log.Infof("recovered data: %d", len(g.group.Get(clientId, g.conf.factory).ToFullStringList()))
 	}
 
