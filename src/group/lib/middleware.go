@@ -13,6 +13,15 @@ const (
 	NACK_DISCARD = 2
 )
 
+type MiddlewareHandlers struct {
+	prevStageSub               middleware.MessageMiddlewareQueue
+	nextStagePub               middleware.MessageMiddlewareExchange
+	privateQueueSub            middleware.MessageMiddlewareQueue
+	privateQueuesPub           map[int]*middleware.MessageMiddlewareQueue
+	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
+	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
+}
+
 func (g *GroupByGenericWorker) createExchangeHandlers() error {
 	// PREV STAGE SUB
 	g.log.Infof("Creating exchange handler for previous stage subscription: %s", g.conf.prevStageSub)

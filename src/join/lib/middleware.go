@@ -13,6 +13,22 @@ const (
 	NACK_DISCARD = 2
 )
 
+type JoinMiddlewareHandlers struct {
+	prevStageSub               middleware.MessageMiddlewareQueue
+	sideTableSub               middleware.MessageMiddlewareQueue
+	nextStagePubs              map[string]middleware.MessageMiddlewareExchange
+	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
+	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
+}
+
+func (mh *JoinMiddlewareHandlers) Shutdown() {
+	mh.prevStageSub.Close()
+	mh.sideTableSub.Close()
+	for _, nextStagePub := range mh.nextStagePubs {
+		nextStagePub.Close()
+	}
+}
+
 func (j *JoinGenericWorker) createExchangeHandlers() error {
 	// PREV STAGE SUB
 	_, err := j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.prevStageSub)

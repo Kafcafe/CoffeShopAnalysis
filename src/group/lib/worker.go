@@ -24,14 +24,6 @@ const (
 	BATCH_SIZE_GROUPED_MESSAGE = 1000
 )
 
-type MiddlewareHandlers struct {
-	prevStageSub               middleware.MessageMiddlewareQueue
-	nextStagePub               middleware.MessageMiddlewareExchange
-	privateQueueSub            middleware.MessageMiddlewareQueue
-	privateQueuesPub           map[int]*middleware.MessageMiddlewareQueue
-	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
-	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
-}
 type ClientId = string
 type DataType = string
 

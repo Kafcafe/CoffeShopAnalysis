@@ -45,22 +45,6 @@ type JoinGenericWorker struct {
 	watchMesh    *watch_mesh.WatchMesh
 }
 
-type JoinMiddlewareHandlers struct {
-	prevStageSub               middleware.MessageMiddlewareQueue
-	sideTableSub               middleware.MessageMiddlewareQueue
-	nextStagePubs              map[string]middleware.MessageMiddlewareExchange
-	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
-	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
-}
-
-func (mh *JoinMiddlewareHandlers) Shutdown() {
-	mh.prevStageSub.Close()
-	mh.sideTableSub.Close()
-	for _, nextStagePub := range mh.nextStagePubs {
-		nextStagePub.Close()
-	}
-}
-
 // handleSignal listens for SIGTERM signal and triggers shutdown.
 func (j *JoinGenericWorker) handleSignal() {
 	<-j.sigChan
