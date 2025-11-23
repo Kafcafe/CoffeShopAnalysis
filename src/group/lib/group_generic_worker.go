@@ -511,16 +511,7 @@ func (g *GroupByGenericWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	data, err := g.atomicWritter.Recover()
-
-	for clientId, data := range data {
-		g.log.Infof("Recovering data for client %s", clientId)
-		g.group.Add(clientId, data.GetData(), g.conf.factory)
-	}
-
-	if err != nil {
-		return fmt.Errorf("error during atomic writter recovery: %v", err)
-	}
+	g.recover()
 
 	g.log.Infof("Starting to consume messages from %s", g.conf.prevStageSub)
 	g.exchangeHandlers.privateQueueSub.StartConsuming(g.groupMessage, g.errChan)
@@ -540,6 +531,20 @@ func (g *GroupByGenericWorker) Run() error {
 
 	g.log.Info("Finished grouping")
 	return nil
+}
+
+func (g *GroupByGenericWorker) recover() {
+
+	data, err := g.atomicWritter.Recover()
+
+	for clientId, data := range data {
+		g.log.Infof("Recovering data for client %s", clientId)
+		g.group.Add(clientId, data.GetData(), g.conf.factory)
+	}
+
+	if err != nil {
+		g.log.Errorf("Error during recovery: %v", err)
+	}
 }
 
 // Shutdown gracefully stops the acceptor, closing the listener and current client.
