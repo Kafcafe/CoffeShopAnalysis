@@ -5,7 +5,6 @@ import (
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
-	"crypto/sha256"
 	"fmt"
 	"group/structures"
 	"os"
@@ -207,9 +206,8 @@ func (g *GroupByGenericWorker) ensureResultsChanExists(clientId ClientId, dataTy
 }
 
 func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
-	message_id := message.MessageId
-	if g.cache.Contains(message_id) {
-		g.log.Infof("Message %s already processed", message_id)
+	if g.cache.Contains(message.MessageId) {
+		g.log.Infof("Message %s already processed", message.MessageId)
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -225,27 +223,25 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 		return nil
 	}
 
-	hash := sha256.Sum256(message.Body)
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
 	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	dataType := msg.DataType
-	if err := g.dumpData(msg, hash, dataType); err != nil {
+	if err := g.dumpData(msg, message.MessageId, dataType); err != nil {
 		g.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
 		return err
 	}
 	g.mutex.Unlock()
-	g.cache.Add(message_id)
+	g.cache.Add(message.MessageId)
 
 	answerMessage(ACK, message)
 	return nil
 }
 
-func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash [32]byte, dataType DataType) error {
+func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash string, dataType DataType) error {
 	if g.conf.ofType == GROUP_TYPE_TOPK {
-		fakeId := fmt.Sprintf("%x", hash)
-		metadata := []string{msg.ClientId, fakeId, dataType}
+		metadata := []string{msg.ClientId, hash, dataType}
 		if err := g.atomicWritter.Write(msg.Payload, metadata); err != nil {
 			return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
 		}
