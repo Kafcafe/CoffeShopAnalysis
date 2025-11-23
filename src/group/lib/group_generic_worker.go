@@ -129,8 +129,7 @@ func (g *GroupByGenericWorker) createExchangeHandlers() error {
 		return fmt.Errorf("error binding queue for previous stage: %v", err)
 	}
 
-	// TODO: change to id num
-	privateQueueName := fmt.Sprintf("group.%s.private.%s", g.conf.ofType, g.conf.id)
+	privateQueueName := fmt.Sprintf("group.%s.private.%d", g.conf.ofType, g.conf.idNum)
 	g.log.Infof("Creating private queue handler for group %s: %s", g.conf.id, privateQueueName)
 	privateQueueSub, err := g.middlewareHandler.CreateQueue(privateQueueName)
 	if err != nil {
@@ -139,9 +138,7 @@ func (g *GroupByGenericWorker) createExchangeHandlers() error {
 
 	privateQueuesPub := make(map[int]*middleware.MessageMiddlewareQueue)
 	for i := range g.conf.count {
-		// TODO: change to id num
-		id := "-" + g.conf.ofType + fmt.Sprintf("%d", i+1)
-		privateQueuePubName := fmt.Sprintf("group.%s.private.%s", g.conf.ofType, id)
+		privateQueuePubName := fmt.Sprintf("group.%s.private.%d", g.conf.ofType, i+1)
 		g.log.Infof("Creating private queue PUB handler for group %s: %s", g.conf.id, privateQueuePubName)
 		queue, err := g.middlewareHandler.CreateQueue(privateQueuePubName)
 		if err != nil {
