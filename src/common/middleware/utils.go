@@ -1,13 +1,13 @@
 package middleware
 
 import (
-	"hash/fnv"
-	"strconv"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 )
 
 func GetMessageId(data []byte, count int) (string, int) {
-	h := fnv.New64a()
-	h.Write(data)
-	hashValue := h.Sum64()
-	return strconv.FormatUint(hashValue, 16), int(hashValue%uint64(count)) + 1
+	hashValue := sha256.Sum256(data)
+	partitionKey := binary.BigEndian.Uint64(hashValue[:8])
+	return hex.EncodeToString(hashValue[:]), int(partitionKey%uint64(count)) + 1
 }
