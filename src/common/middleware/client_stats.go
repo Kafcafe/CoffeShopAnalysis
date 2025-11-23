@@ -1,6 +1,9 @@
 package middleware
 
-import "sync"
+import (
+	"encoding/json"
+	"sync"
+)
 
 type DataType = string
 
@@ -67,4 +70,34 @@ func (cs *ClientStats) SetCount(dataType DataType, emitted int) {
 	defer cs.mutex.Unlock()
 	cs.ensureDatatypeExists(dataType)
 	cs.processed[dataType] = emitted
+}
+
+func (cs *ClientStats) toDTO() clientStatsDTO {
+	return clientStatsDTO{
+		Processed: cs.processed,
+		Emitted:   cs.emitted,
+	}
+}
+
+func (cs *ClientStats) fromDTO(dto clientStatsDTO) {
+	cs.processed = dto.Processed
+	cs.emitted = dto.Emitted
+}
+
+type clientStatsDTO struct {
+	Processed map[DataType]int
+	Emitted   map[DataType]int
+}
+
+func (cs *ClientStats) MarshalJSON() ([]byte, error) {
+	return json.Marshal(cs.toDTO())
+}
+
+func (cs *ClientStats) UnmarshalJSON(data []byte) error {
+	var dto clientStatsDTO
+	if err := json.Unmarshal(data, &dto); err != nil {
+		return err
+	}
+	cs.fromDTO(dto)
+	return nil
 }
