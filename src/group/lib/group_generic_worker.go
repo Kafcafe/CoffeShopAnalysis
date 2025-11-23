@@ -245,14 +245,16 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash [32]byte, dataType DataType) error {
 	if g.conf.ofType == GROUP_TYPE_TOPK {
 		fakeId := fmt.Sprintf("%x", hash)
-		if err := g.atomicWritter.Write(msg.Payload, msg.ClientId+"@"+fakeId, dataType); err != nil {
+		metadata := []string{msg.ClientId, fakeId, dataType}
+		if err := g.atomicWritter.Write(msg.Payload, metadata); err != nil {
 			return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
 		}
 		return nil
 	}
 
 	toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()
-	if err := g.atomicWritter.Write(toSave, msg.ClientId, dataType); err != nil {
+	metadata := []string{msg.ClientId, dataType}
+	if err := g.atomicWritter.Write(toSave, metadata); err != nil {
 		return fmt.Errorf("error writing grouped data to file for client %s: %v", msg.ClientId, err)
 	}
 
