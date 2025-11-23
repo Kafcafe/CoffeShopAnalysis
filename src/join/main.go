@@ -99,6 +99,7 @@ func main() {
 	)
 
 	joinerId := config.GetString("join.id")
+	joinerIdNum := config.GetInt("join.idnum")
 	joinerCount := config.GetInt("join.count")
 	joinerType := config.GetString("join.type")
 
@@ -122,6 +123,7 @@ func main() {
 		joinerType,
 		rabbitConf,
 		joinerId,
+		joinerIdNum,
 		joinerCount,
 		basicWatchMeshConfig,
 	)

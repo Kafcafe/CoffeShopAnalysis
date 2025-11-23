@@ -20,6 +20,7 @@ type JoinItemsWorker interface {
 
 type JoinWorkerConfig struct {
 	id                             string
+	idNum                          int
 	count                          int
 	ofType                         string
 	queryId                        int
@@ -30,9 +31,10 @@ type JoinWorkerConfig struct {
 	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
 }
 
-func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
+func JoinItemsConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
 	return JoinWorkerConfig{
 		id:            joinId,
+		idNum:         joinIdNum,
 		count:         joinCount,
 		ofType:        JOIN_ITEMS_TYPE,
 		queryId:       2,
@@ -45,9 +47,10 @@ func JoinItemsConfig(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
-func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
+func JoinStoreConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
 	return JoinWorkerConfig{
 		id:           joinId,
+		idNum:        joinIdNum,
 		count:        joinCount,
 		ofType:       "store",
 		prevStageSub: "transactions.transactions.topk",
@@ -61,9 +64,10 @@ func JoinStoreConfig(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
-func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
+func JoinStoreQ3Config(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
 	return JoinWorkerConfig{
 		id:            joinId,
+		idNum:         joinIdNum,
 		count:         joinCount,
 		ofType:        "store_q3",
 		queryId:       3,
@@ -76,9 +80,10 @@ func JoinStoreQ3Config(joinId string, joinCount int) JoinWorkerConfig {
 	}
 }
 
-func JoinUsersConfig(joinId string, joinCount int) JoinWorkerConfig {
+func JoinUsersConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
 	return JoinWorkerConfig{
 		id:                             joinId,
+		idNum:                          joinIdNum,
 		count:                          joinCount,
 		ofType:                         "users",
 		queryId:                        4,
@@ -93,6 +98,7 @@ func CreateJoinerWorker(
 	joinItemsType string,
 	rabbitConf middleware.RabbitConfig,
 	joinerId string,
+	joinerIdNum int,
 	joinerCount int,
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
 ) (*JoinItemsWorker, error) {
@@ -103,13 +109,13 @@ func CreateJoinerWorker(
 
 	switch joinItemsType {
 	case JOIN_ITEMS_TYPE:
-		config = JoinItemsConfig(joinerId, joinerCount)
+		config = JoinItemsConfig(joinerId, joinerCount, joinerIdNum)
 	case JOIN_STORE_TYPE:
-		config = JoinStoreConfig(joinerId, joinerCount)
+		config = JoinStoreConfig(joinerId, joinerCount, joinerIdNum)
 	case JOIN_USERS_TYPE:
-		config = JoinUsersConfig(joinerId, joinerCount)
+		config = JoinUsersConfig(joinerId, joinerCount, joinerIdNum)
 	case JOIN_STORE_Q3_TYPE:
-		config = JoinStoreQ3Config(joinerId, joinerCount)
+		config = JoinStoreQ3Config(joinerId, joinerCount, joinerIdNum)
 	default:
 		return nil, fmt.Errorf("unknown joiner type: %s", joinItemsType)
 	}
