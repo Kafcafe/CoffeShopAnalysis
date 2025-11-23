@@ -218,10 +218,11 @@ func (j *JoinGenericWorker) Run() error {
 	}
 
 	if j.conf.ofType == JOIN_USERS_TYPE {
-		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithPayload, j.errChan)
+		j.middlewareHandlers.privateQueueSub.StartConsuming(j.joinWithPayload, j.errChan)
 	} else {
-		j.middlewareHandlers.prevStageSub.StartConsuming(j.joinWithSideTable, j.errChan)
+		j.middlewareHandlers.privateQueueSub.StartConsuming(j.joinWithSideTable, j.errChan)
 	}
+	j.middlewareHandlers.prevStageSub.StartConsuming(j.dispatchMessage, j.errChan)
 	j.middlewareHandlers.broadcastResultsRequestSub.StartConsuming(j.sendResultsRequest, j.errChan)
 
 	j.log.Info("Started consuming messages. Ready to join!")

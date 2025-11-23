@@ -17,6 +17,8 @@ type JoinMiddlewareHandlers struct {
 	prevStageSub               middleware.MessageMiddlewareQueue
 	sideTableSub               middleware.MessageMiddlewareQueue
 	nextStagePubs              map[string]middleware.MessageMiddlewareExchange
+	privateQueueSub            middleware.MessageMiddlewareQueue
+	privateQueuesPub           map[int]*middleware.MessageMiddlewareQueue
 	broadcastResultsRequestPub middleware.MessageMiddlewareExchange
 	broadcastResultsRequestSub middleware.MessageMiddlewareQueue
 }
@@ -65,6 +67,22 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 		return fmt.Errorf("error preparing side table queue for %s: %v", j.conf.ofType, err)
 	}
 
+	privateQueueName := fmt.Sprintf("join.%s.private.%d", j.conf.ofType, j.conf.idNum)
+	privateQueueSub, err := j.middlewareHandler.CreateQueue(privateQueueName)
+	if err != nil {
+		return fmt.Errorf("error creating private queue for join %s: %v", j.conf.id, err)
+	}
+
+	privateQueuesPub := make(map[int]*middleware.MessageMiddlewareQueue)
+	for i := range j.conf.count {
+		privateQueuePubName := fmt.Sprintf("join.%s.private.%d", j.conf.ofType, i+1)
+		queue, err := j.middlewareHandler.CreateQueue(privateQueuePubName)
+		if err != nil {
+			return fmt.Errorf("error creating private queue PUB for join %s: %v", j.conf.id, err)
+		}
+		privateQueuesPub[i+1] = queue
+	}
+
 	// NEXT STAGE PUB
 	nextStagePubs := make(map[string]middleware.MessageMiddlewareExchange)
 	nextStagePub, err := j.middlewareHandler.CreateDirectExchangeStandalone(j.conf.nextStagePubs[j.conf.ofType])
@@ -97,6 +115,8 @@ func (j *JoinGenericWorker) createExchangeHandlers() error {
 		prevStageSub:               *prevStageSub,
 		sideTableSub:               *sideTableSub,
 		nextStagePubs:              nextStagePubs,
+		privateQueueSub:            *privateQueueSub,
+		privateQueuesPub:           privateQueuesPub,
 		broadcastResultsRequestPub: *broadcastResultsRequestPub,
 		broadcastResultsRequestSub: *broadcastResultsRequestSub,
 	}
@@ -152,6 +172,23 @@ func (j *JoinGenericWorker) SendToQueue(queueName string, message []byte) middle
 		return middleware.MessageMiddlewareMessageError
 	}
 	return middleware.MessageMiddlewareSuccess
+}
+
+func (j *JoinGenericWorker) dispatchMessage(message amqp.Delivery) error {
+	message_id, destination_id := middleware.GetMessageId(message.Body, j.conf.count)
+	err := j.middlewareHandlers.privateQueuesPub[destination_id].SendWithId(message.Body, message_id)
+	if err != middleware.MessageMiddlewareSuccess {
+		answerMessage(NACK_REQUEUE, message)
+		return fmt.Errorf("failed to dispatch message to private queue %d: %v", destination_id, err)
+	}
+	// DISCLAMER: This is just for simulation purposes
+	// if rand.Float64() < REQUEUE_PROBABILITY {
+	// 	answerMessage(NACK_REQUEUE, message)
+	// 	j.log.Warningf("Simulating message requeue for message %s", message_id)
+	// 	return fmt.Errorf("simulated message requeue for message %s", message_id)
+	// }
+	answerMessage(ACK, message)
+	return nil
 }
 
 func answerMessage(ackType int, message amqp.Delivery) {
