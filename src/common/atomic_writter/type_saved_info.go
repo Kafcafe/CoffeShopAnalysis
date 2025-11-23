@@ -6,10 +6,10 @@ type SavedInfo struct {
 	count    int
 }
 
-func NewSavedInfo(data []string) *SavedInfo {
+func NewSavedInfo() *SavedInfo {
 	return &SavedInfo{
-		data:  data,
-		count: 1,
+		data:  []string{},
+		count: 0,
 	}
 }
 
