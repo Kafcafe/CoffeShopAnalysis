@@ -100,14 +100,14 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 			continue
 		}
 
-		parts := strings.Split(file.Name(), separator)
-		clientID := parts[0]
-		dataType := parts[len(parts)-1]
+		metadata := strings.Split(file.Name(), separator)
 
-		if strings.Contains(file.Name(), "tmpfile") {
+		if len(metadata) < 2 {
 			continue
 		}
 
+		clientID := metadata[0]
+		dataType := metadata[len(metadata)-1]
 		filepath := filepath.Join(aw.path, file.Name())
 		aw.log.Infof("Recovering data from file: %s and client: %s", filepath, clientID)
 		lines, err := aw.ReadFileLines(filepath)
@@ -116,7 +116,7 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 		}
 
 		if _, exists := results[clientID]; !exists {
-			results[clientID] = NewSavedInfo([]string{})
+			results[clientID] = NewSavedInfo()
 		}
 
 		results[clientID].Add(lines, dataType)
@@ -173,7 +173,13 @@ func (aw *AtomicWriter) cleanFiles(shouldRemove func(string) bool) error {
 			continue
 		}
 
-		if shouldRemove(file.Name()) {
+		metadata := strings.Split(file.Name(), separator)
+
+		if len(metadata) == 1 {
+			continue
+		}
+
+		if shouldRemove(metadata[0]) {
 			filepath := filepath.Join(aw.path, file.Name())
 			err := os.Remove(filepath)
 			if err != nil {
