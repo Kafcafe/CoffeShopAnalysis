@@ -117,6 +117,8 @@ func CreateGroupByWorker(
 	var groupByWorker GroupByWorker
 	var err error
 
+	logger.Infof("Creating groupBy worker for group %d", idNum)
+
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:
 		config := GroupByYearMonthConfig(groupId, groupCount, idNum)

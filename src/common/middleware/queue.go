@@ -15,7 +15,7 @@ func NewMessageMiddlewareQueue(queueName string, channel MiddlewareChannel, cons
 func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback OnMessageCallback, errChan chan<- MessageMiddlewareError) {
 	// TODO: Establecer prefetch
 	if err := m.channel.Qos(
-		1,     // prefetchCount: por ejemplo 1 mensaje por consumidor
+		10,    // prefetchCount: por ejemplo 1 mensaje por consumidor
 		0,     // prefetchSize: sin límite por tamaño
 		false, // global: solo afecta a este consumidor
 	); err != nil {

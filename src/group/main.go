@@ -102,7 +102,7 @@ func main() {
 	groupId := config.GetString("group.id")
 	groupCount := config.GetInt("group.count")
 	groupType := config.GetString("group.type")
-	groupIdNum := config.GetInt("idnum")
+	groupIdNum := config.GetInt("group.idnum")
 
 	watchMeshPort := config.GetInt("watch.mesh.udp.port")
 	heartbeatIntervalSecs := config.GetFloat64("watchMesh.heartbeatIntervalSeconds")
