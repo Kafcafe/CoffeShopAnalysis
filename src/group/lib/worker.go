@@ -119,7 +119,6 @@ func (g *GroupByGenericWorker) ensureResultsChanExists(clientId ClientId, dataTy
 }
 
 func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
-	g.log.Infof("Processing message %s", message.MessageId)
 	if g.cache.Contains(message.MessageId) {
 		g.log.Infof("Message %s already processed", message.MessageId)
 		answerMessage(ACK, message)
