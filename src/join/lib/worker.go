@@ -43,6 +43,7 @@ type JoinGenericWorker struct {
 
 	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh    *watch_mesh.WatchMesh
+	cache        *middleware.Cache
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -95,10 +96,17 @@ func NewJoinWorker(
 
 		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:    watch_mesh.NewWatchMesh(watchMeshConfig),
+		cache:        middleware.NewCache(middleware.DEFAULT_CACHE_CAPACITY),
 	}, nil
 }
 
 func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
+	if j.cache.Contains(message.MessageId) {
+		j.log.Infof("Message %s already processed", message.MessageId)
+		answerMessage(ACK, message)
+		return nil
+	}
+
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
@@ -132,12 +140,18 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 	j.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	j.mutex.Unlock()
 
+	j.cache.Add(message.MessageId)
 	answerMessage(ACK, message)
 
 	return nil
 }
 
 func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
+	if j.cache.Contains(message.MessageId) {
+		j.log.Infof("Message %s already processed", message.MessageId)
+		answerMessage(ACK, message)
+		return nil
+	}
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
 		answerMessage(NACK_DISCARD, message)
@@ -156,6 +170,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	j.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
 	j.mutex.Unlock()
 
+	j.cache.Add(message.MessageId)
 	answerMessage(ACK, message)
 	return nil
 }

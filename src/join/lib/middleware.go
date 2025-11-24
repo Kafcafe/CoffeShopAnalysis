@@ -8,9 +8,10 @@ import (
 )
 
 const (
-	ACK          = 0
-	NACK_REQUEUE = 1
-	NACK_DISCARD = 2
+	ACK                 = 0
+	NACK_REQUEUE        = 1
+	NACK_DISCARD        = 2
+	REQUEUE_PROBABILITY = 0.2
 )
 
 type JoinMiddlewareHandlers struct {
