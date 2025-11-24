@@ -46,7 +46,6 @@ type GroupByGenericWorker struct {
 	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh     *watch_mesh.WatchMesh
 	atomicWritter *atomicwritter.AtomicWriter
-	cache         *middleware.Cache
 }
 
 func NewGroupByGenericWorker(
@@ -91,7 +90,6 @@ func NewGroupByGenericWorker(
 		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
 		atomicWritter: atomicwritter.NewAtomicWriter(path),
-		cache:         middleware.NewCache(middleware.DEFAULT_CACHE_CAPACITY),
 	}, nil
 }
 
@@ -104,7 +102,7 @@ func (g *GroupByGenericWorker) handleSignal() {
 
 func (g *GroupByGenericWorker) getClientStats(clientId ClientId) *middleware.ClientStats {
 	if _, exists := g.clientsStats[clientId]; !exists {
-		g.clientsStats[clientId] = middleware.NewClientStats()
+		g.clientsStats[clientId] = middleware.NewClientStats(middleware.DEFAULT_CACHE_CAPACITY)
 	}
 	return g.clientsStats[clientId]
 }
@@ -119,16 +117,17 @@ func (g *GroupByGenericWorker) ensureResultsChanExists(clientId ClientId, dataTy
 }
 
 func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
-	if g.cache.Contains(message.MessageId) {
+	msg, err := middleware.NewMessageFromBytes(message.Body)
+	if err != nil {
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
+	clientStats := g.getClientStats(msg.ClientId)
+
+	if clientStats.WasMessageProcessed(message.MessageId) {
 		g.log.Infof("Message %s already processed", message.MessageId)
 		answerMessage(ACK, message)
 		return nil
-	}
-
-	msg, err := middleware.NewMessageFromBytes(message.Body)
-	if err != nil {
-		answerMessage(NACK_DISCARD, message)
-		return err
 	}
 
 	if msg.IsEof {
@@ -138,7 +137,7 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
-	g.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
+	clientStats.Add(msg.DataType, message.MessageId, true, false)
 	dataType := msg.DataType
 	if err := g.dumpData(msg, message.MessageId, dataType); err != nil {
 		g.mutex.Unlock()
@@ -146,7 +145,6 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 		return err
 	}
 	g.mutex.Unlock()
-	g.cache.Add(message.MessageId)
 
 	answerMessage(ACK, message)
 	return nil

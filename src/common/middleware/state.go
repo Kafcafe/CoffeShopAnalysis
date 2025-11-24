@@ -7,14 +7,12 @@ import (
 type WorkerStateDTO struct {
 	ClientStats *ClientStats
 	Data        []string
-	Cache       *Cache
 }
 
-func NewWorkerState(clientStats *ClientStats, data []string, cache *Cache) WorkerStateDTO {
+func NewWorkerState(clientStats *ClientStats, data []string) WorkerStateDTO {
 	return WorkerStateDTO{
 		ClientStats: clientStats,
 		Data:        data,
-		Cache:       cache,
 	}
 }
 

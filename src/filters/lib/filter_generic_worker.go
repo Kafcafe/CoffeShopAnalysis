@@ -171,7 +171,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 
 	if len(filteredBatch) == 0 {
 		// f.log.Info("No transaction passed the filterMessage of type " + f.conf.ofType)
-		f.getClientStats(msg.ClientId).Add(msg.DataType, true, false)
+		f.getClientStats(msg.ClientId).Add(msg.DataType, message.MessageId, true, false)
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -184,7 +184,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return err
 	}
 
-	f.getClientStats(msg.ClientId).Add(msg.DataType, true, true)
+	f.getClientStats(msg.ClientId).Add(msg.DataType, message.MessageId, true, true)
 
 	answerMessage(ACK, message)
 	// f.log.Infof("Filtered message and sent to next stage")
@@ -226,7 +226,7 @@ func (f *FilterGenericWorker) sendNextStage(msgToSend middleware.Message) error 
 
 func (f *FilterGenericWorker) getClientStats(clientId ClientId) *middleware.ClientStats {
 	if _, exists := f.clientsStats[clientId]; !exists {
-		f.clientsStats[clientId] = middleware.NewClientStats()
+		f.clientsStats[clientId] = middleware.NewClientStats(0)
 	}
 	return f.clientsStats[clientId]
 }

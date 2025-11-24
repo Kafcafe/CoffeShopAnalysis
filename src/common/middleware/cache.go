@@ -26,7 +26,7 @@ func (c *Cache) Contains(key string) bool {
 }
 
 func (c *Cache) Add(key string) {
-	if c.Contains(key) {
+	if c.capacity == 0 || key == "" || c.Contains(key) {
 		return
 	}
 
