@@ -82,17 +82,19 @@ func (sm *MyStateMachine) Set(newState CurrentNodeStatus) {
 
 // PeerStateMachine manages the state of a peer node
 type PeerStateMachine struct {
-	state              PeerStatus
-	lastSeen           time.Time
-	resurrectingChecks int
-	mu                 sync.Mutex
+	state               PeerStatus
+	lastSeen            time.Time
+	resurrectingChecks  int
+	mu                  sync.Mutex
+	lastSeenInitialized bool
 }
 
 func NewPeerStateMachine() *PeerStateMachine {
 	return &PeerStateMachine{
-		state:              PeerStatusAlive,
-		lastSeen:           time.Time{},
-		resurrectingChecks: 0,
+		state:               PeerStatusAlive,
+		lastSeen:            time.Time{},
+		lastSeenInitialized: false,
+		resurrectingChecks:  0,
 	}
 }
 
@@ -112,13 +114,15 @@ func (sm *PeerStateMachine) UpdateLastSeen() {
 	sm.mu.Lock()
 	defer sm.mu.Unlock()
 	sm.lastSeen = time.Now()
+	sm.lastSeenInitialized = true
 }
 
 func (sm *PeerStateMachine) GetLastSeen() time.Time {
 	sm.mu.Lock()
 
-	if sm.lastSeen.IsZero() {
+	if !sm.lastSeenInitialized {
 		sm.lastSeen = time.Now()
+		sm.lastSeenInitialized = true
 	}
 
 	defer sm.mu.Unlock()

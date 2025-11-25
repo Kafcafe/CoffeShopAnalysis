@@ -124,9 +124,7 @@ func (wm *WatchMesh) handleDiscoveredLeader(discoveredLeaderID NodeId) {
 func (wm *WatchMesh) handleDiscoveryTimeout() {
 	// Timeout - no validated leader received
 	currentState := wm.myState.Get()
-	wm.mutex.Lock()
-	currentLeader := wm.leaderID
-	wm.mutex.Unlock()
+	currentLeader := wm.GetLeaderID()
 
 	if wm.shouldStartNewElection(currentState, currentLeader) {
 		wm.log.Info("No leader discovered within timeout, starting election")
@@ -186,7 +184,9 @@ func (wm *WatchMesh) validateFromChan(leaderID NodeId) {
 			wm.log.Warningf("No acknowledgment from %s within timeout", leaderID)
 			return
 		case candidateLeader := <-wm.leaderDiscoveryHeartbeatAckChan:
-			if candidateLeader != leaderID {
+			fullLeaderId := NodeId(wm.composeFullNodeId(leaderID))
+			if candidateLeader != fullLeaderId {
+				wm.log.Infof("Expected leaderID '%s' but got '%s' for LeaderDiscovery validation", fullLeaderId, candidateLeader)
 				continue
 			}
 
@@ -205,12 +205,12 @@ func (wm *WatchMesh) validateFromChan(leaderID NodeId) {
 }
 
 // validateLeader performs a heartbeat check on a discovered leader
-func (wm *WatchMesh) validateLeader(leaderID NodeId, responseAddr *net.UDPAddr) {
+func (wm *WatchMesh) validateLeader(leaderID NodeId, leaderAddr *net.UDPAddr) {
 	wm.log.Infof("Validating leader %s", leaderID)
 
 	// Send a specific heartbeat to validate the leader
 	msg := NewHeartbeatMessage(string(wm.config.CurrentNodeID))
-	if err := wm.sendMessage(responseAddr, msg); err != nil {
+	if err := wm.sendMessage(leaderAddr, msg); err != nil {
 		wm.log.Errorf("Failed to send validation heartbeat: %v", err)
 		wm.mutex.Lock()
 		wm.leaderDiscoveryFinished = true
@@ -431,28 +431,59 @@ func (wm *WatchMesh) getPeerAddresses() []*net.UDPAddr {
 }
 
 func (wm *WatchMesh) checkLiveness() {
-	peerIdsToResurrect, shouldStartElections := wm.checkPeersLiveness()
-	wm.handleLivenessResults(peerIdsToResurrect, shouldStartElections)
-}
-
-func (wm *WatchMesh) checkPeersLiveness() ([]NodeId, bool) {
 	peerIdsToResurrect := []NodeId{}
 	shouldStartElections := false
 
+	if wm.AmILeader() {
+		peerIdsToResurrect = wm.checkPeersLiveness()
+	} else {
+		shouldStartElections = wm.checkLeaderLiveness()
+	}
+
+	wm.handleLivenessResults(peerIdsToResurrect, shouldStartElections)
+}
+
+func (wm *WatchMesh) checkPeersLiveness() (peerIdsToResurrect []NodeId) {
+	peerIdsToResurrect = []NodeId{}
+
 	wm.mutex.Lock()
-	defer wm.mutex.Unlock()
+	peers := wm.peers
+	wm.mutex.Unlock()
+
 	now := time.Now()
 
-	for id, peer := range wm.peers {
-		resurrect, startElection := wm.checkPeer(id, peer, now)
+	for id, peer := range peers {
+		resurrect, _ := wm.checkPeer(id, peer, now)
 		if resurrect {
 			peerIdsToResurrect = append(peerIdsToResurrect, id)
 		}
-		if startElection {
-			shouldStartElections = true
-		}
 	}
-	return peerIdsToResurrect, shouldStartElections
+	return peerIdsToResurrect
+}
+
+func (wm *WatchMesh) checkLeaderLiveness() (shouldStartElections bool) {
+	shouldStartElections = false
+
+	wm.mutex.Lock()
+	leaderID := NodeId(wm.composeFullNodeId(wm.leaderID))
+	peer, exists := wm.peers[leaderID]
+
+	if !exists {
+		// Leader doesn't exist in peers map, start elections
+		wm.mutex.Unlock()
+		return true
+	}
+
+	// Check leader liveness using the same logic as checkPeer
+	now := time.Now()
+	_, startElection := wm.checkPeer(leaderID, peer, now)
+	wm.mutex.Unlock()
+
+	if startElection {
+		shouldStartElections = true
+	}
+
+	return shouldStartElections
 }
 
 func (wm *WatchMesh) checkPeer(id NodeId, peer *Peer, now time.Time) (bool, bool) {
@@ -477,29 +508,32 @@ func (wm *WatchMesh) handlePeerTimeout(id NodeId, peer *Peer, currentState PeerS
 	switch currentState {
 	case PeerStatusAlive:
 		// Peer was alive and now is found to be dead. Immediate resurrection will be attempted
-		return wm.setupStateForPeerResurrection(id, peer)
+		shouldResurrect, shouldStartElection = wm.setupStateForPeerResurrection(id, peer, wm.AmILeader(), wm.GetLeaderID())
+
 	case PeerStatusResurrecting:
 		// Peer was being resurrected, handle case when exceeded resurrection checks
-		return shouldResurrect, wm.handleResurrectingPeerTimeout(id, peer)
+		shouldStartElection = wm.handleResurrectingPeerTimeout(id, peer)
+
 	case PeerStatusDead:
 		// Peer was dead so the peer did not resurrect, trying again
-		return wm.setupStateForPeerResurrection(id, peer)
+		shouldResurrect, shouldStartElection = wm.setupStateForPeerResurrection(id, peer, wm.AmILeader(), wm.GetLeaderID())
 	}
+
 	return shouldResurrect, shouldStartElection
 }
 
-func (wm *WatchMesh) setupStateForPeerResurrection(id NodeId, peer *Peer) (shouldResurrect bool, shouldStartElection bool) {
+func (wm *WatchMesh) setupStateForPeerResurrection(id NodeId, peer *Peer, isLeader bool, leaderId NodeId) (shouldResurrect bool, shouldStartElection bool) {
 	peer.State.Set(PeerStatusResurrecting)
 	peer.State.ResetResurrectingChecks()
 
 	shouldResurrect = false
 	shouldStartElection = false
 
-	if wm.AmILeader() {
+	if isLeader {
 		shouldResurrect = true
 	}
 
-	if id == wm.leaderID {
+	if id == leaderId {
 		shouldStartElection = true
 	}
 
@@ -514,7 +548,7 @@ func (wm *WatchMesh) handleResurrectingPeerTimeout(id NodeId, peer *Peer) (shoul
 		peer.State.Set(PeerStatusDead)
 		wm.log.Warningf("Node %s failed to resurrect after %d checks", MAX_RESURRECT_ATTEMPTS, id)
 
-		if id == wm.leaderID {
+		if id == wm.GetLeaderID() {
 			shouldStartElection = true
 		}
 	} else {
@@ -554,13 +588,11 @@ func (wm *WatchMesh) runHeartbeat() {
 	noLeaderCounter := 0
 
 	for range ticker.C {
-		wm.mutex.Lock()
-		hasLeader := wm.leaderID != ""
-		wm.mutex.Unlock()
+		hasLeader := wm.GetLeaderID() != ""
 
 		if !hasLeader {
 			noLeaderCounter = wm.handleLeaderlessState(noLeaderCounter)
-			// Don’t send heartbeats until we have a known leader or we're leader
+			// Don't send heartbeats until we have a known leader or we're leader
 			continue
 		}
 
@@ -594,14 +626,14 @@ func (wm *WatchMesh) AmILeader() bool {
 	wm.mutex.Lock()
 	defer wm.mutex.Unlock()
 
-	return wm.myState.Get() == StatusLeader
+	return wm.myState.Get() == StatusLeader || wm.leaderID == wm.config.CurrentNodeID
 }
 
 // GetLeaderID returns the current leader's ID
-func (wm *WatchMesh) GetLeaderID() string {
+func (wm *WatchMesh) GetLeaderID() NodeId {
 	wm.mutex.Lock()
 	defer wm.mutex.Unlock()
-	return string(wm.leaderID)
+	return wm.leaderID
 }
 
 // handleMessage processes incoming UDP messages
@@ -847,16 +879,18 @@ func (wm *WatchMesh) handleCoordinator(senderID string, addr *net.UDPAddr) {
 	compare := compareNodeIDs(senderNodeID, currentNodeID)
 
 	if compare < 0 {
-		// Sender has LOWER ID -> reject its leadership, start election
+		// Sender has LOWER ID -> reject its leadership, assert dominance
 		wm.log.Warningf(
-			"Received Coordinator from LOWER-ID node %s (self=%s). Refusing ACK and starting election",
+			"Received Coordinator from LOWER-ID node %s (self=%s). Refusing ACK and asserting leadership",
 			senderNodeID, currentNodeID,
 		)
 
-		delay := time.Duration(rand.Intn(200)+100) * time.Millisecond
-		wm.log.Infof("Delaying election by %v to avoid repeated contention", delay)
-		time.Sleep(delay)
-		go wm.startElection()
+		// Force leader ID reset to ensure becomeLeader doesn't abort if it thinks there's an alive leader
+		wm.mutex.Lock()
+		wm.leaderID = ""
+		wm.mutex.Unlock()
+
+		go wm.becomeLeader()
 		return
 	}
 
@@ -884,6 +918,21 @@ func (wm *WatchMesh) handleCoordinator(senderID string, addr *net.UDPAddr) {
 // becomeLeader transitions the node to leader state
 func (wm *WatchMesh) becomeLeader() {
 	wm.log.Info("Becoming leader")
+
+	wm.mutex.Lock()
+	currentLeader := wm.leaderID
+	leaderAlive := false
+	if currentLeader != "" {
+		if peer, ok := wm.peers[currentLeader]; ok {
+			leaderAlive = peer.State.Get() == PeerStatusAlive
+		}
+	}
+	wm.mutex.Unlock()
+
+	if leaderAlive {
+		wm.log.Warningf("Aborting becomeLeader: Current leader %s is still Alive", currentLeader)
+		return
+	}
 
 	peerList := wm.resetLeaderStateAndGetPeers()
 	wm.myState.Set(StatusCoordinatorCandidate)
@@ -1027,9 +1076,6 @@ func (wm *WatchMesh) handleCoordinatorAck(msg *WatchMeshMessage) {
 }
 
 func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
-	wm.mutex.Lock()
-	defer wm.mutex.Unlock()
-
 	if !wm.AmILeader() {
 		wm.log.Warning("Cannot resurrect because this node is not leader")
 		return
@@ -1040,10 +1086,9 @@ func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
 		return
 	}
 
-	node := wm.composeFullNodeId(peerId)
 	wm.log.Infof("Resurrecting peer with type '%s'", wm.config.NodeType)
-	wm.respawner.Respawn(node)
-	wm.log.Infof("Resurrect command issued for peer with ID '%s'", node)
+	wm.respawner.Respawn(string(peerId))
+	wm.log.Infof("Resurrect command issued for peer with ID '%s'", peerId)
 }
 
 func (wm *WatchMesh) handleHeartbeatMessage(addr *net.UDPAddr) {
@@ -1079,11 +1124,10 @@ func (wm *WatchMesh) handleHeartbeatAckMessage(msg *WatchMeshMessage) {
 
 	if wm.config.ShowHeartbeatLogs {
 		leaderPrefix := "   "
-		wm.mutex.Lock()
-		if string(wm.leaderID) == msg.SenderID {
+		if string(wm.GetLeaderID()) == msg.SenderID {
 			leaderPrefix = "[L]"
 		}
-		wm.mutex.Unlock()
+
 		wm.log.Infof("HeartbeatAck from %s '%s'", leaderPrefix, msg.SenderID)
 	}
 }
@@ -1095,9 +1139,7 @@ func (wm *WatchMesh) handleElectionOkMessage(msg *WatchMeshMessage) {
 
 func (wm *WatchMesh) handleLeaderDiscoveryMessage(msg *WatchMeshMessage, addr *net.UDPAddr) {
 	// Read state without holding lock
-	wm.mutex.Lock()
-	leaderID := wm.leaderID
-	wm.mutex.Unlock()
+	leaderID := wm.GetLeaderID()
 
 	if leaderID == "" {
 		wm.log.Infof("Received LeaderDiscovery request from %s but leader is unknown", msg.SenderID)
@@ -1125,12 +1167,19 @@ func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage, addr *ne
 
 	wm.log.Infof("Received LeaderDiscovery response from %s claiming leader is %s, validating...", msg.SenderID, leaderID)
 	// validateLeader is called in a goroutine to avoid blocking message handling
+	fullNodeId := NodeId(wm.composeFullNodeId(leaderID))
 	wm.mutex.Lock()
 	discoveryInProgress := !wm.leaderDiscoveryFinished
+	leaderInfo, ok := wm.peers[fullNodeId]
 	wm.mutex.Unlock()
 
+	if !ok {
+		wm.log.Warningf("Unknown leader %s during LeaderDiscovery", fullNodeId)
+		return
+	}
+
 	if discoveryInProgress {
-		go wm.validateLeader(leaderID, addr)
+		go wm.validateLeader(leaderID, leaderInfo.Address)
 	}
 }
 
