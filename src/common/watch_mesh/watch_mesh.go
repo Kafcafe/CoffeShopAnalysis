@@ -57,9 +57,16 @@ type WatchMesh struct {
 func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 	logger := logger.GetLoggerWithPrefix("[WATCH-MESH]")
 
-	randSource := rand.NewSource(int64(SEED_FOR_RANDOM_JITTER))
+	// Calculate seed by adding character values from the node ID
+	idValue := 0
+	for _, char := range string(config.CurrentNodeID) {
+		idValue += int(char)
+	}
+	finalSeed := SEED_FOR_RANDOM_JITTER + idValue
+	randSource := rand.NewSource(int64(finalSeed))
 	randGenerator := rand.New(randSource)
-	logger.Infof("Random seed for jitter initialized: %d", SEED_FOR_RANDOM_JITTER)
+
+	logger.Infof("Random seed for jitter initialized: %d", finalSeed)
 
 	return &WatchMesh{
 		config:                          config,
@@ -128,7 +135,7 @@ func (wm *WatchMesh) handleDiscoveryTimeout() {
 
 	if wm.shouldStartNewElection(currentState, currentLeader) {
 		wm.log.Info("No leader discovered within timeout, starting election")
-		wm.startElection()
+		wm.startElection(false)
 	} else if currentState == StatusElectionStarter && currentLeader == "" {
 		wm.log.Info("Timeout but election already in progress")
 	}
@@ -575,7 +582,7 @@ func (wm *WatchMesh) handleLivenessResults(peerIdsToResurrect []NodeId, shouldSt
 			wm.resurrectPeer(peerId)
 		}
 	} else if shouldStartElections {
-		wm.startElection()
+		wm.startElection(false)
 	}
 }
 
@@ -609,7 +616,7 @@ func (wm *WatchMesh) handleLeaderlessState(noLeaderCounter int) int {
 
 		if noLeaderCounter >= MAX_LEADERLESS_BEATS_BEFORE_STARTING_ELECTIONS {
 			wm.log.Info("No leader and no election for 5 heartbeats, starting election")
-			wm.startElection()
+			wm.startElection(false)
 			noLeaderCounter = 0
 		}
 
@@ -720,13 +727,15 @@ func (wm *WatchMesh) shouldStartNewElection(currentState CurrentNodeStatus, curr
 }
 
 // startElection implements the Bully Algorithm for leader election
-func (wm *WatchMesh) startElection() {
+func (wm *WatchMesh) startElection(skipJitter bool) {
 	if !wm.canElectionStart() {
 		return
 	}
 	wm.log.Info("Starting election")
 
-	wm.waitJitter()
+	if !skipJitter {
+		wm.waitJitter()
+	}
 
 	higherPeers := wm.findHigherPeers()
 
@@ -827,7 +836,7 @@ func (wm *WatchMesh) waitForElectionResult() {
 		} else {
 			wm.log.Info("Received ElectionOk but no coordinator within timeout; restarting election")
 			wm.myState.Set(StatusAlive)
-			wm.startElection()
+			wm.startElection(false)
 		}
 	}(wm.config.HeartbeatInterval)
 }
@@ -857,18 +866,25 @@ func (wm *WatchMesh) handleLowerIDElection(senderID string) {
 		wm.sendElectionOk(peer.Address)
 	}
 
+	// Check if we should start election
 	currentState := wm.myState.Get()
-	shouldStartElection := currentState != StatusLeader && currentState != StatusElectionStarter
+
+	shouldStartElection := currentState != StatusLeader && currentState != StatusElectionStarter && currentState != StatusCoordinatorCandidate
 
 	if shouldStartElection {
 		wm.log.Infof("Starting own election as response to lower ID node %s", senderID)
-		wm.startElection()
-	} else if currentState != StatusLeader {
+		wm.startElection(true)
+	} else if currentState == StatusElectionStarter {
 		wm.log.Infof("Election already in progress, not starting another in response to %s", senderID)
 	} else {
-		wm.log.Infof("Already leader, not starting another in response to %s", senderID)
+		// Leader or CoordinatorCandidate
+		wm.log.Infof("Already Leader/Candidate, not starting another in response to %s", senderID)
 		if ok {
-			wm.assertDominance(senderID, peer.Address)
+			wm.log.Infof("Asserting dominance to %s with Coordinator message", senderID)
+			msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
+			if err := wm.sendMessage(peer.Address, msg); err != nil {
+				wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", peer.Address, err)
+			}
 		}
 	}
 }
