@@ -462,31 +462,23 @@ func (wm *WatchMesh) checkPeersLiveness() (peerIdsToResurrect []NodeId) {
 }
 
 func (wm *WatchMesh) checkLeaderLiveness() (shouldStartElections bool) {
-	shouldStartElections = false
-
 	wm.mutex.Lock()
 	leaderID := NodeId(wm.composeFullNodeId(wm.leaderID))
 	peer, exists := wm.peers[leaderID]
+	wm.mutex.Unlock()
 
 	if !exists {
 		// Leader doesn't exist in peers map, start elections
-		wm.mutex.Unlock()
 		return true
 	}
 
-	// Check leader liveness using the same logic as checkPeer
 	now := time.Now()
 	_, startElection := wm.checkPeer(leaderID, peer, now)
-	wm.mutex.Unlock()
 
-	if startElection {
-		shouldStartElections = true
-	}
-
-	return shouldStartElections
+	return startElection
 }
 
-func (wm *WatchMesh) checkPeer(id NodeId, peer *Peer, now time.Time) (bool, bool) {
+func (wm *WatchMesh) checkPeer(id NodeId, peer *Peer, now time.Time) (shouldResurrect bool, shouldStartElection bool) {
 	timeSinceLastSeen := now.Sub(peer.State.GetLastSeen())
 	currentState := peer.State.Get()
 
@@ -508,7 +500,7 @@ func (wm *WatchMesh) handlePeerTimeout(id NodeId, peer *Peer, currentState PeerS
 	switch currentState {
 	case PeerStatusAlive:
 		// Peer was alive and now is found to be dead. Immediate resurrection will be attempted
-		shouldResurrect, shouldStartElection = wm.setupStateForPeerResurrection(id, peer, wm.AmILeader(), wm.GetLeaderID())
+		shouldResurrect, shouldStartElection = wm.setupStateForPeerResurrection(id, peer)
 
 	case PeerStatusResurrecting:
 		// Peer was being resurrected, handle case when exceeded resurrection checks
@@ -516,26 +508,30 @@ func (wm *WatchMesh) handlePeerTimeout(id NodeId, peer *Peer, currentState PeerS
 
 	case PeerStatusDead:
 		// Peer was dead so the peer did not resurrect, trying again
-		shouldResurrect, shouldStartElection = wm.setupStateForPeerResurrection(id, peer, wm.AmILeader(), wm.GetLeaderID())
+		shouldResurrect, shouldStartElection = wm.setupStateForPeerResurrection(id, peer)
 	}
 
 	return shouldResurrect, shouldStartElection
 }
 
-func (wm *WatchMesh) setupStateForPeerResurrection(id NodeId, peer *Peer, isLeader bool, leaderId NodeId) (shouldResurrect bool, shouldStartElection bool) {
-	peer.State.Set(PeerStatusResurrecting)
-	peer.State.ResetResurrectingChecks()
-
+func (wm *WatchMesh) setupStateForPeerResurrection(id NodeId, peer *Peer) (shouldResurrect bool, shouldStartElection bool) {
 	shouldResurrect = false
 	shouldStartElection = false
+	leaderId := NodeId(wm.composeFullNodeId(wm.GetLeaderID()))
 
-	if isLeader {
+	if wm.AmILeader() {
 		shouldResurrect = true
 	}
 
 	if id == leaderId {
 		shouldStartElection = true
+		peer.State.Set(PeerStatusDead)
+		wm.log.Warningf("Leader %s is down", id)
+		return shouldResurrect, shouldStartElection
 	}
+
+	peer.State.Set(PeerStatusResurrecting)
+	peer.State.ResetResurrectingChecks()
 
 	return shouldResurrect, shouldStartElection
 }
@@ -546,7 +542,7 @@ func (wm *WatchMesh) handleResurrectingPeerTimeout(id NodeId, peer *Peer) (shoul
 
 	if checks >= MAX_RESURRECT_ATTEMPTS {
 		peer.State.Set(PeerStatusDead)
-		wm.log.Warningf("Node %s failed to resurrect after %d checks", MAX_RESURRECT_ATTEMPTS, id)
+		wm.log.Warningf("Node %s failed to resurrect after %d checks", id, MAX_RESURRECT_ATTEMPTS)
 
 		if id == wm.GetLeaderID() {
 			shouldStartElection = true
@@ -573,9 +569,7 @@ func (wm *WatchMesh) handleLivenessResults(peerIdsToResurrect []NodeId, shouldSt
 		for _, peerId := range peerIdsToResurrect {
 			wm.resurrectPeer(peerId)
 		}
-	}
-
-	if shouldStartElections {
+	} else if shouldStartElections {
 		wm.startElection()
 	}
 }
@@ -633,6 +627,7 @@ func (wm *WatchMesh) AmILeader() bool {
 func (wm *WatchMesh) GetLeaderID() NodeId {
 	wm.mutex.Lock()
 	defer wm.mutex.Unlock()
+
 	return wm.leaderID
 }
 
