@@ -867,6 +867,13 @@ func (wm *WatchMesh) handleElection(senderID string) {
 			wm.log.Infof("Election already in progress, not starting another in response to %s", senderID)
 		} else {
 			wm.log.Infof("Already leader, not starting another in response to %s", senderID)
+			if ok {
+				wm.log.Infof("Asserting dominance to %s with Coordinator message", senderID)
+				msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
+				if err := wm.sendMessage(peer.Address, msg); err != nil {
+					wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", peer.Address, err)
+				}
+			}
 		}
 	} else {
 		wm.log.Infof("Ignoring election message from higher ID node %s", senderID)
