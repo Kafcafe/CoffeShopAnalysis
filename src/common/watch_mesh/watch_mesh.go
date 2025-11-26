@@ -671,7 +671,7 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 		wm.handleLeaderDiscoveryMessage(msg, addr)
 
 	case LeaderResponse:
-		wm.handleLeaderResponseMessage(msg, addr)
+		wm.handleLeaderResponseMessage(msg)
 	}
 }
 
@@ -838,45 +838,53 @@ func (wm *WatchMesh) handleElection(senderID string) {
 	senderNodeID := NodeId(senderID)
 
 	if compareNodeIDs(senderNodeID, wm.config.CurrentNodeID) < 0 {
-		wm.log.Infof("Responding to lower ID node %s with ElectionOk", senderID)
-		// Respond to lower ID node - check if we need to start our own election
-		wm.mutex.Lock()
-		fullSenderNodeID := NodeId(wm.composeFullNodeId(senderNodeID))
-		peer, ok := wm.peers[fullSenderNodeID]
-		wm.mutex.Unlock()
-
-		// Send message WITHOUT holding lock
-		if ok {
-			msg := NewElectionOkMessage(string(wm.config.CurrentNodeID))
-
-			err := wm.sendMessage(peer.Address, msg)
-			if err != nil {
-				wm.log.Warningf("Failed to send ElectionOk: %v", err)
-			}
-		}
-
-		// Check if we should start election
-		currentState := wm.myState.Get()
-
-		shouldStartElection := currentState != StatusLeader && currentState != StatusElectionStarter
-
-		if shouldStartElection {
-			wm.log.Infof("Starting own election as response to lower ID node %s", senderID)
-			wm.startElection()
-		} else if currentState != StatusLeader {
-			wm.log.Infof("Election already in progress, not starting another in response to %s", senderID)
-		} else {
-			wm.log.Infof("Already leader, not starting another in response to %s", senderID)
-			if ok {
-				wm.log.Infof("Asserting dominance to %s with Coordinator message", senderID)
-				msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
-				if err := wm.sendMessage(peer.Address, msg); err != nil {
-					wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", peer.Address, err)
-				}
-			}
-		}
+		wm.handleLowerIDElection(senderID)
 	} else {
 		wm.log.Infof("Ignoring election message from higher ID node %s", senderID)
+	}
+}
+
+func (wm *WatchMesh) handleLowerIDElection(senderID string) {
+	wm.log.Infof("Responding to lower ID node %s with ElectionOk", senderID)
+
+	senderNodeID := NodeId(senderID)
+	wm.mutex.Lock()
+	fullSenderNodeID := NodeId(wm.composeFullNodeId(senderNodeID))
+	peer, ok := wm.peers[fullSenderNodeID]
+	wm.mutex.Unlock()
+
+	if ok {
+		wm.sendElectionOk(peer.Address)
+	}
+
+	currentState := wm.myState.Get()
+	shouldStartElection := currentState != StatusLeader && currentState != StatusElectionStarter
+
+	if shouldStartElection {
+		wm.log.Infof("Starting own election as response to lower ID node %s", senderID)
+		wm.startElection()
+	} else if currentState != StatusLeader {
+		wm.log.Infof("Election already in progress, not starting another in response to %s", senderID)
+	} else {
+		wm.log.Infof("Already leader, not starting another in response to %s", senderID)
+		if ok {
+			wm.assertDominance(senderID, peer.Address)
+		}
+	}
+}
+
+func (wm *WatchMesh) sendElectionOk(addr *net.UDPAddr) {
+	msg := NewElectionOkMessage(string(wm.config.CurrentNodeID))
+	if err := wm.sendMessage(addr, msg); err != nil {
+		wm.log.Warningf("Failed to send ElectionOk: %v", err)
+	}
+}
+
+func (wm *WatchMesh) assertDominance(targetID string, addr *net.UDPAddr) {
+	wm.log.Infof("Asserting dominance to %s with Coordinator message", targetID)
+	msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
+	if err := wm.sendMessage(addr, msg); err != nil {
+		wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", addr, err)
 	}
 }
 
@@ -891,33 +899,40 @@ func (wm *WatchMesh) handleCoordinator(senderID string, addr *net.UDPAddr) {
 	compare := compareNodeIDs(senderNodeID, currentNodeID)
 
 	if compare < 0 {
-		// Sender has LOWER ID -> reject its leadership, assert dominance
-		currentState := wm.myState.Get()
-		if currentState == StatusLeader || currentState == StatusCoordinatorCandidate {
-			wm.log.Infof("Received Coordinator from lower ID %s, but already Leader/Candidate. Sending Coordinator to assert dominance.", senderNodeID)
-			msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
-			go func() {
-				if err := wm.sendMessage(addr, msg); err != nil {
-					wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", addr, err)
-				}
-			}()
-			return
-		}
-
-		wm.log.Warningf(
-			"Received Coordinator from LOWER-ID node %s (self=%s). Refusing ACK and asserting leadership",
-			senderNodeID, currentNodeID,
-		)
-
-		// Force leader ID reset to ensure becomeLeader doesn't abort if it thinks there's an alive leader
-		wm.mutex.Lock()
-		wm.leaderID = ""
-		wm.mutex.Unlock()
-
-		go wm.becomeLeader()
+		wm.handleLowerIDCoordinator(senderNodeID, currentNodeID, addr)
 		return
 	}
 
+	wm.acceptNewLeader(senderNodeID, senderID, addr)
+}
+
+func (wm *WatchMesh) handleLowerIDCoordinator(senderNodeID NodeId, currentNodeID NodeId, addr *net.UDPAddr) {
+	// Sender has LOWER ID -> reject its leadership, assert dominance
+	currentState := wm.myState.Get()
+
+	if currentState == StatusLeader || currentState == StatusCoordinatorCandidate {
+		wm.log.Infof("Received Coordinator from lower ID %s, but already Leader/Candidate. Sending Coordinator to assert dominance.", senderNodeID)
+		msg := NewCoordinatorMessage(string(currentNodeID))
+		if err := wm.sendMessage(addr, msg); err != nil {
+			wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", addr, err)
+		}
+		return
+	}
+
+	wm.log.Warningf(
+		"Received Coordinator from LOWER-ID node %s (self=%s). Refusing ACK and asserting leadership",
+		senderNodeID, currentNodeID,
+	)
+
+	// Force leader ID reset to ensure becomeLeader doesn't abort if it thinks there's an alive leader
+	wm.mutex.Lock()
+	wm.leaderID = ""
+	wm.mutex.Unlock()
+
+	go wm.becomeLeader()
+}
+
+func (wm *WatchMesh) acceptNewLeader(senderNodeID NodeId, senderID string, addr *net.UDPAddr) {
 	// Sender has equal or higher ID -> accept it as the new leader
 	wm.mutex.Lock()
 	if wm.leaderCancelCh != nil {
@@ -1191,7 +1206,7 @@ func (wm *WatchMesh) handleLeaderDiscoveryMessage(msg *WatchMeshMessage, addr *n
 	}
 }
 
-func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage, addr *net.UDPAddr) {
+func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage) {
 	leaderID := NodeId(msg.Payload)
 	if leaderID == "" {
 		return
