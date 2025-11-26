@@ -60,3 +60,5 @@ all_data/
 testData*/
 docker-compose-*
 docker-compose.client*
+
+processed_data/

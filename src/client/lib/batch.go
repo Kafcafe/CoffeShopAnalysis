@@ -13,7 +13,7 @@ func NewBatch(batchSize int) *Batch {
 }
 
 func (b *Batch) AddItem(item string) (successfulAddition bool) {
-	if len(b.Items) > b.size {
+	if len(b.Items) >= b.size {
 		return false
 	}
 
