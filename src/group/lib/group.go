@@ -29,9 +29,10 @@ type GroupByConfig struct {
 	prevStageSub string
 	nextStagePub string
 	factory      func() structures.AllowedGroup
+	idNum        int
 }
 
-func GroupByYearMonthConfig(groupId string, groupCount int) GroupByConfig {
+func GroupByYearMonthConfig(groupId string, groupCount, idNum int) GroupByConfig {
 	return GroupByConfig{
 		id:           groupId,
 		count:        groupCount,
@@ -39,10 +40,11 @@ func GroupByYearMonthConfig(groupId string, groupCount int) GroupByConfig {
 		prevStageSub: "transactions.items",
 		nextStagePub: "transactions.items.group.yearmonth",
 		factory:      func() structures.AllowedGroup { return structures.NewYearMonthGroup() },
+		idNum:        idNum,
 	}
 }
 
-func GroupBySemesterConfig(groupId string, groupCount int) GroupByConfig {
+func GroupBySemesterConfig(groupId string, groupCount, idNum int) GroupByConfig {
 	return GroupByConfig{
 		id:           groupId,
 		count:        groupCount,
@@ -50,10 +52,11 @@ func GroupBySemesterConfig(groupId string, groupCount int) GroupByConfig {
 		prevStageSub: "transactions.year-hour-filtered.all",
 		nextStagePub: "transactions.transactions.group.semester",
 		factory:      func() structures.AllowedGroup { return structures.NewSemesterGroup() },
+		idNum:        idNum,
 	}
 }
 
-func GroupByTopKConfig(groupId string, groupCount int, k int) GroupByConfig {
+func GroupByTopKConfig(groupId string, groupCount, k, idNum int) GroupByConfig {
 	return GroupByConfig{
 		id:           groupId,
 		count:        groupCount,
@@ -61,6 +64,7 @@ func GroupByTopKConfig(groupId string, groupCount int, k int) GroupByConfig {
 		prevStageSub: "transactions.transactions.all",
 		nextStagePub: "transactions.transactions.topk",
 		factory:      func() structures.AllowedGroup { return structures.NewTopKStoreGroup(k) },
+		idNum:        idNum,
 	}
 }
 
@@ -108,13 +112,16 @@ func CreateGroupByWorker(
 	envConfig *viper.Viper,
 	logger *logging.Logger,
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
+	idNum int,
 ) (*GroupByWorker, error) {
 	var groupByWorker GroupByWorker
 	var err error
 
+	logger.Infof("Creating groupBy worker for group %d", idNum)
+
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:
-		config := GroupByYearMonthConfig(groupId, groupCount)
+		config := GroupByYearMonthConfig(groupId, groupCount, idNum)
 		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
 		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 		if err != nil {
@@ -122,7 +129,7 @@ func CreateGroupByWorker(
 		}
 
 	case GROUP_TYPE_SEMESTER:
-		config := GroupBySemesterConfig(groupId, groupCount)
+		config := GroupBySemesterConfig(groupId, groupCount, idNum)
 		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
 		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 		if err != nil {
@@ -132,7 +139,7 @@ func CreateGroupByWorker(
 	case GROUP_TYPE_TOPK:
 		Kconfig := envConfig.GetInt("k")
 		logger.Infof("GroupBy type %s using k: %d", GROUP_TYPE_TOPK, Kconfig)
-		config := GroupByTopKConfig(groupId, groupCount, Kconfig)
+		config := GroupByTopKConfig(groupId, groupCount, Kconfig, idNum)
 		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
 		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 		if err != nil {

@@ -5,6 +5,8 @@ type AllowedGroup interface {
 	ToMapString() map[string][]string
 	AddMapString(data map[string][]string)
 	GetMessageToSend() []map[string][]string
+	ToFullStringList() []string
+	Recover([]string) error
 }
 
 // Mapa genérico parametrizado
