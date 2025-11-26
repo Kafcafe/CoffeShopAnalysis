@@ -639,6 +639,8 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 		return
 	}
 
+	wm.updatePeerAddress(NodeId(msg.SenderID), addr)
+
 	switch msg.Type {
 	case Heartbeat:
 		wm.handleHeartbeatMessage(addr)
@@ -1180,4 +1182,14 @@ func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage, addr *ne
 
 func (wm *WatchMesh) composeFullNodeId(id NodeId) string {
 	return fmt.Sprintf("%s%s", wm.config.NodeType, id)
+}
+
+// updatePeerAddress updates the address of a peer if it exists
+func (wm *WatchMesh) updatePeerAddress(id NodeId, addr *net.UDPAddr) {
+	wm.mutex.Lock()
+	defer wm.mutex.Unlock()
+
+	if peer, exists := wm.peers[id]; exists {
+		peer.Address = addr
+	}
 }
