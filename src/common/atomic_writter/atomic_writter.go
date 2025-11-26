@@ -20,9 +20,13 @@ func NewAtomicWriter(path string) *AtomicWriter {
 	return &AtomicWriter{path: path, log: logging.MustGetLogger("WRITTER")}
 }
 
-func (aw *AtomicWriter) Write(data, metadata []string) error {
+func (aw *AtomicWriter) WriteLines(data, metadata []string) error {
+	return aw.write(data, metadata, ".csv")
+}
 
-	filename := strings.Join(metadata, separator) + ".csv"
+func (aw *AtomicWriter) write(data, metadata []string, extension string) error {
+
+	filename := strings.Join(metadata, separator) + extension
 	dstFile, err := aw.findFile(filename)
 
 	if err != nil {
@@ -147,22 +151,23 @@ func (aw *AtomicWriter) ReadFileLines(filePath string) ([]string, error) {
 	return results, nil
 }
 
-func (aw *AtomicWriter) CleanClient(clientID string) error {
+func (aw *AtomicWriter) CleanClient(clientID string) (int, error) {
+	aw.log.Infof("Deleting file for clientID check: %s", clientID)
 	return aw.cleanFiles(func(fileName string) bool {
 		return strings.Contains(fileName, clientID)
 	})
 }
 
-func (aw *AtomicWriter) CleanAll() error {
+func (aw *AtomicWriter) CleanAll() (int, error) {
 	return aw.cleanFiles(func(fileName string) bool {
 		return true
 	})
 }
 
-func (aw *AtomicWriter) cleanFiles(shouldRemove func(string) bool) error {
+func (aw *AtomicWriter) cleanFiles(shouldRemove func(string) bool) (int, error) {
 	files, err := os.ReadDir(aw.path)
 	if err != nil {
-		return err
+		return 0, err
 	}
 
 	var lastError error
@@ -190,7 +195,9 @@ func (aw *AtomicWriter) cleanFiles(shouldRemove func(string) bool) error {
 			}
 		}
 	}
+	return removedCount, lastError
+}
 
-	aw.log.Infof("Cleanup completed. Removed %d files from %s", removedCount, aw.path)
-	return lastError
+func (aw *AtomicWriter) WriteLine(data, extension string, metadata []string) error {
+	return aw.write([]string{data}, metadata, extension)
 }
