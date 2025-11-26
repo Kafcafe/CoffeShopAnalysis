@@ -37,9 +37,18 @@ func (g *GroupByGenericWorker) recover() {
 
 	for clientId, data := range data {
 		g.log.Infof("Recovering data for client %s", clientId)
-		g.group.Add(clientId, data.GetData(), g.conf.factory)
 		if g.conf.ofType == GROUP_TYPE_TOPK {
+			g.group.Add(clientId, data.GetData(), g.conf.factory)
 			g.getClientStats(clientId).SetCount(data.GetDataType(), data.GetCount())
+		} else {
+			jsonStr := data.GetData()[0]
+			state, err := middleware.NewWorkerStateFromJson(jsonStr)
+			if err != nil {
+				g.log.Errorf("Error deserializing state for client %s: %v", clientId, err)
+				continue
+			}
+			g.clientsStats[clientId] = state.ClientStats
+			g.group.Add(clientId, state.Data, g.conf.factory)
 		}
 	}
 

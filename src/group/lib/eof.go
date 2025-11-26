@@ -91,7 +91,11 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		g.log.Infof("Clearing stored group for client %s as per request from %s", msg.ClientId, msg.Origin)
 		g.mutex.Lock()
 		g.group.Delete(msg.ClientId)
-		g.atomicWritter.CleanClient(msg.ClientId)
+		count, err := g.atomicWritter.CleanClient(msg.ClientId)
+		if err != nil {
+			return fmt.Errorf("failed to clean atomic writter for client %s: %v", msg.ClientId, err)
+		}
+		g.log.Infof("Cleared %d entries from atomic writter for client %s", count, msg.ClientId)
 		g.getClientStats(msg.ClientId).Clear(msg.DataType)
 		g.mutex.Unlock()
 		answerMessage(ACK, message)

@@ -234,8 +234,11 @@ func (g *GroupByGenericWorker) Shutdown() {
 	g.exchangeHandlers.broadcastResultsRequestSub.StopConsuming()
 	g.exchangeHandlers.broadcastResultsRequestSub.Close()
 	g.middlewareHandler.Close()
-	if err := g.atomicWritter.CleanAll(); err != nil {
+	count, err := g.atomicWritter.CleanAll()
+	if err != nil {
 		g.log.Errorf("Error during atomic writter cleanup: %v", err)
+		return
 	}
+	g.log.Infof("Cleaned %d files during atomic writter cleanup", count)
 	g.log.Info("Shutdown complete")
 }
