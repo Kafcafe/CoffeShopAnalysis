@@ -880,10 +880,8 @@ func (wm *WatchMesh) handleLowerIDElection(senderID string) {
 		// Leader or CoordinatorCandidate
 		wm.log.Infof("Already Leader/Candidate, not starting another in response to %s", senderID)
 		if ok {
-			wm.log.Infof("Asserting dominance to %s with Coordinator message", senderID)
-			msg := NewCoordinatorMessage(string(wm.config.CurrentNodeID))
-			if err := wm.sendMessage(peer.Address, msg); err != nil {
-				wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", peer.Address, err)
+			if ok {
+				wm.assertDominance(senderID, peer.Address)
 			}
 		}
 	}
@@ -928,10 +926,7 @@ func (wm *WatchMesh) handleLowerIDCoordinator(senderNodeID NodeId, currentNodeID
 
 	if currentState == StatusLeader || currentState == StatusCoordinatorCandidate {
 		wm.log.Infof("Received Coordinator from lower ID %s, but already Leader/Candidate. Sending Coordinator to assert dominance.", senderNodeID)
-		msg := NewCoordinatorMessage(string(currentNodeID))
-		if err := wm.sendMessage(addr, msg); err != nil {
-			wm.log.Warningf("Failed to send asserting Coordinator to %s: %v", addr, err)
-		}
+		wm.assertDominance(string(senderNodeID), addr)
 		return
 	}
 
@@ -1094,7 +1089,7 @@ func (wm *WatchMesh) processCoordinatorAck(ackID NodeId, pending *map[NodeId]boo
 	exists, stillPending := (*pending)[ackID]
 	if exists && stillPending {
 		delete((*pending), ackID)
-		wm.log.Infof("Got CoordinatorAck from %s (%d left)", ackID, len(*pending))
+		wm.log.Infof("Got CoordinatorAck from %s (%d peers left)", ackID, len(*pending))
 	}
 
 	if len((*pending)) == 0 {
