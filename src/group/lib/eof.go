@@ -104,7 +104,7 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 
 	g.mutex.Lock()
 	processed, emitted := g.getClientStats(msg.ClientId).GetStats(msg.DataType)
-	currentMapString := g.group.Get(msg.ClientId, g.conf.factory).ToMapString()
+	currentMapString := g.group.Get(msg.ClientId).ToMapString()
 	g.mutex.Unlock()
 
 	g.sendResultsRequestBatched(msg, currentMapString, BATCH_SIZE_GROUPED_MESSAGE)
