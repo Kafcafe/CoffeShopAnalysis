@@ -14,7 +14,7 @@ func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash string, da
 		return nil
 	}
 
-	toSave := g.group.Get(msg.ClientId, g.conf.factory).ToFullStringList()
+	toSave := g.group.Get(msg.ClientId).ToFullStringList()
 	state := middleware.NewWorkerState(g.clientsStats[msg.ClientId], toSave)
 	jsonStr := state.ToJson()
 	if jsonStr == "" {
@@ -38,7 +38,7 @@ func (g *GroupByGenericWorker) recover() {
 	for clientId, data := range data {
 		g.log.Infof("Recovering data for client %s", clientId)
 		if g.conf.ofType == GROUP_TYPE_TOPK {
-			g.group.Add(clientId, data.GetData(), g.conf.factory)
+			g.group.Add(clientId, data.GetData())
 			g.getClientStats(clientId).SetCount(data.GetDataType(), data.GetCount())
 		} else {
 			jsonStr := data.GetData()[0]
@@ -48,7 +48,7 @@ func (g *GroupByGenericWorker) recover() {
 				continue
 			}
 			g.clientsStats[clientId] = state.ClientStats
-			g.group.Add(clientId, state.Data, g.conf.factory)
+			g.group.Recover(clientId, state.Data)
 		}
 	}
 
