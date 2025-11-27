@@ -16,6 +16,7 @@ func NewSavedInfo() *SavedInfo {
 func (si *SavedInfo) Add(data []string, dataType string) {
 	si.data = append(si.data, data...)
 	si.count++
+	si.dataType = dataType
 }
 
 func (si *SavedInfo) GetData() []string {
