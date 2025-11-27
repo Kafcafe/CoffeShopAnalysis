@@ -40,7 +40,7 @@ type GroupByGenericWorker struct {
 
 	mutex           sync.Mutex
 	middlewareMutex sync.Mutex
-	group           structures.GrouperPerClient[structures.AllowedGroup]
+	group           *structures.GrouperPerClient[structures.AllowedGroup]
 	// new eof
 	clientsStats  map[ClientId]*middleware.ClientStats
 	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
@@ -84,7 +84,7 @@ func NewGroupByGenericWorker(
 
 		mutex:           sync.Mutex{},
 		middlewareMutex: sync.Mutex{},
-		group:           structures.NewGrouperPerClient[structures.AllowedGroup](),
+		group:           structures.NewGrouperPerClient[structures.AllowedGroup](conf.factory),
 
 		clientsStats:  make(map[ClientId]*middleware.ClientStats),
 		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
@@ -136,7 +136,7 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	}
 
 	g.mutex.Lock()
-	g.group.Add(msg.ClientId, msg.Payload, g.conf.factory)
+	g.group.Add(msg.ClientId, msg.Payload)
 	clientStats.Add(msg.DataType, message.MessageId, true, false)
 	dataType := msg.DataType
 	if err := g.dumpData(msg, message.MessageId, dataType); err != nil {

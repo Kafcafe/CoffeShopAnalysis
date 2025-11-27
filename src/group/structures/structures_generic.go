@@ -10,29 +10,44 @@ type AllowedGroup interface {
 }
 
 // Mapa genérico parametrizado
-type GrouperPerClient[T AllowedGroup] map[ClientId]T
+type GrouperPerClient[T AllowedGroup] struct {
+	groups  map[ClientId]T
+	factory func() T
+}
 
-func NewGrouperPerClient[T AllowedGroup]() GrouperPerClient[T] {
-	return make(GrouperPerClient[T])
+func NewGrouperPerClient[T AllowedGroup](factory func() T) *GrouperPerClient[T] {
+	return &GrouperPerClient[T]{
+		groups:  make(map[ClientId]T),
+		factory: factory,
+	}
 }
 
 // add necesita una factory function para crear un nuevo grupo
-func (g GrouperPerClient[T]) Add(clientId ClientId, records []string, factory func() T) {
-	group, ok := g[clientId]
+func (g *GrouperPerClient[T]) Add(clientId ClientId, records []string) {
+	group, ok := g.groups[clientId]
 	if !ok {
-		group = factory()
+		group = g.factory()
 	}
 	group.AddBatch(records)
-	g[clientId] = group
+	g.groups[clientId] = group
 }
 
-func (g GrouperPerClient[T]) Get(clientId ClientId, factory func() T) T {
-	if group, ok := g[clientId]; ok {
+func (g *GrouperPerClient[T]) Get(clientId ClientId) T {
+	if group, ok := g.groups[clientId]; ok {
 		return group
 	}
-	return factory()
+	return g.factory()
 }
 
-func (g GrouperPerClient[T]) Delete(clientId ClientId) {
-	delete(g, clientId)
+func (g *GrouperPerClient[T]) Recover(clientId ClientId, data []string) {
+	group, ok := g.groups[clientId]
+	if !ok {
+		group = g.factory()
+	}
+	group.Recover(data)
+	g.groups[clientId] = group
+}
+
+func (g *GrouperPerClient[T]) Delete(clientId ClientId) {
+	delete(g.groups, clientId)
 }
