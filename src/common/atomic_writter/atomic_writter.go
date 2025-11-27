@@ -111,9 +111,9 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 		}
 
 		clientID := metadata[0]
-		dataType := metadata[len(metadata)-1]
+		dataType := strings.Split(metadata[len(metadata)-1], ".")[0]
 		filepath := filepath.Join(aw.path, file.Name())
-		aw.log.Infof("Recovering data from file: %s and client: %s", filepath, clientID)
+		aw.log.Debugf("Recovering data from file: %s and client: %s and datatype: %s", filepath, clientID, dataType)
 		lines, err := aw.ReadFileLines(filepath)
 		if err != nil {
 			return nil, err
@@ -138,6 +138,8 @@ func (aw *AtomicWriter) ReadFileLines(filePath string) ([]string, error) {
 	results := []string{}
 
 	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 128*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
