@@ -138,6 +138,8 @@ func (aw *AtomicWriter) ReadFileLines(filePath string) ([]string, error) {
 	results := []string{}
 
 	scanner := bufio.NewScanner(file)
+	buf := make([]byte, 0, 64*1024)
+	scanner.Buffer(buf, 128*1024)
 
 	for scanner.Scan() {
 		line := scanner.Text()
