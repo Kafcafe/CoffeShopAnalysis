@@ -111,9 +111,9 @@ func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
 		}
 
 		clientID := metadata[0]
-		dataType := metadata[len(metadata)-1]
+		dataType := strings.Split(metadata[len(metadata)-1], ".")[0]
 		filepath := filepath.Join(aw.path, file.Name())
-		aw.log.Infof("Recovering data from file: %s and client: %s", filepath, clientID)
+		aw.log.Debugf("Recovering data from file: %s and client: %s and datatype: %s", filepath, clientID, dataType)
 		lines, err := aw.ReadFileLines(filepath)
 		if err != nil {
 			return nil, err
