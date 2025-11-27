@@ -11,7 +11,6 @@ import (
 	"os/signal"
 	"sync"
 	"syscall"
-	"time"
 
 	"github.com/op/go-logging"
 	amqp "github.com/rabbitmq/amqp091-go"
@@ -156,38 +155,6 @@ func (g *GroupByGenericWorker) sendMessage(msgToSend middleware.Message) error {
 		return err
 	}
 	return g.sendBytesNextStage(msgBytes)
-}
-
-func (g *GroupByGenericWorker) broadcastAndWaitForResults(requestBytes []byte, clientId ClientId, dataType DataType, expectedEmitted int) (processed, emitted int, results structures.AllowedGroup, timeout bool) {
-	for retriesCount := 0; retriesCount < middleware.MAX_EOF_RETRIES; retriesCount++ {
-		processed = 0
-		emitted = 0
-		results = g.conf.factory()
-		timeout = false
-		timeoutDuration := time.Second * time.Duration(middleware.RESPONSE_TIMEOUT_SEC*(retriesCount+1))
-		if sendErr := g.exchangeHandlers.broadcastResultsRequestPub.Send(requestBytes); sendErr != middleware.MessageMiddlewareSuccess {
-			g.log.Errorf("Failed to send results request message to broadcast exchange: %v", sendErr)
-			break
-		}
-		g.log.Infof("Sent results request message to broadcast exchange for client %s and dataType %s. Attempt %d/%d", clientId, dataType, retriesCount+1, middleware.MAX_EOF_RETRIES)
-		for !timeout && processed < expectedEmitted {
-			select {
-			case msg := <-g.resultsChans[clientId][dataType]:
-				processed += msg.Processed
-				emitted += msg.Emitted
-				if msg.GroupedPayload != nil {
-					results.AddMapString(msg.GroupedPayload)
-				}
-			case <-time.After(timeoutDuration):
-				g.log.Warningf("Timeout waiting for results response for client %s and datatype %s after %d seconds. Processed %d/%d", clientId, dataType, middleware.RESPONSE_TIMEOUT_SEC, processed, expectedEmitted)
-				timeout = true
-			}
-		}
-		if !timeout {
-			break
-		}
-	}
-	return processed, emitted, results, timeout
 }
 
 func (g *GroupByGenericWorker) Run() error {
