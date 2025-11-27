@@ -97,17 +97,6 @@ func (g TopKStoreGroup) merge(other TopKStoreGroup) {
 	}
 }
 
-func (g TopKStoreGroup) ToFullStringList() []string {
-	out := []string{}
-	maps := g.ToMapString()
-	for storeId, users := range maps {
-		for _, userStr := range users {
-			out = append(out, fmt.Sprintf("%s,%s", storeId, userStr))
-		}
-	}
-	return out
-}
-
 ////////////////////////////////////////////
 ////////////////////////////////////////////
 ////////////////////////////////////////////
@@ -165,14 +154,4 @@ func (g TopKStoreGroup) GetMessageToSend() []map[string][]string {
 	}
 	messages = append(messages, result)
 	return messages
-}
-
-func (g TopKStoreGroup) Recover(data []string) error {
-	for _, record := range data {
-		err := g.add(Record(record))
-		if err != nil {
-			return err
-		}
-	}
-	return nil
 }

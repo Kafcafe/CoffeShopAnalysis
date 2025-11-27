@@ -14,7 +14,7 @@ func (g *GroupByGenericWorker) dumpData(msg *middleware.Message, hash string, da
 		return nil
 	}
 
-	toSave := g.group.Get(msg.ClientId).ToFullStringList()
+	toSave := g.group.ToFullStringList(msg.ClientId)
 	state := middleware.NewWorkerState(g.clientsStats[msg.ClientId], toSave)
 	jsonStr := state.ToJson()
 	if jsonStr == "" {
@@ -48,7 +48,7 @@ func (g *GroupByGenericWorker) recover() {
 				continue
 			}
 			g.clientsStats[clientId] = state.ClientStats
-			g.group.Recover(clientId, state.Data)
+			g.group.AddFullStringList(clientId, state.Data)
 		}
 	}
 

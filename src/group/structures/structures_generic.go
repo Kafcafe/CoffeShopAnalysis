@@ -1,12 +1,15 @@
 package structures
 
+import (
+	"fmt"
+	"strings"
+)
+
 type AllowedGroup interface {
 	AddBatch(records []string)
 	ToMapString() map[string][]string
 	AddMapString(data map[string][]string)
 	GetMessageToSend() []map[string][]string
-	ToFullStringList() []string
-	Recover([]string) error
 }
 
 // Mapa genérico parametrizado
@@ -39,15 +42,30 @@ func (g *GrouperPerClient[T]) Get(clientId ClientId) T {
 	return g.factory()
 }
 
-func (g *GrouperPerClient[T]) Recover(clientId ClientId, data []string) {
-	group, ok := g.groups[clientId]
-	if !ok {
-		group = g.factory()
-	}
-	group.Recover(data)
-	g.groups[clientId] = group
-}
-
 func (g *GrouperPerClient[T]) Delete(clientId ClientId) {
 	delete(g.groups, clientId)
+}
+
+func (g *GrouperPerClient[T]) ToFullStringList(clientId ClientId) []string {
+	out := []string{}
+	mapInfo := g.Get(clientId).ToMapString()
+	for key, values := range mapInfo {
+		for _, value := range values {
+			line := fmt.Sprintf("%s,%s", key, value)
+			out = append(out, line)
+		}
+	}
+	return out
+}
+
+func (g *GrouperPerClient[T]) AddFullStringList(clientId ClientId, data []string) {
+	group := g.Get(clientId)
+	mapString := make(map[string][]string)
+	for _, line := range data {
+		parts := strings.SplitN(line, ",", 2)
+		key, value := parts[0], parts[1]
+		mapString[key] = append(mapString[key], value)
+	}
+	group.AddMapString(mapString)
+	g.groups[clientId] = group
 }
