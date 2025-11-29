@@ -23,15 +23,18 @@ const (
 	MAX_JITTER_MILLISECONDS                        = 300
 )
 
+// NodeId represents the unique identifier of a node.
 type NodeId string
 
-// Peer represents a peer node in the mesh
+// Peer represents a peer node in the mesh.
+// It holds the network address and the current state of the peer.
 type Peer struct {
 	Address *net.UDPAddr
 	State   *PeerStateMachine
 }
 
-// Node represents a node in the distributed system
+// WatchMesh manages the "mesh network" state for a group of nodes of a certain type
+// Does peer-discovery, handles leader election, and maintains the state of peers.
 type WatchMesh struct {
 	config                          WatchMeshConfig
 	conn                            *net.UDPConn
@@ -50,7 +53,8 @@ type WatchMesh struct {
 	randGenerator                   *rand.Rand
 }
 
-// NewNode creates a new distributed node
+// NewWatchMesh creates a new instance of WatchMesh with the provided configuration.
+// It initializes the state machines, logger, and other internal components.
 func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 	logger := logger.GetLoggerWithPrefix("[WATCH-MESH]")
 
@@ -83,6 +87,8 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 	}
 }
 
+// Start initializes the mesh node, sets up peers, starts the UDP listener,
+// and begins the main loop for heartbeats and message handling.
 func (wm *WatchMesh) Start() {
 	go func() {
 		wm.setupPeers()
@@ -94,7 +100,8 @@ func (wm *WatchMesh) Start() {
 	}()
 }
 
-// discoverLeader queries all peers for the current leader
+// discoverLeader queries all peers for the current leader.
+// It sends LeaderDiscovery messages and waits for a response or timeout.
 func (wm *WatchMesh) discoverLeader() {
 	wm.log.Info("Starting LeaderDiscovery")
 
@@ -194,14 +201,13 @@ func (wm *WatchMesh) validateFromChan(leaderID NodeId) {
 				continue
 			}
 
-			// We could check lastSeen here, but for simplicity assume success
 			wm.log.Infof("Leader %s validated successfully", leaderID)
-			// Send the validated leader ID through the channel
 
 			wm.mutex.Lock()
 			wm.leaderDiscoveryFinished = true
 			wm.mutex.Unlock()
 
+			// Send the validated leader ID through the channel
 			wm.discoverResultChan <- leaderID
 			return
 		}
@@ -434,6 +440,8 @@ func (wm *WatchMesh) getPeerAddresses() []*net.UDPAddr {
 	return peerAddrs
 }
 
+// checkLiveness checks the status of peers (if leader) or the leader (if follower).
+// It initiates resurrection or elections if necessary.
 func (wm *WatchMesh) checkLiveness() {
 	peerIdsToResurrect := []NodeId{}
 	shouldStartElections := false
@@ -584,6 +592,8 @@ func (wm *WatchMesh) handleLivenessResults(peerIdsToResurrect []NodeId, shouldSt
 	}
 }
 
+// runHeartbeat starts the heartbeat loop.
+// It periodically sends heartbeats and checks for liveness of other nodes.
 func (wm *WatchMesh) runHeartbeat() {
 	wm.log.Info("Starting Heartbeat subsystem")
 	ticker := time.NewTicker(wm.config.HeartbeatInterval)
@@ -625,7 +635,7 @@ func (wm *WatchMesh) handleLeaderlessState(noLeaderCounter int) int {
 	return noLeaderCounter
 }
 
-// AmILeader returns whether this node is the current leader
+// AmILeader returns whether this node is the current leader.
 func (wm *WatchMesh) AmILeader() bool {
 	wm.mutex.Lock()
 	defer wm.mutex.Unlock()
@@ -633,7 +643,7 @@ func (wm *WatchMesh) AmILeader() bool {
 	return wm.myState.Get() == StatusLeader || wm.leaderID == wm.config.CurrentNodeID
 }
 
-// GetLeaderID returns the current leader's ID
+// GetLeaderID returns the current leader's ID.
 func (wm *WatchMesh) GetLeaderID() NodeId {
 	wm.mutex.Lock()
 	defer wm.mutex.Unlock()
@@ -641,7 +651,7 @@ func (wm *WatchMesh) GetLeaderID() NodeId {
 	return wm.leaderID
 }
 
-// handleMessage processes incoming UDP messages
+// handleMessage processes incoming UDP messages based on their type.
 func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 	msg, err := WatchMeshMessageFromBytes(msgBytes)
 	if err != nil {
@@ -724,7 +734,8 @@ func (wm *WatchMesh) shouldStartNewElection(currentState CurrentNodeStatus, curr
 		currentLeader == ""
 }
 
-// startElection implements the Bully Algorithm for leader election
+// startElection implements the Bully Algorithm for leader election.
+// It contacts higher ID peers and waits for responses to determine leadership.
 func (wm *WatchMesh) startElection(skipJitter bool) {
 	if !wm.canElectionStart() {
 		return
@@ -748,7 +759,7 @@ func (wm *WatchMesh) startElection(skipJitter bool) {
 }
 
 func (wm *WatchMesh) waitJitter() {
-	// Random sleep (0–300ms) to desynchronize simultaneous elections
+	// Random sleep to reduce election contention
 	delay := time.Duration(wm.randGenerator.Intn(MAX_JITTER_MILLISECONDS)) * time.Millisecond
 	wm.log.Infof("Throttling election start by %v to reduce contention", delay)
 	time.Sleep(delay)
@@ -866,7 +877,6 @@ func (wm *WatchMesh) handleLowerIDElection(senderID string) {
 
 	// Check if we should start election
 	currentState := wm.myState.Get()
-
 	shouldStartElection := currentState != StatusLeader && currentState != StatusElectionStarter && currentState != StatusCoordinatorCandidate
 
 	if shouldStartElection {
@@ -1140,7 +1150,7 @@ func (wm *WatchMesh) resurrectPeer(peerId NodeId) {
 }
 
 func (wm *WatchMesh) handleHeartbeatMessage(addr *net.UDPAddr) {
-	// Respond to heartbeat - no lock needed for sendMessage
+	// Respond to heartbeat. No lock needed for sendMessage
 	ackMsg := NewHeartbeatAckMessage(string(wm.config.CurrentNodeID))
 
 	err := wm.sendMessage(addr, ackMsg)
@@ -1150,7 +1160,7 @@ func (wm *WatchMesh) handleHeartbeatMessage(addr *net.UDPAddr) {
 }
 
 func (wm *WatchMesh) handleHeartbeatAckMessage(msg *WatchMeshMessage) {
-	// Update last seen time - do this quickly and unlock
+	// Update last seen time. Quickly and unlock
 	nodeId := NodeId(wm.composeFullNodeId(NodeId(msg.SenderID)))
 
 	wm.mutex.Lock()
@@ -1222,7 +1232,7 @@ func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage) {
 	}
 
 	wm.log.Infof("Received LeaderDiscovery response from %s claiming leader is %s, validating...", msg.SenderID, leaderID)
-	// validateLeader is called in a goroutine to avoid blocking message handling
+
 	fullNodeId := NodeId(wm.composeFullNodeId(leaderID))
 	wm.mutex.Lock()
 	discoveryInProgress := !wm.leaderDiscoveryFinished
@@ -1235,6 +1245,7 @@ func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage) {
 	}
 
 	if discoveryInProgress {
+		// called in a goroutine to avoid blocking message handling
 		go wm.validateLeader(leaderID, leaderInfo.Address)
 	}
 }

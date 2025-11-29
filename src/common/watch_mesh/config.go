@@ -2,7 +2,8 @@ package watch_mesh
 
 import "time"
 
-// Config holds the configuration for a distributed node
+// WatchMeshConfig holds the configuration for the WatchMesh system.
+// It includes settings for network communication, heartbeat mechanisms, and node identification.
 type WatchMeshConfig struct {
 	CurrentNodeID            NodeId
 	WatchMeshPort            int
@@ -17,7 +18,8 @@ type WatchMeshConfig struct {
 	RandomSeedForJitter      int64
 }
 
-// NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
+// NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters.
+// It initializes the configuration with specific values for timeouts, retries, and node details.
 func NewWatchMeshConfig(
 	currentNodeID string,
 	watchMeshPort int,
@@ -47,6 +49,8 @@ func NewWatchMeshConfig(
 	}
 }
 
+// BasicWatchMeshConfig holds a simplified configuration structure, primarily used for
+// parsing configuration from external sources (like JSON or YAML) before converting to WatchMeshConfig.
 type BasicWatchMeshConfig struct {
 	Port                            int
 	HeartbeatIntervalSeconds        float64
@@ -58,7 +62,7 @@ type BasicWatchMeshConfig struct {
 	RandomSeedForJitter             int64
 }
 
-// NewBasicWatchMeshConfig creates a new BasicWatchMeshConfig with the provided parameters
+// NewBasicWatchMeshConfig creates a new BasicWatchMeshConfig with the provided parameters.
 func NewBasicWatchMeshConfig(
 	port int,
 	heartbeatIntervalSeconds float64,
