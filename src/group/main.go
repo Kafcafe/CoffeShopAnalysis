@@ -65,13 +65,15 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 
 	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %.2f secs | "+
 		"heartbeatTimeout: %.2f secs | addressResolvingRetries: %d | "+
-		"addressResolvingIntervalSeconds: %.2f | showHeartbeatLogs: %v",
+		"addressResolvingIntervalSeconds: %.2f | showHeartbeatLogs: %v | maxResurrectionAttempts: %d | randomSeedForJitter: %d",
 		v.GetInt("watch_mesh.udp.port"),
 		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
 		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
 		v.GetInt("watchMesh.addressResolvingRetries"),
 		v.GetFloat64("watchMesh.addressResolvingIntervalSeconds"),
 		v.GetBool("watchMesh.showHeartbeatLogs"),
+		v.GetInt("watchMesh.maxResurrectionAttempts"),
+		v.GetInt("watchMesh.randomSeedForJitter"),
 	)
 }
 
@@ -110,6 +112,8 @@ func main() {
 	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
 	addressResolvingIntervalSeconds := config.GetFloat64("watchMesh.addressResolvingIntervalSeconds")
 	showHeartbeatLogs := config.GetBool("watchMesh.showHeartbeatLogs")
+	maxResurrectionAttempts := config.GetInt("watchMesh.maxResurrectionAttempts")
+	randomSeedForJitter := config.GetInt64("watchMesh.randomSeedForJitter")
 
 	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
 		watchMeshPort,
@@ -118,6 +122,8 @@ func main() {
 		addressResolvingRetries,
 		addressResolvingIntervalSeconds,
 		showHeartbeatLogs,
+		maxResurrectionAttempts,
+		randomSeedForJitter,
 	)
 
 	groupByWorker, err := group.CreateGroupByWorker(groupType, rabbitConf, groupId, groupCount, config, logger, basicWatchMeshConfig, groupIdNum)

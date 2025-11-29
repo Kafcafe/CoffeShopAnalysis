@@ -118,6 +118,8 @@ func CreateFilterWorker(
 		addressResolvingIntervalSeconds,
 		basicWatchMeshConfig.ShowHeartbeatLogs,
 		"filter",
+		basicWatchMeshConfig.MaxResurrectionAttempts,
+		basicWatchMeshConfig.RandomSeedForJitter,
 	)
 
 	filterWorker, err := NewFilterGenericWorker(rabbitConf, config, watchMeshConfig)

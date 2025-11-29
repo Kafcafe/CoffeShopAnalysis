@@ -19,11 +19,8 @@ const (
 	SINGLE_ITEM_BUFFER_LEN        = 1
 	HEARTBEAT_ACK_ITEM_BUFFER_LEN = 6
 
-	MAX_RESURRECT_ATTEMPTS                         = 3
 	MAX_LEADERLESS_BEATS_BEFORE_STARTING_ELECTIONS = 5
-
-	SEED_FOR_RANDOM_JITTER  = 1763675954000000
-	MAX_JITTER_MILLISECONDS = 300
+	MAX_JITTER_MILLISECONDS                        = 300
 )
 
 type NodeId string
@@ -62,7 +59,7 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 	for _, char := range string(config.CurrentNodeID) {
 		idValue += int(char)
 	}
-	finalSeed := SEED_FOR_RANDOM_JITTER + idValue
+	finalSeed := int(config.RandomSeedForJitter) + idValue
 	randSource := rand.NewSource(int64(finalSeed))
 	randGenerator := rand.New(randSource)
 
@@ -552,15 +549,16 @@ func (wm *WatchMesh) handleResurrectingPeerTimeout(id NodeId, peer *Peer) (shoul
 	checks := peer.State.IncrementResurrectingChecks()
 	shouldStartElection = false
 
-	if checks >= MAX_RESURRECT_ATTEMPTS {
+	maxResurrectionAttempts := wm.config.MaxResurrectionAttempts
+	if checks >= maxResurrectionAttempts {
 		peer.State.Set(PeerStatusDead)
-		wm.log.Warningf("Node %s failed to resurrect after %d checks", id, MAX_RESURRECT_ATTEMPTS)
+		wm.log.Warningf("Node %s failed to resurrect after %d checks", id, maxResurrectionAttempts)
 
 		if id == wm.GetLeaderID() {
 			shouldStartElection = true
 		}
 	} else {
-		wm.log.Infof("Node %s is in Resurrecting state (check %d/%d)", id, checks, MAX_RESURRECT_ATTEMPTS)
+		wm.log.Infof("Node %s is in Resurrecting state (check %d/%d)", id, checks, maxResurrectionAttempts)
 	}
 
 	return shouldStartElection

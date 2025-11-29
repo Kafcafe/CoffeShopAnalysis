@@ -7,3 +7,5 @@ watchMesh:
   addressResolvingRetries: 3
   addressResolvingIntervalSeconds: 1.0
   showHeartbeatLogs: false
+  maxResurrectionAttempts: 3
+  randomSeedForJitter: 1763675954000000

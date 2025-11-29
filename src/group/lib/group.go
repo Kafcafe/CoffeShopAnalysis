@@ -99,6 +99,8 @@ func createWatchMeshConfig(
 		addressResolvingIntervalSeconds,
 		basicWatchMeshConfig.ShowHeartbeatLogs,
 		"group",
+		basicWatchMeshConfig.MaxResurrectionAttempts,
+		basicWatchMeshConfig.RandomSeedForJitter,
 	)
 
 	return watchMeshConfig
