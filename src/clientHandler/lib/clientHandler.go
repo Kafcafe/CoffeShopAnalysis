@@ -82,8 +82,6 @@ func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 	}
 }
 
-var nums int = 0
-
 func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	defer clh.answerMessage(NACK_DISCARD, message)
 
@@ -316,7 +314,6 @@ func (clh *ClientHandler) processDataType(amountOfFiles int, dataType string) er
 		}
 
 		clh.log.Infof("Finished processing file %d for dataType %s", currFile, dataType)
-		clh.log.Infof("nums: %d", nums)
 	}
 
 	isEof := true
