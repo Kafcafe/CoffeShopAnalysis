@@ -129,6 +129,7 @@ func main() {
 	}
 
 	filterId := config.GetString("filter.id")
+	filterIdNum := config.GetInt("filter.idNum")
 	filterCount := config.GetInt("filter.count")
 
 	filterType := config.GetString("filter.type")
@@ -160,6 +161,7 @@ func main() {
 		hourConfig,
 		amountConfig,
 		filterId,
+		filterIdNum,
 		filterCount,
 		basicWatchMeshConfig,
 	)

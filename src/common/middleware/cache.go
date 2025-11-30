@@ -12,6 +12,9 @@ type Cache struct {
 }
 
 func NewCache(capacity int) *Cache {
+	if capacity <= 0 {
+		return nil
+	}
 	return &Cache{
 		capacity: capacity,
 		buffer:   make([]string, capacity),

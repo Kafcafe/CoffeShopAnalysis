@@ -42,13 +42,31 @@ func (cs *ClientStats) Add(dataType DataType, messageId string, processed, emitt
 	if emitted {
 		cs.emitted[dataType] += 1
 	}
-	cs.cache.Add(messageId)
+	if cs.cache != nil {
+		cs.cache.Add(messageId)
+	}
 }
 
 func (cs *ClientStats) WasMessageProcessed(messageId string) bool {
+	if cs.cache == nil {
+		return false
+	}
 	cs.mutex.Lock()
 	defer cs.mutex.Unlock()
 	return cs.cache.Contains(messageId)
+}
+
+func (cs *ClientStats) IsEmpty() bool {
+	cs.mutex.Lock()
+	defer cs.mutex.Unlock()
+	count := 0
+	for _, value := range cs.processed {
+		count += value
+	}
+	for _, value := range cs.emitted {
+		count += value
+	}
+	return count == 0
 }
 
 func (cs *ClientStats) Remove(dataType DataType, processed, emitted int) {
