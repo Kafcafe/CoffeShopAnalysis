@@ -101,6 +101,7 @@ FILTER_TEMPLATE = """
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
+          - ./processed_data/{filter_type}_{idnum}:/processed_data/{filter_type}_{idnum}
 """
 
 # Client service template (parameterized by client ID)
