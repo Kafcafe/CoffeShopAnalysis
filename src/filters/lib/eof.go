@@ -120,9 +120,10 @@ func (f *FilterGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 
 	if msg.RequestType == middleware.RESULTS_REQUEST_TYPE_CLEAR {
 		f.getClientStats(msg.ClientId).Clear(msg.DataType)
-		_, err := f.atomicWritter.CleanClient(msg.ClientId)
-		if err != nil {
-			return fmt.Errorf("failed to clean atomic writter for client %s: %v", msg.ClientId, err)
+		if f.getClientStats(msg.ClientId).IsEmpty() {
+			if _, err := f.atomicWritter.CleanClient(msg.ClientId); err != nil {
+				f.log.Errorf("failed to clean atomic writter for client %s: %v", msg.ClientId, err)
+			}
 		}
 		f.log.Infof("Cleared stats for client %s and datatype %s", msg.ClientId, msg.DataType)
 		answerMessage(ACK, message)
