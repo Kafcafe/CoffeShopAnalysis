@@ -2,6 +2,7 @@ package atomicwritter
 
 import (
 	"bufio"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -92,6 +93,9 @@ func (aw *AtomicWriter) findFile(index string) (string, error) {
 }
 
 func (aw *AtomicWriter) Recover() (map[string]*SavedInfo, error) {
+	if err := os.MkdirAll(aw.path, 0755); err != nil {
+		return nil, fmt.Errorf("failed to create directory %s: %v", aw.path, err)
+	}
 	results := make(map[string]*SavedInfo)
 	files, err := os.ReadDir(aw.path)
 	aw.log.Infof("Starting recovery from path: %s", aw.path)
