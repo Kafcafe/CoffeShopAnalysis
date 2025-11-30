@@ -17,7 +17,7 @@ type AtomicWriter struct {
 }
 
 func NewAtomicWriter(path string) *AtomicWriter {
-	return &AtomicWriter{path: path, log: logging.MustGetLogger("WRITTER")}
+	return &AtomicWriter{path: path, log: logging.MustGetLogger("[WRITTER]")}
 }
 
 func (aw *AtomicWriter) WriteLines(data, metadata []string) error {
