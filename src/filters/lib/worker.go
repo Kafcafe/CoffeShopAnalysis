@@ -1,6 +1,7 @@
 package filters
 
 import (
+	atomicwritter "common/atomic_writter"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -37,6 +38,7 @@ type FilterGenericWorker struct {
 	clientsStats      map[ClientId]*middleware.ClientStats
 	resultsChans      map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh         *watch_mesh.WatchMesh
+	atomicWritter     *atomicwritter.AtomicWriter
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -70,6 +72,9 @@ func NewFilterGenericWorker(
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
+	prefix := fmt.Sprintf("%s_%d", config.ofType, config.idNum)
+	path := fmt.Sprintf("processed_data/%s", prefix)
+
 	return &FilterGenericWorker{
 		log:               log,
 		middlewareHandler: middlewareHandler,
@@ -82,6 +87,7 @@ func NewFilterGenericWorker(
 		clientsStats:      make(map[ClientId]*middleware.ClientStats),
 		resultsChans:      make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:         watch_mesh.NewWatchMesh(watchMeshConfig),
+		atomicWritter:     atomicwritter.NewAtomicWriter(path),
 	}, nil
 }
 
@@ -106,6 +112,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	if len(filteredBatch) == 0 {
 		// f.log.Info("No transaction passed the filterMessage of type " + f.conf.ofType)
 		f.getClientStats(msg.ClientId).Add(msg.DataType, message.MessageId, true, false)
+		f.saveWorkerState(msg.ClientId)
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -119,6 +126,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	}
 
 	f.getClientStats(msg.ClientId).Add(msg.DataType, message.MessageId, true, true)
+	f.saveWorkerState(msg.ClientId)
 
 	answerMessage(ACK, message)
 	// f.log.Infof("Filtered message and sent to next stage")
@@ -152,6 +160,8 @@ func (f *FilterGenericWorker) Run() error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
+	f.recover()
+
 	f.middlewareHandlers.prevStageSub.StartConsuming(f.filterMessage, f.errChan)
 	f.middlewareHandlers.broadcastResultsRequestSub.StartConsuming(f.sendResultsRequest, f.errChan)
 
@@ -179,6 +189,11 @@ func (f *FilterGenericWorker) Shutdown() {
 	f.middlewareHandlers.prevStageSub.Close()
 	f.middlewareHandlers.broadcastResultsRequestPub.Close()
 	f.middlewareHandlers.broadcastResultsRequestSub.Close()
+	count, err := f.atomicWritter.CleanAll()
+	if err != nil {
+		f.log.Errorf("Failed to clean all files: %v", err)
+	}
+	f.log.Infof("Cleaned %d files", count)
 	for _, nextStagePub := range f.middlewareHandlers.nextStagePubs {
 		nextStagePub.Close()
 	}
