@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func (j *JoinGenericWorker) Dump(clientStats *ClientStatsJoin, clientId, table string) error {
+func (j *JoinGenericWorker) Dump(clientStats *ClientStatsJoin, clientId string) error {
 
 	data, err := clientStats.MarshalJSON()
 	if err != nil {
@@ -37,6 +37,11 @@ func (j *JoinGenericWorker) Recover() error {
 
 		j.mutex.Lock()
 		j.clientsStats[clientId] = clientStats
+		j.log.Infof("Resurecting client: %v", clientId)
+		j.log.Info(clientStats.sideTable)
+		j.log.Info(clientStats.mainTable)
+		j.log.Infof("Side table is ready: %d", clientStats.sideTableIsReady)
+		j.log.Infof("Resurrected tables for client %s: mainTable=%d, sideTable=%d", clientId, len(clientStats.mainTable), len(clientStats.sideTable))
 		j.mutex.Unlock()
 	}
 

@@ -119,15 +119,13 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return nil
 	}
 
-	j.log.Debugf("Received message for client %s and datatype %s", msg.ClientId, msg.DataType)
-
 	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
 	if _, ok := j.sideTableReceived[msg.ClientId]; !ok {
 		j.sideTableReceived[msg.ClientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
 	}
 	j.mutex.Unlock()
-	if !exists {
+	if !exists && !clientStats.sideTableIsReady {
 		j.log.Warning("Side table not ready!!!! Waiting...")
 		<-j.sideTableReceived[msg.ClientId]
 		j.log.Warning("Side table ready!!! Continuing...")
@@ -143,8 +141,8 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 	j.mutex.Lock()
 	partialUpdate := j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
 	j.sideTable[msg.ClientId] = partialUpdate
-	clientStats.Add(msg.DataType, message.MessageId, true, false, "side", partialUpdate)
-	if err := j.Dump(clientStats, msg.ClientId, "side"); err != nil {
+	clientStats.Add(msg.DataType, message.MessageId, true, false, "users", partialUpdate)
+	if err := j.Dump(clientStats, msg.ClientId); err != nil {
 		j.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
 		return err
@@ -182,7 +180,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	j.mutex.Lock()
 	j.mainTable[msg.ClientId] = append(j.mainTable[msg.ClientId], flattenedPayload...)
 	clientStats.Add(msg.DataType, message.MessageId, true, false, "main", flattenedPayload)
-	if err := j.Dump(clientStats, msg.ClientId, "main"); err != nil {
+	if err := j.Dump(clientStats, msg.ClientId); err != nil {
 		j.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
 		return err
@@ -210,6 +208,13 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		if _, exists := j.sideTableReceived[msg.ClientId]; !exists {
 			j.sideTableReceived[msg.ClientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
 		}
+		j.clientsStats[msg.ClientId].MarkSideTableAsReady()
+		j.log.Infof("Marked side table as ready for client %s", msg.ClientId)
+		if err := j.Dump(clientStats, msg.ClientId); err != nil {
+			j.mutex.Unlock()
+			answerMessage(NACK_REQUEUE, message)
+			return err
+		}
 		j.mutex.Unlock()
 		j.sideTableReceived[msg.ClientId] <- ACTIVITY
 		return nil
@@ -222,7 +227,7 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 	}
 	j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
 	clientStats.Add(msg.DataType, message.MessageId, true, false, "side", msg.Payload)
-	if err := j.Dump(clientStats, msg.ClientId, "side"); err != nil {
+	if err := j.Dump(clientStats, msg.ClientId); err != nil {
 		j.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
 		return err
@@ -293,6 +298,11 @@ func (j *JoinGenericWorker) Shutdown() {
 
 	j.middlewareHandlers.Shutdown()
 	j.middlewareHandler.Close()
-	j.atomicWritter.CleanAll()
+	values, err := j.atomicWritter.CleanAll()
+	if err != nil {
+		j.log.Warningf("Failed to count lines during shutdown: %v", err)
+	} else {
+		j.log.Infof("Cleaned stored data during shutdown. Total lines removed: %d", values)
+	}
 	j.log.Info("Shutdown complete")
 }

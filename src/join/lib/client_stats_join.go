@@ -7,10 +7,11 @@ import (
 )
 
 type ClientStatsJoin struct {
-	mainTable []string
-	sideTable []string
-	stats     *middleware.ClientStats
-	mtx       sync.Mutex
+	mainTable        []string
+	sideTable        []string
+	stats            *middleware.ClientStats
+	sideTableIsReady bool
+	mtx              sync.Mutex
 }
 
 func NewClientStatsJoin(cacheCapacity int) *ClientStatsJoin {
@@ -30,6 +31,8 @@ func (cs *ClientStatsJoin) Add(dataType middleware.DataType, messageId string, p
 		cs.mainTable = append(cs.mainTable, payload...)
 	case "side":
 		cs.sideTable = append(cs.sideTable, payload...)
+	case "users":
+		cs.sideTable = payload
 	}
 }
 
@@ -54,6 +57,12 @@ func (cs *ClientStatsJoin) WasMessageProcessed(messageId string) bool {
 	return cs.stats.WasMessageProcessed(messageId)
 }
 
+func (cs *ClientStatsJoin) MarkSideTableAsReady() {
+	cs.mtx.Lock()
+	defer cs.mtx.Unlock()
+	cs.sideTableIsReady = true
+}
+
 func (cs *ClientStatsJoin) Remove(dataType middleware.DataType, processed, emitted int) {
 	cs.mtx.Lock()
 	defer cs.mtx.Unlock()
@@ -61,9 +70,10 @@ func (cs *ClientStatsJoin) Remove(dataType middleware.DataType, processed, emitt
 }
 
 type clientStatsJoinDTO struct {
-	MainTable []string                `json:"main_table"`
-	SideTable []string                `json:"side_table"`
-	Stats     *middleware.ClientStats `json:"stats"`
+	MainTable        []string                `json:"main_table"`
+	SideTable        []string                `json:"side_table"`
+	SideTableIsReady bool                    `json:"side_table_is_ready"`
+	Stats            *middleware.ClientStats `json:"stats"`
 }
 
 func (cs *ClientStatsJoin) toDTO() clientStatsJoinDTO {
@@ -71,9 +81,10 @@ func (cs *ClientStatsJoin) toDTO() clientStatsJoinDTO {
 	defer cs.mtx.Unlock()
 
 	return clientStatsJoinDTO{
-		MainTable: cs.mainTable,
-		SideTable: cs.sideTable,
-		Stats:     cs.stats,
+		MainTable:        cs.mainTable,
+		SideTable:        cs.sideTable,
+		SideTableIsReady: cs.sideTableIsReady,
+		Stats:            cs.stats,
 	}
 }
 
@@ -86,6 +97,7 @@ func (cs *ClientStatsJoin) fromDTO(dto clientStatsJoinDTO) {
 	cs.mainTable = dto.MainTable
 	cs.sideTable = dto.SideTable
 	cs.stats = dto.Stats
+	cs.sideTableIsReady = dto.SideTableIsReady
 }
 
 func (cs *ClientStatsJoin) UnmarshalJSON(data []byte) error {
