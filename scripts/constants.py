@@ -194,4 +194,5 @@ JOIN_TEMPLATE = """
         volumes:
           - ./src/join/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
+          - ./processed_data/{join_type}_{idnum}:/processed_data/{join_type}_{idnum}
 """

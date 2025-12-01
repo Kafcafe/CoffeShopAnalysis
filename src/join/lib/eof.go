@@ -96,13 +96,18 @@ func (j *JoinGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		delete(j.sideTable, msg.ClientId)
 		delete(j.mainTable, msg.ClientId)
 		delete(j.sideTableReceived, msg.ClientId)
+		total, err := j.atomicWritter.CleanClient(msg.ClientId)
+		if err != nil {
+			j.log.Warningf("Failed to count lines for client %s and datatype %s: %v", msg.ClientId, msg.DataType, err)
+		}
+		j.log.Infof("Cleared stored data for client %s and datatype %s. Total lines removed: %d", msg.ClientId, msg.DataType, total)
 		j.log.Infof("Cleared stats for client %s and datatype %s", msg.ClientId, msg.DataType)
 		answerMessage(ACK, message)
 		return nil
 	}
 
 	j.log.Infof("Received results request message from %s for client %s and datatype %s", msg.Origin, msg.ClientId, msg.DataType)
-	processed, emitted := j.getClientStats(msg.ClientId).GetStats(msg.DataType)
+	processed, emitted, _, _ := j.getClientStats(msg.ClientId).GetStats(msg.DataType)
 
 	responseMsg := middleware.MessageResultsResponse{
 		Origin:    j.conf.id,
