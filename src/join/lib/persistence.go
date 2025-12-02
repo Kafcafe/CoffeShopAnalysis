@@ -48,6 +48,7 @@ func (j *JoinGenericWorker) Recover() error {
 			if _, exists := j.sideTableReceived[clientId]; !exists {
 				j.sideTableReceived[clientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
 			}
+			j.sideTableReceived[clientId] <- ACTIVITY
 		}
 
 		j.mutex.Unlock()
