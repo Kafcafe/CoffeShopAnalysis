@@ -1,8 +1,9 @@
 package middleware
 
 import (
-	"hash/fnv"
-	"strconv"
+	"crypto/sha256"
+	"encoding/binary"
+	"encoding/hex"
 	"testing"
 )
 
@@ -20,12 +21,10 @@ func TestGetMessageIdDeterministic(t *testing.T) {
 		t.Fatalf("expected same partition for same input, got %d and %d", part1, part2)
 	}
 
-	// verify id matches fnv64a hex representation and partition calculation
-	h := fnv.New64a()
-	h.Write(data)
-	expectedHash := h.Sum64()
-	expectedId := strconv.FormatUint(expectedHash, 16)
-	expectedPart := int(expectedHash%uint64(count)) + 1
+	// verify id matches sha256 hex representation and partition calculation
+	expectedHash := sha256.Sum256(data)
+	expectedId := hex.EncodeToString(expectedHash[:])
+	expectedPart := int(binary.BigEndian.Uint64(expectedHash[:8])%uint64(count)) + 1
 
 	if id1 != expectedId {
 		t.Fatalf("id mismatch: expected %s, got %s", expectedId, id1)
@@ -41,11 +40,9 @@ func TestGetMessageIdEmptyData(t *testing.T) {
 
 	id, part := GetMessageId(data, count)
 
-	h := fnv.New64a()
-	h.Write(data)
-	expectedHash := h.Sum64()
-	expectedId := strconv.FormatUint(expectedHash, 16)
-	expectedPart := int(expectedHash%uint64(count)) + 1
+	expectedHash := sha256.Sum256(data)
+	expectedId := hex.EncodeToString(expectedHash[:])
+	expectedPart := int(binary.BigEndian.Uint64(expectedHash[:8])%uint64(count)) + 1
 
 	if id != expectedId {
 		t.Fatalf("empty data id mismatch: expected %s, got %s", expectedId, id)

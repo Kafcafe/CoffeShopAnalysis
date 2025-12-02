@@ -1,94 +1,158 @@
 package join
 
 import (
+	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
-	"strings"
+	"time"
 )
 
-type Join struct{}
+const (
+	JOIN_ITEMS_TYPE    = "items"
+	JOIN_STORE_TYPE    = "store"
+	JOIN_STORE_Q3_TYPE = "store_q3"
+	JOIN_USERS_TYPE    = "users"
+)
 
-func NewJoiner() *Join {
-	return &Join{}
+type JoinItemsWorker interface {
+	Run() error
 }
 
-// rightTable => In memory table, the one that will turn to a map
-//
-// leftTable => The one that will be iterated
-//
-// rightIndex => The index of the field that will replace the left field
-//
-// rightIdIndex => The index of the field that will be used to match with the left table
-//
-// leftIndex => The index of the field that will be replaced
-//
-// Example: JoinByIndex(stores, sales, 1, 0, 2) => In stores, index 1 is the name of the store, index 0 is the id of the store. In sales, index 2 is the id of the store
-//
-// Result: The sales table will have the name of the store instead of the id of the store
-func (j *Join) JoinByIndex(rightTable []string, leftTable []string, rightIndex, rightIdIndex, leftIndex int) []string {
-	joinedItems := make([]string, 0)
-	if len(rightTable) == 0 || len(leftTable) == 0 {
-		return joinedItems
-	}
-
-	itemMap := j.generateMapItemsByIndex(rightTable, rightIndex, rightIdIndex)
-
-	for _, lItem := range leftTable {
-		fields := strings.Split(lItem, ",")
-		if len(fields) <= leftIndex {
-			continue
-		}
-
-		itemId := strings.TrimSpace(fields[leftIndex])
-		itemName := itemMap[itemId]
-		if itemName == "" {
-			continue
-		}
-
-		newFields := append([]string{}, fields...)
-		newFields[leftIndex] = itemName
-		joinedItems = append(joinedItems, strings.Join(newFields, ","))
-	}
-	return joinedItems
+type JoinWorkerConfig struct {
+	id                             string
+	idNum                          int
+	count                          int
+	ofType                         string
+	queryId                        int
+	prevStageSub                   string
+	sideTableSub                   string
+	nextStagePubs                  map[string]string
+	joinTables                     func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string)
+	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
 }
 
-// / stores, 1 => alli esta el nombre de la store, 0 => alli esta el id
-func (j *Join) generateMapItemsByIndex(items []string, index, idIndex int) map[string]string {
-	mapItems := make(map[string]string)
-	for _, item := range items {
-		fields := strings.Split(item, ",")
-
-		if len(fields) <= index {
-			continue
-		}
-
-		id := strings.TrimSpace(fields[idIndex])
-		name := strings.TrimSpace(fields[index])
-		mapItems[id] = name
+func JoinItemsConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:            joinId,
+		idNum:         joinIdNum,
+		count:         joinCount,
+		ofType:        JOIN_ITEMS_TYPE,
+		queryId:       2,
+		prevStageSub:  "transactions.items.group.yearmonth",
+		sideTableSub:  "transactions.items.menu.items",
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 1)
+		},
 	}
-	return mapItems
 }
 
-func UpdatedSideTableWithUsers(sideTable []string, payload []string) []string {
-	// Index rápido para buscar userId → birthdate en el payload
-	birthdateByUser := make(map[string]string, len(payload))
-	for _, user := range payload {
-		parts := strings.SplitN(user, ",", 2)
-		userId, birthdate := parts[0], parts[1]
-		birthdateByUser[userId] = birthdate
+func JoinStoreConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:           joinId,
+		idNum:        joinIdNum,
+		count:        joinCount,
+		ofType:       "store",
+		prevStageSub: "transactions.transactions.topk",
+		sideTableSub: "transactions.store",
+		nextStagePubs: map[string]string{
+			JOIN_STORE_TYPE: "transactions.transactions.join.store",
+		},
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 0)
+		},
+	}
+}
+
+func JoinStoreQ3Config(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:            joinId,
+		idNum:         joinIdNum,
+		count:         joinCount,
+		ofType:        "store_q3",
+		queryId:       3,
+		prevStageSub:  "transactions.transactions.group.semester",
+		sideTableSub:  "transactions.store",
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
+		joinTables: func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string) {
+			return joiner.JoinByIndex(sideTable, mainTable, 1, 0, 1)
+		},
+	}
+}
+
+func JoinUsersConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
+	return JoinWorkerConfig{
+		id:                             joinId,
+		idNum:                          joinIdNum,
+		count:                          joinCount,
+		ofType:                         "users",
+		queryId:                        4,
+		prevStageSub:                   "transactions.users",
+		sideTableSub:                   "transactions.transactions.join.store",
+		nextStagePubs:                  map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
+		messageCallbackUpdateSideTable: UpdatedSideTableWithUsers,
+	}
+}
+
+func CreateJoinerWorker(
+	joinItemsType string,
+	rabbitConf middleware.RabbitConfig,
+	joinerId string,
+	joinerIdNum int,
+	joinerCount int,
+	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
+) (*JoinItemsWorker, error) {
+
+	var joinItemsWorker JoinItemsWorker
+	var err error
+	var config JoinWorkerConfig
+
+	switch joinItemsType {
+	case JOIN_ITEMS_TYPE:
+		config = JoinItemsConfig(joinerId, joinerCount, joinerIdNum)
+	case JOIN_STORE_TYPE:
+		config = JoinStoreConfig(joinerId, joinerCount, joinerIdNum)
+	case JOIN_USERS_TYPE:
+		config = JoinUsersConfig(joinerId, joinerCount, joinerIdNum)
+	case JOIN_STORE_Q3_TYPE:
+		config = JoinStoreQ3Config(joinerId, joinerCount, joinerIdNum)
+	default:
+		return nil, fmt.Errorf("unknown joiner type: %s", joinItemsType)
 	}
 
-	// Recorremos sideTable directamente y reemplazamos en orden
-	partialUpdate := make([]string, 0, len(sideTable))
+	// Prepare addresses for WatchMesh
+	peerAddresses := []string{}
+	myAddress := fmt.Sprintf("join%s", config.id)
+	for i := 1; i < config.count+1; i++ {
+		peerIp := fmt.Sprintf("join-%s%d", config.ofType, i)
 
-	for _, entry := range sideTable {
-		parts := strings.SplitN(entry, ",", 3)
-		mappedEntry := entry
-		store, user, count := parts[0], parts[1], parts[2]
-		if birthdate, exists := birthdateByUser[user]; exists {
-			mappedEntry = fmt.Sprintf("%s,%s,%s", store, birthdate, count)
+		if peerIp != myAddress {
+			peerAddresses = append(peerAddresses, peerIp)
 		}
-		partialUpdate = append(partialUpdate, mappedEntry)
 	}
 
-	return partialUpdate
+	heartbeatIntervalSeconds := time.Duration(basicWatchMeshConfig.HeartbeatIntervalSeconds) * time.Second
+	heartbeatTimeoutSeconds := time.Duration(basicWatchMeshConfig.HeartbeatTimeoutSeconds) * time.Second
+	addressResolvingIntervalSeconds := time.Duration(basicWatchMeshConfig.AddressResolvingIntervalSeconds) * 1000 * time.Millisecond
+
+	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
+		config.id,
+		basicWatchMeshConfig.Port,
+		peerAddresses,
+		heartbeatIntervalSeconds,
+		heartbeatTimeoutSeconds,
+		basicWatchMeshConfig.AddressResolvingRetries,
+		addressResolvingIntervalSeconds,
+		basicWatchMeshConfig.ShowHeartbeatLogs,
+		"join",
+		basicWatchMeshConfig.MaxResurrectionAttempts,
+		basicWatchMeshConfig.RandomSeedForJitter,
+	)
+
+	joinItemsWorker, err = NewJoinWorker(rabbitConf, config, watchMeshConfig)
+	if err != nil {
+		return nil, err
+	}
+
+	return &joinItemsWorker, nil
 }

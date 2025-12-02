@@ -99,6 +99,8 @@ func createWatchMeshConfig(
 		addressResolvingIntervalSeconds,
 		basicWatchMeshConfig.ShowHeartbeatLogs,
 		"group",
+		basicWatchMeshConfig.MaxResurrectionAttempts,
+		basicWatchMeshConfig.RandomSeedForJitter,
 	)
 
 	return watchMeshConfig
@@ -116,6 +118,8 @@ func CreateGroupByWorker(
 ) (*GroupByWorker, error) {
 	var groupByWorker GroupByWorker
 	var err error
+
+	logger.Infof("Creating groupBy worker for group %d", idNum)
 
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:

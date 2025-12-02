@@ -13,6 +13,8 @@ type WatchMeshConfig struct {
 	AddressResolvingRetries  int
 	AddressResolvingInterval time.Duration
 	ShowHeartbeatLogs        bool
+	MaxResurrectionAttempts  int
+	RandomSeedForJitter      int64
 }
 
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
@@ -26,6 +28,8 @@ func NewWatchMeshConfig(
 	addressResolvingInterval time.Duration,
 	showHeartbeatLogs bool,
 	nodeType string,
+	maxResurrectionAttempts int,
+	randomSeedForJitter int64,
 ) WatchMeshConfig {
 
 	return WatchMeshConfig{
@@ -38,6 +42,8 @@ func NewWatchMeshConfig(
 		AddressResolvingInterval: addressResolvingInterval,
 		ShowHeartbeatLogs:        showHeartbeatLogs,
 		NodeType:                 nodeType,
+		MaxResurrectionAttempts:  maxResurrectionAttempts,
+		RandomSeedForJitter:      randomSeedForJitter,
 	}
 }
 
@@ -48,6 +54,8 @@ type BasicWatchMeshConfig struct {
 	AddressResolvingRetries         int
 	AddressResolvingIntervalSeconds float64
 	ShowHeartbeatLogs               bool
+	MaxResurrectionAttempts         int
+	RandomSeedForJitter             int64
 }
 
 // NewBasicWatchMeshConfig creates a new BasicWatchMeshConfig with the provided parameters
@@ -58,6 +66,8 @@ func NewBasicWatchMeshConfig(
 	addressResolvingRetries int,
 	addressResolvingIntervalSeconds float64,
 	showHeartbeatLogs bool,
+	maxResurrectionAttempts int,
+	randomSeedForJitter int64,
 ) BasicWatchMeshConfig {
 
 	return BasicWatchMeshConfig{
@@ -67,5 +77,7 @@ func NewBasicWatchMeshConfig(
 		AddressResolvingRetries:         addressResolvingRetries,
 		AddressResolvingIntervalSeconds: addressResolvingIntervalSeconds,
 		ShowHeartbeatLogs:               showHeartbeatLogs,
+		MaxResurrectionAttempts:         maxResurrectionAttempts,
+		RandomSeedForJitter:             randomSeedForJitter,
 	}
 }

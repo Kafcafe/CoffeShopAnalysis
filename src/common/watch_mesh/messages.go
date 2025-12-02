@@ -11,11 +11,11 @@ const (
 	Heartbeat    MessageType = 0
 	HeartbeatAck MessageType = 1
 
-	Election    MessageType = 2
-	Coordinator MessageType = 3
+	Election   MessageType = 2
+	ElectionOk MessageType = 3
 
-	Broadcast  MessageType = 4
-	ElectionOk MessageType = 5
+	Coordinator    MessageType = 4
+	CoordinatorAck MessageType = 5
 
 	LeaderDiscovery MessageType = 6
 	LeaderResponse  MessageType = 7
@@ -35,7 +35,7 @@ func (m *WatchMeshMessage) ToBytes() ([]byte, error) {
 	return msgBytes, nil
 }
 
-func FromBytes(data []byte) (*WatchMeshMessage, error) {
+func WatchMeshMessageFromBytes(data []byte) (*WatchMeshMessage, error) {
 	var msg WatchMeshMessage
 	if err := json.Unmarshal(data, &msg); err != nil {
 		return nil, fmt.Errorf("failed deserialization: %w", err)
@@ -78,11 +78,10 @@ func NewCoordinatorMessage(senderID string) *WatchMeshMessage {
 	}
 }
 
-func NewBroadcastMessage(senderID, payload string) *WatchMeshMessage {
+func NewCoordinatorAckMessage(senderID string) *WatchMeshMessage {
 	return &WatchMeshMessage{
-		Type:     Broadcast,
+		Type:     CoordinatorAck,
 		SenderID: senderID,
-		Payload:  payload,
 	}
 }
 

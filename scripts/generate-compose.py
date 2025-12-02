@@ -74,6 +74,7 @@ def generate_compose(
             id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_year_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(filter_by_hour_nums):
@@ -82,6 +83,7 @@ def generate_compose(
             id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_hour_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(filter_by_amount_nums):
@@ -90,6 +92,7 @@ def generate_compose(
             id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_amount_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(group_by_year_month_nums):
@@ -113,7 +116,7 @@ def generate_compose(
     for i in range(join_items_nums):
         join_type = JOIN_ITEMS_TYPE
         compose += constants.JOIN_TEMPLATE.format(
-            id=f"-{join_type}{i + 1}", join_type=join_type, join_count=join_items_nums
+            id=f"-{join_type}{i + 1}", join_type=join_type, join_count=join_items_nums, idnum=f"{i + 1}"
         )
 
     for i in range(join_store_nums):
@@ -121,6 +124,7 @@ def generate_compose(
             id=f"-{JOIN_STORE_TYPE}{i + 1}",
             join_type=JOIN_STORE_TYPE,
             join_count=join_store_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(join_store_nums):
@@ -128,6 +132,7 @@ def generate_compose(
             id=f"-{JOIN_STORE_Q3_TYPE}{i + 1}",
             join_type=JOIN_STORE_Q3_TYPE,
             join_count=join_store_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(join_users_nums):
@@ -135,6 +140,7 @@ def generate_compose(
             id=f"-{JOIN_USERS_TYPE}{i + 1}",
             join_type=JOIN_USERS_TYPE,
             join_count=join_users_nums,
+            idnum=f"{i + 1}"
         )
 
     for i in range(topk_nums):

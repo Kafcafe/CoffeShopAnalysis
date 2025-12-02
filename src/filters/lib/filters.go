@@ -1,132 +1,136 @@
 package filters
 
 import (
+	"common/middleware"
+	"common/watch_mesh"
 	"fmt"
-	"strconv"
-	"strings"
+	"time"
 )
 
-type Filter struct{}
+const (
+	FILTER_TYPE_YEAR   = "year"
+	FILTER_TYPE_HOUR   = "hour"
+	FILTER_TYPE_AMOUNT = "amount"
+)
 
-func NewFilter() *Filter {
-	return &Filter{}
+type FilterWorker interface {
+	Run() error
 }
 
-func (f *Filter) FilterByHour(batch []string, fromHour, toHour int) []string {
-	result := make([]string, 0)
+type FilterConfig struct {
+	id              string
+	idNum           int
+	ofType          string
+	filtersCount    int
+	prevStageSub    string
+	nextStagePubs   map[string]string // dataType -> routeKey
+	messageCallback func(filter *Filter, batch []string) (filteredBatch []string)
+}
 
-	for _, record := range batch {
-		splited := strings.Split(record, ",")
-		splitedLen := len(splited)
-		datetime := splited[splitedLen-1]
-		dateParts := strings.Split(datetime, " ")
+func FilterByYearConfig(filterId string, filterIdNum, filterCount int, config YearFilterConfig) FilterConfig {
+	return FilterConfig{
+		id:           filterId,
+		idNum:        filterIdNum,
+		ofType:       FILTER_TYPE_YEAR,
+		filtersCount: filterCount,
+		prevStageSub: "transactions",
+		nextStagePubs: map[string]string{
+			"transactions":      "transactions.transactions.all",
+			"transaction_items": "transactions.items",
+		},
+		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
+			return filter.FilterByYear(batch, config.FromYear, config.ToYear)
+		},
+	}
+}
 
-		if !f.respectHourLimits(dateParts[1], fromHour, toHour) {
-			continue
+func FilterByHourConfig(filterId string, filterIdNum, filterCount int, hourConfig HourFilterConfig) FilterConfig {
+	return FilterConfig{
+		id:           filterId,
+		idNum:        filterIdNum,
+		ofType:       FILTER_TYPE_HOUR,
+		filtersCount: filterCount,
+		prevStageSub: "transactions.transactions.all",
+		nextStagePubs: map[string]string{
+			"transactions": "transactions.year-hour-filtered.all",
+		},
+		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
+			return filter.FilterByHour(batch, hourConfig.FromHour, hourConfig.ToHour)
+		},
+	}
+}
+
+func FilterByAmountConfig(filterId string, filterIdNum, filterCount int, amountConfig AmountFilterConfig) FilterConfig {
+	return FilterConfig{
+		id:            filterId,
+		idNum:         filterIdNum,
+		ofType:        FILTER_TYPE_AMOUNT,
+		filtersCount:  filterCount,
+		prevStageSub:  "transactions.year-hour-filtered.all",
+		nextStagePubs: map[string]string{}, // Empty because it is generated at runtime as results.clientUUID
+		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
+			return filter.FilterByAmount(batch, amountConfig.MinAmount)
+		},
+	}
+}
+
+func CreateFilterWorker(
+	filterType string,
+	rabbitConf middleware.RabbitConfig,
+	yearConfig YearFilterConfig,
+	hourConfig HourFilterConfig,
+	amountConfig AmountFilterConfig,
+	filterId string,
+	filterIdNum int,
+	filterCount int,
+	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
+) (*FilterGenericWorker, error) {
+	var config FilterConfig
+
+	switch filterType {
+	case FILTER_TYPE_YEAR:
+		config = FilterByYearConfig(filterId, filterIdNum, filterCount, yearConfig)
+	case FILTER_TYPE_HOUR:
+		config = FilterByHourConfig(filterId, filterIdNum, filterCount, hourConfig)
+	case FILTER_TYPE_AMOUNT:
+		config = FilterByAmountConfig(filterId, filterIdNum, filterCount, amountConfig)
+	default:
+		return nil, fmt.Errorf("unknown filter type: %s", filterType)
+	}
+
+	// Prepare addresses for WatchMesh
+	peerAddresses := []string{}
+	myAddress := fmt.Sprintf("filter%s", config.id)
+	for i := 1; i < config.filtersCount+1; i++ {
+		peerIp := fmt.Sprintf("filter-%s%d", config.ofType, i)
+
+		if peerIp != myAddress {
+			peerAddresses = append(peerAddresses, peerIp)
 		}
-
-		result = append(result, record)
-	}
-	return result
-}
-
-func (f *Filter) respectHourLimits(hourString string, fromHour, toHour int) bool {
-	hourParts := strings.Split(hourString, ":")
-	if len(hourParts) != 3 {
-		return false
 	}
 
-	hour, err := strconv.Atoi(hourParts[0])
+	heartbeatIntervalSeconds := time.Duration(basicWatchMeshConfig.HeartbeatIntervalSeconds) * time.Second
+	heartbeatTimeoutSeconds := time.Duration(basicWatchMeshConfig.HeartbeatTimeoutSeconds) * time.Second
+	addressResolvingIntervalSeconds := time.Duration(basicWatchMeshConfig.AddressResolvingIntervalSeconds) * 1000 * time.Millisecond
 
+	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
+		config.id,
+		basicWatchMeshConfig.Port,
+		peerAddresses,
+		heartbeatIntervalSeconds,
+		heartbeatTimeoutSeconds,
+		basicWatchMeshConfig.AddressResolvingRetries,
+		addressResolvingIntervalSeconds,
+		basicWatchMeshConfig.ShowHeartbeatLogs,
+		"filter",
+		basicWatchMeshConfig.MaxResurrectionAttempts,
+		basicWatchMeshConfig.RandomSeedForJitter,
+	)
+
+	filterWorker, err := NewFilterGenericWorker(rabbitConf, config, watchMeshConfig)
 	if err != nil {
-		return false
+		return nil, err
 	}
 
-	if hour < fromHour || hour > toHour {
-		return false
-	}
-
-	minutes := hourParts[1]
-	seconds := hourParts[2]
-	atoiMinutes, err := strconv.Atoi(minutes)
-
-	if err != nil {
-		return false
-	}
-	atoiSeconds, err := strconv.Atoi(seconds)
-
-	if err != nil {
-		return false
-	}
-
-	if hour == toHour && atoiMinutes > 0 && atoiSeconds > 0 {
-		return false
-	}
-
-	return true
-}
-
-func (f *Filter) FilterByYear(batch []string, fromYear, toYear int) []string {
-	result := make([]string, 0)
-	for _, record := range batch {
-		splited := strings.Split(record, ",")
-		splitedLen := len(splited)
-
-		if splited[splitedLen-1] == "" {
-			continue
-		}
-
-		datetime := splited[splitedLen-1]
-		dateParts := strings.Split(datetime, " ")
-		if len(dateParts) != 2 {
-			continue
-		}
-
-		date := dateParts[0]
-		dateComponents := strings.Split(date, "-")
-		if len(dateComponents) != 3 {
-			continue
-		}
-
-		year, err := strconv.Atoi(dateComponents[0])
-
-		if err != nil {
-			continue
-		}
-
-		if !f.respectLimit(year, toYear, fromYear) {
-			continue
-		}
-		result = append(result, record)
-
-	}
-	return result
-}
-
-func (f *Filter) respectLimit(value, upLimit, downLimit int) bool {
-	return value <= upLimit && value >= downLimit
-}
-
-func (f *Filter) FilterByAmount(batch []string, amount float64) []string {
-	result := make([]string, 0)
-	for _, record := range batch {
-		splited := strings.Split(record, ",")
-		lenSplitted := len(splited)
-
-		if splited[lenSplitted-2] == "" {
-			continue
-		}
-
-		var value float64
-		if _, err := fmt.Sscanf(splited[lenSplitted-2], "%f", &value); err != nil {
-			continue
-		}
-
-		if value < amount {
-			continue
-		}
-
-		result = append(result, record)
-	}
-	return result
+	return filterWorker, nil
 }

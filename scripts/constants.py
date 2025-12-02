@@ -92,6 +92,7 @@ FILTER_TEMPLATE = """
           RABBITMQ_PASS: user
           FILTER_TYPE: {filter_type}
           FILTER_ID: {id}
+          FILTER_IDNUM: {idnum}
           FILTER_COUNT: {filter_count}
           WATCH_MESH_UDP_PORT: 11000
         build:
@@ -100,6 +101,7 @@ FILTER_TEMPLATE = """
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
+          - ./processed_data/{filter_type}_{idnum}:/processed_data/{filter_type}_{idnum}
 """
 
 # Client service template (parameterized by client ID)
@@ -157,7 +159,7 @@ GROUP_TEMPLATE = """
           GROUP_TYPE: {group_type}
           GROUP_ID: {id}
           GROUP_COUNT: {group_count}
-          IDNUM: {idnum}
+          GROUP_IDNUM: {idnum}
           WATCH_MESH_UDP_PORT: 11000
         build:
           context: ./src/
@@ -183,6 +185,7 @@ JOIN_TEMPLATE = """
           RABBITMQ_PASS: user
           JOIN_TYPE: {join_type}
           JOIN_ID: {id}
+          JOIN_IDNUM: {idnum}
           JOIN_COUNT: {join_count}
           WATCH_MESH_UDP_PORT: 11000
         build:
@@ -191,4 +194,5 @@ JOIN_TEMPLATE = """
         volumes:
           - ./src/join/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
+          - ./processed_data/{join_type}_{idnum}:/processed_data/{join_type}_{idnum}
 """
