@@ -21,6 +21,15 @@ const (
 	NotFinished   = 0x05
 	Start         = 0x06
 
+	ConnectionRequest   = 0x07
+	ConnectionAccept    = 0x08
+	ReconnectionRequest = 0x09
+	ReconnectionAccept  = 0x0A
+	ReconnectionDenied  = 0x0B
+	Wait                = 0x0C
+	Begin               = 0x0D
+	Ack                 = 0x0E
+
 	SIZEOF_UINT32 = 4
 	SIZEOF_UINT8  = 1
 )
@@ -81,7 +90,7 @@ func (p *Protocol) receiveLine() (line string, err error) {
 	}
 
 	dataLen := int(p.ntohsUint32(lenBytes))
-	p.log.Debug("rcv line data %v", dataLen)
+	p.log.Debugf("rcv line data %v", dataLen)
 
 	lineBytes := make([]byte, dataLen)
 	if err := p.receiveAll(lineBytes); err != nil {
@@ -113,7 +122,7 @@ func (p *Protocol) receiveLines(dataLen int) (lines []string, err error) {
 
 // ReceiveBatch receives a batch of lines from the connection.
 // Returns the lines, a flag indicating if it's the last batch, and any error.
-func (p *Protocol) ReceiveBatch() (lines []string, isEndOfBatch bool, err error) {
+func (p *Protocol) ReceiveBatch() (lines []string, isLastBatch bool, err error) {
 	endOfBatchBytes := make([]byte, SIZEOF_UINT8)
 
 	p.log.Debug("rcv end of batch code")
@@ -183,6 +192,18 @@ func (p *Protocol) RcvClientId() (string, error) {
 	}
 
 	return string(idBytes), nil
+}
+
+func (p *Protocol) SendBeginWithClientId(id string) error {
+	dataLen := uint32(len(id))
+	lenBytes := p.htonsUint32(dataLen)
+
+	packet := make([]byte, 1+4+len(id))
+	packet[0] = Begin
+	copy(packet[1:], lenBytes)
+	copy(packet[5:], []byte(id))
+
+	return p.sendAll(packet)
 }
 
 func (p *Protocol) SendResults(query uint32, results []string, isEof bool) error {
@@ -331,4 +352,29 @@ func (p *Protocol) Shutdown() error {
 	}
 
 	return nil
+}
+
+func (p *Protocol) ReceiveOpCode() (byte, error) {
+	opCode := make([]byte, 1)
+	if err := p.receiveAll(opCode); err != nil {
+		return 0, err
+	}
+	return opCode[0], nil
+}
+
+func (p *Protocol) SendWait() error {
+	return p.sendAll([]byte{Wait})
+}
+
+func (p *Protocol) SendReconnectionAccept() error {
+	return p.sendAll([]byte{ReconnectionAccept})
+}
+
+func (p *Protocol) SendReconnectionDenied() error {
+	return p.sendAll([]byte{ReconnectionDenied})
+}
+
+func (p *Protocol) SendAck() error {
+	p.log.Debug("Sent ACK")
+	return p.sendAll([]byte{Ack})
 }

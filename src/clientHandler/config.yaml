@@ -2,6 +2,6 @@ server:
   ip: "server"
   port: "12345"
 log:
-  level: "INFO"
+  level: "DEBUG"
 conection:
   limit: 5

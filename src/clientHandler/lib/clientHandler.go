@@ -41,6 +41,7 @@ type ClientHandler struct {
 	emittedCount                            map[DataType]int
 	limitHandler                            *ConnectionLimit
 	middlewareHandler                       *middleware.MiddlewareHandler
+	sessionManager                          *SessionManager
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -49,7 +50,7 @@ type ClientHandler struct {
 //	conn: the network connection to handle
 //
 // Returns a pointer to the ClientHandler.
-func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers, limitRef *ConnectionLimit, middlewareHandler *middleware.MiddlewareHandler) *ClientHandler {
+func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers ExchangeHandlers, limitRef *ConnectionLimit, middlewareHandler *middleware.MiddlewareHandler, sessionManager *SessionManager) *ClientHandler {
 	protocol := NewProtocol(conn)
 
 	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
@@ -69,6 +70,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		middlewareHandler:                       middlewareHandler,
 		timeToProcessAlreadyBufferedResultsChan: make(chan int, 1),
 		connectionBroken:                        make(chan int, 1),
+		sessionManager:                          sessionManager,
 	}
 }
 
@@ -92,7 +94,7 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 
 	//stringPayload := msg.Payload
 	//clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
-	clh.log.Debugf("action: Sending results to client | isEOF:", msg.IsEof)
+	clh.log.Debugf("action: Sending results to client | isEOF: %t", msg.IsEof)
 
 	clh.resultsChan <- *msg
 
@@ -204,65 +206,14 @@ func (clh *ClientHandler) launchResultsProcessing() {
 func (clh *ClientHandler) Handle() error {
 	clh.log.Info("Handling client connection")
 	defer clh.Shutdown()
-	// Receive the number of data types to process
-	err := clh.protocol.sendStart()
 
-	if err != nil {
-		return fmt.Errorf("error sending start signal to client: %v", err)
+	if err := clh.handleHandshake(); err != nil {
+		return err
 	}
 
-	id, err := clh.protocol.RcvClientId()
-
+	dataType, err := clh.processDataTypes()
 	if err != nil {
-		return fmt.Errorf("error receiving client ID: %v", err)
-	}
-
-	clh.log.Infof("Client ID received: %s", id)
-
-	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
-	if err != nil {
-		return fmt.Errorf("error receiving amount of dataTypes: %v", err)
-	}
-
-	go clh.launchResultsProcessing()
-
-	// Loop over each data type
-	var dataType string
-	var amountOfFiles int
-
-	for range amountOfdataTypes {
-		clh.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
-
-		dataType, amountOfFiles, err = clh.handleDataType()
-		if err != nil {
-			clh.log.Errorf("Error handling dataType: %v", err)
-			break
-		}
-
-		clh.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
-	}
-
-	if err != nil {
-		clh.log.Warningf("Sending EOF after failure for error: %v", err)
-		errSending := clh.dispatchBatchToMiddleware(dataType, []string{}, true)
-
-		var errToReturn error = nil
-		if errSending != nil {
-			errToReturn = fmt.Errorf("error dispatching EOF to middleware: %v", errSending)
-		}
-
-		clh.log.Infof("Processing buffered results for %d seconds", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
-		clh.connectionBroken <- 0
-		<-time.After(time.Duration(TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS) * time.Second)
-		clh.log.Infof("Finished buffered time for results (was %ds)", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
-		clh.timeToProcessAlreadyBufferedResultsChan <- 0
-
-		if errToReturn != nil {
-			return errToReturn
-		}
-
-		errToReturn = fmt.Errorf("error while processing: %v", err)
-		return errToReturn
+		return clh.handleFailure(err, dataType)
 	}
 
 	<-clh.sentAllResultsChan
@@ -275,18 +226,25 @@ func (clh *ClientHandler) Handle() error {
 // Returns the data type name, number of files, and any error.
 func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, err error) {
 	dataType, err = clh.protocol.ReceiveFilesDataType()
-
 	if err != nil {
 		return dataType, 0, fmt.Errorf("error receiving files dataType: %v", err)
 	}
 
 	clh.log.Infof("Received files dataType: %s", dataType)
 
+	if err := clh.protocol.SendAck(); err != nil {
+		return dataType, 0, fmt.Errorf("error sending ACK: %v", err)
+	}
+
 	amountOfFiles, err = clh.protocol.RcvAmountOfFiles()
 	clh.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
 
 	if err != nil {
 		return dataType, 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
+	}
+
+	if err := clh.protocol.SendAck(); err != nil {
+		return dataType, 0, fmt.Errorf("error sending ACK: %v", err)
 	}
 
 	err = clh.processDataType(amountOfFiles, dataType)
@@ -411,15 +369,19 @@ func (clh *ClientHandler) processFile(dataType string) error {
 	// Loop to receive batches until the file is complete
 	for receivingFile {
 		clh.log.Debugf("Receiving batch %d for dataType %s", batchCounter, dataType)
-		batch, isLast, err := clh.protocol.ReceiveBatch()
 
+		batch, isLastBatch, err := clh.protocol.ReceiveBatch()
 		if err != nil {
 			return fmt.Errorf("error receiving file batch for dataType %s: %v", dataType, err)
 		}
 
 		// If this is the last batch, stop receiving
-		if isLast {
+		if isLastBatch {
 			receivingFile = false
+			err = clh.protocol.SendAck()
+			if err != nil {
+				return fmt.Errorf("error sending ACK: %v", err)
+			}
 			break
 		}
 
@@ -430,6 +392,10 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		err = clh.dispatchBatchToMiddleware(dataType, batch, isEof)
 		if err != nil {
 			return fmt.Errorf("error dispatching batch to middleware: %v", err)
+		}
+
+		if err := clh.protocol.SendAck(); err != nil {
+			return fmt.Errorf("error sending ACK: %v", err)
 		}
 	}
 	return nil
@@ -463,5 +429,130 @@ func (clh *ClientHandler) Shutdown() error {
 	clh.middlewareHandler.CloseChannel()
 	clh.log.Info("About to notify limit handler of disconnection")
 	clh.limitHandler.Signal()
+	clh.sessionManager.UnregisterSession(clh.ClientId.Full)
 	return nil
+}
+
+func (clh *ClientHandler) handleHandshake() error {
+	for {
+		opCode, err := clh.protocol.ReceiveOpCode()
+		if err != nil {
+			return fmt.Errorf("error receiving operation code: %v", err)
+		}
+
+		switch opCode {
+		case ConnectionRequest:
+			return clh.handleConnectionRequest()
+
+		case ReconnectionRequest:
+			reconnected, err := clh.handleReconnectionRequest()
+			if err != nil {
+				return err
+			}
+			if reconnected {
+				return nil
+			}
+			// If not reconnected, loop to receive next OpCode
+
+		default:
+			return fmt.Errorf("unexpected operation code: %d", opCode)
+		}
+	}
+}
+
+func (clh *ClientHandler) handleConnectionRequest() error {
+	clh.log.Info("ConnectionRequest received")
+
+	if !clh.limitHandler.TryAcquire() {
+		clh.log.Info("Connection limit reached, sending WAIT")
+		if err := clh.protocol.SendWait(); err != nil {
+			return fmt.Errorf("error sending WAIT: %v", err)
+		}
+		clh.limitHandler.Wait()
+	}
+
+	if err := clh.protocol.SendBeginWithClientId(clh.ClientId.Full); err != nil {
+		return fmt.Errorf("error sending Begin and Session ID: %v", err)
+	}
+	clh.log.Infof("Sent Begin for ClientID: %s", clh.ClientId.Full)
+
+	clh.sessionManager.RegisterSession(clh.ClientId.Full)
+	return nil
+}
+
+func (clh *ClientHandler) handleReconnectionRequest() (bool, error) {
+	clientId, err := clh.protocol.RcvClientId()
+	if err != nil {
+		return false, fmt.Errorf("error receiving client ID for reconnection: %v", err)
+	}
+
+	if clh.sessionManager.ValidateSession(clientId) {
+		clh.log.Infof("Reconnection accepted for client %s", clientId)
+		if err := clh.protocol.SendReconnectionAccept(); err != nil {
+			return false, fmt.Errorf("error sending ReconnectionAccept: %v", err)
+		}
+		clh.sessionManager.RegisterSession(clientId)
+		return true, nil
+	} else {
+		clh.log.Infof("Reconnection denied for client %s", clientId)
+		if err := clh.protocol.SendReconnectionDenied(); err != nil {
+			return false, fmt.Errorf("error sending ReconnectionDenied: %v", err)
+		}
+		// Client should start a new connection, so we return false to indicate no reconnection
+		return false, nil
+	}
+}
+
+func (clh *ClientHandler) processDataTypes() (string, error) {
+	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
+	if err != nil {
+		return "", fmt.Errorf("error receiving amount of dataTypes: %v", err)
+	}
+	clh.log.Infof("Amount of dataTypes to receive: %d", amountOfdataTypes)
+
+	if err := clh.protocol.SendAck(); err != nil {
+		return "", fmt.Errorf("error sending ACK: %v", err)
+	}
+
+	go clh.launchResultsProcessing()
+
+	// Loop over each data type
+	var dataType string
+	var amountOfFiles int
+
+	for range amountOfdataTypes {
+		clh.log.Infof("Number of dataTypes to receive: %v", amountOfdataTypes)
+
+		dataType, amountOfFiles, err = clh.handleDataType()
+		if err != nil {
+			clh.log.Errorf("Error handling dataType: %v", err)
+			return dataType, err
+		}
+
+		clh.log.Infof("Number of files to receive for dataType %s: %d", dataType, amountOfFiles)
+	}
+	return dataType, nil
+}
+
+func (clh *ClientHandler) handleFailure(err error, dataType string) error {
+	clh.log.Warningf("Sending EOF after failure for error: %v", err)
+	errSending := clh.dispatchBatchToMiddleware(dataType, []string{}, true)
+
+	var errToReturn error = nil
+	if errSending != nil {
+		errToReturn = fmt.Errorf("error dispatching EOF to middleware: %v", errSending)
+	}
+
+	clh.log.Infof("Processing buffered results for %d seconds", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
+	clh.connectionBroken <- 0
+	<-time.After(time.Duration(TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS) * time.Second)
+	clh.log.Infof("Finished buffered time for results (was %ds)", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
+	clh.timeToProcessAlreadyBufferedResultsChan <- 0
+
+	if errToReturn != nil {
+		return errToReturn
+	}
+
+	errToReturn = fmt.Errorf("error while processing: %v", err)
+	return errToReturn
 }

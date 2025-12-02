@@ -18,14 +18,15 @@ const (
 )
 
 type Acceptor struct {
-	config       AcceptorConfig
-	listener     net.Listener
-	isRunning    bool
-	currClient   map[ClientUuid]*ClientHandler
-	sigChan      chan os.Signal
-	log          *logging.Logger
-	rabbitConn   *middleware.RabbitConnection
-	limitHandler *ConnectionLimit
+	config         AcceptorConfig
+	listener       net.Listener
+	isRunning      bool
+	currClient     map[ClientUuid]*ClientHandler
+	sigChan        chan os.Signal
+	log            *logging.Logger
+	rabbitConn     *middleware.RabbitConnection
+	limitHandler   *ConnectionLimit
+	sessionManager *SessionManager
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -68,14 +69,15 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 	log.Infof("Server listening on address %s", listenAddr)
 
 	acceptor := &Acceptor{
-		config:       *acceptorConfig,
-		listener:     listener,
-		isRunning:    true,
-		currClient:   make(map[ClientUuid]*ClientHandler),
-		sigChan:      make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
-		log:          log,
-		limitHandler: NewConnectionLimit(acceptorConfig.connectionLimit),
-		rabbitConn:   rabbitConn,
+		config:         *acceptorConfig,
+		listener:       listener,
+		isRunning:      true,
+		currClient:     make(map[ClientUuid]*ClientHandler),
+		sigChan:        make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN),
+		log:            log,
+		limitHandler:   NewConnectionLimit(acceptorConfig.connectionLimit),
+		rabbitConn:     rabbitConn,
+		sessionManager: NewSessionManager(),
 	}
 
 	// Set up signal notification for graceful shutdown
@@ -162,7 +164,7 @@ func (a *Acceptor) Run() error {
 
 		/// In case the limit is reached, it will block here
 
-		a.limitHandler.Wait()
+		// a.limitHandler.Wait() // Removed blocking wait here, moved to ClientHandler
 		conn, err := a.listener.Accept()
 
 		if err != nil {
@@ -198,7 +200,7 @@ func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	newClient := NewClientHandler(conn, newId, *exchangeHandlers, a.limitHandler, middlewareHandler)
+	newClient := NewClientHandler(conn, newId, *exchangeHandlers, a.limitHandler, middlewareHandler, a.sessionManager)
 
 	a.log.Infof("Assigned client id with short form %s", newId.Short)
 

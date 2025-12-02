@@ -62,3 +62,6 @@ docker-compose-*
 docker-compose.client*
 
 processed_data/
+sent_data/
+
+client*.txt

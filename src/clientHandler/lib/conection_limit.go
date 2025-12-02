@@ -45,6 +45,25 @@ func (cl *ConnectionLimit) Wait() {
 	cl.CurrentConnections++
 }
 
+// TryAcquire attempts to acquire a connection slot without blocking.
+// Returns true if successful, false otherwise.
+func (cl *ConnectionLimit) TryAcquire() bool {
+	cl.mu.Lock()
+	defer cl.mu.Unlock()
+
+	if cl.closed {
+		return false
+	}
+
+	if cl.CurrentConnections < cl.MaxConnections {
+		cl.CurrentConnections++
+		cl.log.Infof("action: acquired | current_connections: %d | max_connections: %d", cl.CurrentConnections, cl.MaxConnections)
+		return true
+	}
+
+	return false
+}
+
 // Signal releases one slot (if any) and wakes one waiter.
 func (cl *ConnectionLimit) Signal() {
 	cl.mu.Lock()

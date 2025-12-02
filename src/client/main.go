@@ -64,7 +64,7 @@ func main() {
 		return
 	}
 
-	err = logger.InitGlobalLogger(config.GetString("log.level"))
+	err = logger.InitGlobalLoggerWithShortfile(config.GetString("log.level"))
 	if err != nil {
 		fmt.Printf("action: init logger | result: error | Error initializing logger: %v\n", err)
 		return

@@ -17,6 +17,15 @@ const (
 	NotFinished   = 0x05
 	Start         = 0x06
 
+	ConnectionRequest   = 0x07
+	ConnectionAccept    = 0x08
+	ReconnectionRequest = 0x09
+	ReconnectionAccept  = 0x0A
+	ReconnectionDenied  = 0x0B
+	Wait                = 0x0C
+	Begin               = 0x0D
+	Ack                 = 0x0E
+
 	SIZEOF_UINT32 = 4
 	SIZEOF_UINT8  = 1
 )
@@ -79,7 +88,7 @@ func (p *Protocol) SendFilesTopic(pattern string, amount int) error {
 	return nil
 }
 
-func (p *Protocol) SendBatch(batch *Batch) error {
+func (p *Protocol) SendBatch(batch *Batch, batchCount int) error {
 
 	opCode := []byte{MoreBatches}
 
@@ -91,26 +100,26 @@ func (p *Protocol) SendBatch(batch *Batch) error {
 	dataLen := uint32(len(batch.Items))
 	lenBytes := p.htonsUint32(dataLen)
 
-	p.log.Debug("[PROTOCOL] Sending batch data", lenBytes)
+	p.log.Debugf("[PROTOCOL] Sending batch data for batch %d: %v", lenBytes, batchCount)
 	if err := p.sendAll(lenBytes); err != nil {
 		return err
 	}
 
-	for _, item := range batch.Items {
+	for itemCount, item := range batch.Items {
 
 		itemLenBytes := p.htonsUint32(uint32(len(item)))
-		p.log.Debug("[PROTOCOL] Sending item of length ", itemLenBytes)
+		p.log.Debugf("[PROTOCOL] Sending %d item of length %d", itemCount, itemLenBytes)
 		if err := p.sendAll(itemLenBytes); err != nil {
 			return err
 		}
 
-		p.log.Debug("[PROTOCOL] Sending item data")
+		p.log.Debugf("[PROTOCOL] Sending %d item data", itemCount)
 		if err := p.sendAll([]byte(item)); err != nil {
 			return err
 		}
 	}
 
-	p.log.Debug("[PROTOCOL] Batch sent successfully")
+	p.log.Debugf("[PROTOCOL] Batch %d sent successfully", batchCount)
 	return nil
 }
 
@@ -207,6 +216,18 @@ func (p *Protocol) sendClientId(id string) error {
 	return nil
 }
 
+func (p *Protocol) SendReconnectionRequest(id string) error {
+	dataLen := uint32(len(id))
+	lenBytes := p.htonsUint32(dataLen)
+
+	packet := make([]byte, 1+4+len(id))
+	packet[0] = ReconnectionRequest
+	copy(packet[1:], lenBytes)
+	copy(packet[5:], []byte(id))
+
+	return p.sendAll(packet)
+}
+
 func (p *Protocol) finishBatch() error {
 	code := []byte{EndOfBatch}
 	if err := p.sendAll(code); err != nil {
@@ -275,9 +296,58 @@ func (p *Protocol) ntohsUint32(data []byte) uint32 {
 	return binary.BigEndian.Uint32(data)
 }
 
+func (p *Protocol) RcvClientId() (string, error) {
+	lenBytes := make([]byte, SIZEOF_UINT32)
+	if err := p.receiveAll(lenBytes); err != nil {
+		return "", err
+	}
+
+	dataLen := p.ntohsUint32(lenBytes)
+
+	idBytes := make([]byte, dataLen)
+	if err := p.receiveAll(idBytes); err != nil {
+		return "", err
+	}
+
+	return string(idBytes), nil
+}
+
 func (p *Protocol) Shutdown() error {
 	if p.conn != nil {
 		return p.conn.Close()
+	}
+	return nil
+}
+
+func (p *Protocol) ReceiveHandshakeResponse() (byte, error) {
+	resp := make([]byte, 1)
+	for {
+		if err := p.receiveAll(resp); err != nil {
+			return 0, err
+		}
+
+		if resp[0] == Wait || resp[0] == Begin {
+			return resp[0], nil
+		}
+		p.log.Warningf("Ignored unexpected byte: 0x%x", resp[0])
+	}
+}
+
+func (p *Protocol) ReceiveReconnectionResponse() (byte, error) {
+	resp := make([]byte, 1)
+	if err := p.receiveAll(resp); err != nil {
+		return 0, err
+	}
+	return resp[0], nil
+}
+
+func (p *Protocol) ReceiveAck() error {
+	ack := make([]byte, 1)
+	if err := p.receiveAll(ack); err != nil {
+		return err
+	}
+	if ack[0] != Ack {
+		return fmt.Errorf("unexpected ACK response: %x", ack[0])
 	}
 	return nil
 }

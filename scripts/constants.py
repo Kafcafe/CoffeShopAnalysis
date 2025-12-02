@@ -123,6 +123,7 @@ CLIENTS_TEMPLATE = """
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
           - ./testData:/data
+          - ./sent_data/client{id}:/sent_data/client{id}
 """
 
 CLIENT_STANDALONE_TEMPLATE = """
@@ -140,6 +141,7 @@ CLIENT_STANDALONE_TEMPLATE = """
           - ./src/client/config.yaml:/config.yaml
           - ./results:/results
           - {data_folder}:/data
+          - ./sent_data/client{id}:/sent_data/client{id}
 """
 
 GROUP_TEMPLATE = """
