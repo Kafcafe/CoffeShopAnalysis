@@ -279,6 +279,7 @@ func (j *JoinGenericWorker) Run() error {
 	for err := range j.errChan {
 		if err != middleware.MessageMiddlewareSuccess {
 			j.log.Errorf("Error found while joining message of type: %v", err)
+			return fmt.Errorf("error found while joining message: %v", err)
 		}
 
 		if !j.isRunning {
