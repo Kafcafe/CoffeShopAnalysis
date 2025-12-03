@@ -27,3 +27,7 @@ def pipe(cmd_string):
 		encoding='utf-8',
 	)
 	return iter(sp.stdout.readline, '')
+
+
+def background(cmd_string):
+	return subprocess.Popen(cmd_string, shell=True, start_new_session=True)

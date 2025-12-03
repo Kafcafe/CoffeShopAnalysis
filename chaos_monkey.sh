@@ -10,11 +10,15 @@ fi
 
 COMPOSE_FILE="$1"
 NUMBER_OF_ROUNDS="$2"
-SLEEP_SECONDS="${3:-15}"  # Default to 15 if not provided
+if [ -z "$3" ]; then
+    SLEEP_SECONDS=15
+else
+    SLEEP_SECONDS="$3"
+fi
 
-filters=("filter-amount" "filter-hour" "filter-year")
-groups=("group-semester" "group-topk" "group-yearmonth")
-joins=("join-items" "join-store" "join-store_q3" "join-users")
+filters="filter-amount filter-hour filter-year"
+groups="group-semester group-topk group-yearmonth"
+joins="join-items join-store join-store_q3 join-users"
 
 echo "Docker Compose File: $COMPOSE_FILE"
 echo "Number of Rounds: $NUMBER_OF_ROUNDS"
@@ -24,7 +28,7 @@ echo "Sleep Seconds: $SLEEP_SECONDS"
 echo "Validating that containers are running..."
 
 # Get services from docker compose file
-services=$(docker compose -f "$COMPOSE_FILE" config --services 2>/dev/null)
+services=`docker compose -f "$COMPOSE_FILE" config --services 2>/dev/null`
 
 if [ $? -ne 0 ]; then
     echo "❌ Error reading docker compose file: $COMPOSE_FILE"
@@ -32,20 +36,20 @@ if [ $? -ne 0 ]; then
 fi
 
 # Check if containers are running
-not_running=()
+not_running=""
 for service in $services; do
-    container_status=$(docker ps --filter "name=$service" --format "{{.Names}}" 2>/dev/null)
+    container_status=`docker ps --filter "name=$service" --format "{{.Names}}" 2>/dev/null`
     if [ -z "$container_status" ]; then
-        not_running+=("$service")
+        not_running="$not_running $service"
     fi
 done
 
 # Report validation results
-if [ ${#not_running[@]} -eq 0 ]; then
+if [ -z "$not_running" ]; then
     echo "✅ All containers are running"
 else
     echo "❌ The following containers are not running:"
-    for container in "${not_running[@]}"; do
+    for container in $not_running; do
         echo "  - $container"
     done
     exit 1
@@ -54,25 +58,25 @@ fi
 # Loop through all lists for the specified number of rounds
 echo "Starting chaos attacks..."
 
-for round in $(seq 1 $NUMBER_OF_ROUNDS); do
+for round in `seq 1 $NUMBER_OF_ROUNDS`; do
     echo "=== Round $round/$NUMBER_OF_ROUNDS ==="
     
     echo "Attacking filters:"
-    for filter_type in "${filters[@]}"; do
+    for filter_type in $filters; do
         echo "  - $filter_type"
         ./scripts/boom.sh --mode group -t "$filter_type"
         sleep $SLEEP_SECONDS
     done
 
     echo "Attacking groups:"
-    for group_type in "${groups[@]}"; do
+    for group_type in $groups; do
         echo "  - $group_type"
         ./scripts/boom.sh --mode group -t "$group_type"
         sleep $SLEEP_SECONDS
     done
 
     echo "Attacking joins:"
-    for join_type in "${joins[@]}"; do
+    for join_type in $joins; do
         echo "  - $join_type"
         ./scripts/boom.sh --mode group -t "$join_type"
         sleep $SLEEP_SECONDS
