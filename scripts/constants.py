@@ -95,7 +95,6 @@ FILTER_TEMPLATE = """
           FILTER_IDNUM: {idnum}
           FILTER_COUNT: {filter_count}
           WATCH_MESH_UDP_PORT: 11000
-          CRASHER_ENABLED: {crasher_enabled}
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
@@ -162,7 +161,6 @@ GROUP_TEMPLATE = """
           GROUP_COUNT: {group_count}
           GROUP_IDNUM: {idnum}
           WATCH_MESH_UDP_PORT: 11000
-          CRASHER_ENABLED: {crasher_enabled}
         build:
           context: ./src/
           dockerfile: group/Dockerfile
@@ -190,7 +188,6 @@ JOIN_TEMPLATE = """
           JOIN_IDNUM: {idnum}
           JOIN_COUNT: {join_count}
           WATCH_MESH_UDP_PORT: 11000
-          CRASHER_ENABLED: {crasher_enabled}
         build:
           context: ./src/
           dockerfile: join/Dockerfile

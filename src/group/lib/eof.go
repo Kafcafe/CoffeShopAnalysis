@@ -36,7 +36,7 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 		answerMessage(NACK_REQUEUE, eofMessage)
 		return
 	}
-	g.crasher.ThrowDiceAndForceExit("eof - before requesting results")
+	g.watchMesh.TryCrash("eof - before requesting results")
 
 	processed, _, results, timeout := g.broadcastAndWaitForResults(gatherBytes, eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 	if processed == 0 {
@@ -50,7 +50,7 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 
 	g.log.Infof("Received results for client %s and datatype %s: processed=%d/%d", eofMsg.ClientId, eofMsg.DataType, processed, eofMsg.TotalEmitted)
 
-	g.crasher.ThrowDiceAndForceExit("eof - after requesting results - before sending next stage")
+	g.watchMesh.TryCrash("eof - after requesting results - before sending next stage")
 
 	messageToSend := results.GetMessageToSend()
 	var emitted int = 0
@@ -72,7 +72,7 @@ func (g *GroupByGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg
 		answerMessage(NACK_DISCARD, eofMessage)
 		return
 	}
-	g.crasher.ThrowDiceAndForceExit("eof - after sending next stage - before ack")
+	g.watchMesh.TryCrash("eof - after sending next stage - before ack")
 	answerMessage(ACK, eofMessage)
 	g.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 
@@ -148,7 +148,7 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 
 	g.sendResultsRequestBatched(msg, currentMapString, BATCH_SIZE_GROUPED_MESSAGE)
 
-	g.crasher.ThrowDiceAndForceExit("gather results - while sending results")
+	g.watchMesh.TryCrash("gather results - while sending results")
 
 	responseMsg := middleware.MessageResultsResponse{
 		Origin:    g.conf.id,

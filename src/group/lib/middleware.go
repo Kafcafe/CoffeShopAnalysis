@@ -136,7 +136,7 @@ func (g *GroupByGenericWorker) dispatchMessage(message amqp.Delivery) error {
 		answerMessage(NACK_REQUEUE, message)
 		return fmt.Errorf("failed to dispatch message to private queue %d: %v", destination_id, err)
 	}
-	g.crasher.ThrowDiceAndForceExit("dispatch - dispatched - before ack")
+	g.watchMesh.TryCrash("dispatch - dispatched - before ack")
 	answerMessage(ACK, message)
 	return nil
 }
