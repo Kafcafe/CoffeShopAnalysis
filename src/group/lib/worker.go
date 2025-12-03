@@ -91,7 +91,7 @@ func NewGroupByGenericWorker(
 		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
 		atomicWritter: atomicwritter.NewAtomicWriter(path),
-		crasher:       crasher.NewCrasher("Group", conf.id, conf.crasherEnabled),
+		crasher:       crasher.NewCrasher(conf.crasherEnabled),
 	}, nil
 }
 

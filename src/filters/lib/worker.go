@@ -90,7 +90,7 @@ func NewFilterGenericWorker(
 		resultsChans:      make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:         watch_mesh.NewWatchMesh(watchMeshConfig),
 		atomicWritter:     atomicwritter.NewAtomicWriter(path),
-		crasher:           crasher.NewCrasher("Filter", config.id, config.crasherEnabled),
+		crasher:           crasher.NewCrasher(config.crasherEnabled),
 	}, nil
 }
 
