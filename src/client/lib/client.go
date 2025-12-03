@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"syscall"
-	"time"
 
 	logger "common/logger"
 
@@ -117,9 +116,9 @@ func (c *Client) Run() ClientExecutionError {
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 
-	c.log.Info("Sleeping...")
-	time.Sleep(time.Duration(15) * time.Second)
-	c.log.Info("Woke up")
+	// c.log.Info("Sleeping...")
+	// time.Sleep(time.Duration(15) * time.Second)
+	// c.log.Info("Woke up")
 
 	err := c.performHandshake()
 	if err != nil {
@@ -134,29 +133,18 @@ func (c *Client) Run() ClientExecutionError {
 		return c.return_err_if_not_signaled(err)
 	}
 
-	err = c.protocol.sendAmountOfTopics(len(patternsToProcess))
+	err = c.sendAmountOfTopicsWithAck(len(patternsToProcess))
 	if err != nil {
-		c.log.Errorf("| action: Error sending amount of topics: %v | result: error", err)
-		return c.return_err_if_not_signaled(err)
-	}
-
-	err = c.protocol.ReceiveAck()
-	if err != nil {
-		return fmt.Errorf("error receiving ACK after sendAmountOfTopics: %v", err)
+		return err
 	}
 
 	for _, pf := range patternsToProcess {
 		pattern := pf.Pattern
 		files := pf.Files
 
-		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
-			c.log.Errorf("| action: Error sending files topic: %v | result: error", err)
-			return c.return_err_if_not_signaled(err)
-		}
-
-		err = c.protocol.ReceiveAck()
+		err = c.sendFilesTopicWithAck(pattern, len(files))
 		if err != nil {
-			return fmt.Errorf("error receiving ACK after SendFilesTopic: %v", err)
+			return err
 		}
 
 		if err = c.ProcessFileList(files, pattern); err != nil {
@@ -307,13 +295,39 @@ func (c *Client) attemptReconnection(sessionId string) (reconnected bool, err er
 	return reconnected, nil
 }
 
+// sendAmountOfTopicsWithAck sends the amount of topics and waits for acknowledgment
+func (c *Client) sendAmountOfTopicsWithAck(amount int) error {
+	err := c.protocol.sendAmountOfTopics(amount)
+	if err != nil {
+		c.log.Errorf("| action: Error sending amount of topics: %v | result: error", err)
+		return c.return_err_if_not_signaled(err)
+	}
+
+	err = c.protocol.ReceiveAck()
+	if err != nil {
+		return fmt.Errorf("error receiving ACK after sendAmountOfTopics: %v", err)
+	}
+
+	return nil
+}
+
+// sendFilesTopicWithAck sends files topic information and waits for acknowledgment
+func (c *Client) sendFilesTopicWithAck(pattern string, fileCount int) error {
+	if err := c.protocol.SendFilesTopic(pattern, fileCount); err != nil {
+		c.log.Errorf("| action: Error sending files topic: %v | result: error", err)
+		return c.return_err_if_not_signaled(err)
+	}
+
+	err := c.protocol.ReceiveAck()
+	if err != nil {
+		return fmt.Errorf("error receiving ACK after SendFilesTopic: %v", err)
+	}
+
+	return nil
+}
+
 // getFilesToProcess retrieves, sorts, and filters files based on the recovery state.
 // It skips file types and files that have already been processed.
-//
-// Returns:
-//
-//	An array of PatternFiles containing the files to be processed for each pattern.
-//	An error if any file retrieval fails.
 func (c *Client) getFilesToProcess(listfiles []string, fileHandler *FileHandler) ([]PatternFiles, error) {
 	var patternsToProcess []PatternFiles
 	shouldSkip := c.lastFileProcessed != ""
@@ -325,7 +339,7 @@ func (c *Client) getFilesToProcess(listfiles []string, fileHandler *FileHandler)
 			c.log.Errorf("| action: Error getting files: %v | result: error", err)
 			return nil, err
 		}
-		// Sort files to ensure deterministic order
+		// Sort to ensure deterministic order
 		sort.Strings(files)
 
 		if shouldSkip {
@@ -404,11 +418,6 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
 	}
 
-	err := c.protocol.FinishSendingFilesOf(pattern)
-
-	if err != nil {
-		return fmt.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
-	}
 	return nil
 }
 

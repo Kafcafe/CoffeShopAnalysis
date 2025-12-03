@@ -106,7 +106,6 @@ type ExchangeHandlers struct {
 	menuItemsPublishing    middleware.MessageMiddlewareExchange
 	storePublishing        middleware.MessageMiddlewareExchange
 	usersPublishing        middleware.MessageMiddlewareExchange
-	//transactionItemsPublishing Exchange
 
 	// Results
 	resultsSubscription middleware.MessageMiddlewareExchange
@@ -164,7 +163,6 @@ func (a *Acceptor) Run() error {
 
 		/// In case the limit is reached, it will block here
 
-		// a.limitHandler.Wait() // Removed blocking wait here, moved to ClientHandler
 		conn, err := a.listener.Accept()
 
 		if err != nil {
@@ -184,9 +182,7 @@ func (a *Acceptor) Run() error {
 }
 
 func (a *Acceptor) CreateNewClient(conn net.Conn) error {
-
 	middlewareHandler, err := middleware.NewMiddlewareHandler(a.rabbitConn)
-
 	if err != nil {
 		return fmt.Errorf("failed to create middleware handler: %v", err)
 	}

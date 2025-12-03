@@ -15,7 +15,7 @@ const (
 type SessionManager struct {
 	activeSessions       map[string]bool
 	disconnectedSessions map[string]time.Time
-	mu                   sync.Mutex
+	mutex                sync.Mutex
 	log                  *logging.Logger
 }
 
@@ -23,13 +23,14 @@ func NewSessionManager() *SessionManager {
 	return &SessionManager{
 		activeSessions:       make(map[string]bool),
 		disconnectedSessions: make(map[string]time.Time),
+		mutex:                sync.Mutex{},
 		log:                  logger.GetLoggerWithPrefix("[SESSION_MGR]"),
 	}
 }
 
 func (sm *SessionManager) RegisterSession(clientId string) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
 
 	sm.activeSessions[clientId] = true
 	delete(sm.disconnectedSessions, clientId)
@@ -37,8 +38,8 @@ func (sm *SessionManager) RegisterSession(clientId string) {
 }
 
 func (sm *SessionManager) UnregisterSession(clientId string) {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
 
 	if _, ok := sm.activeSessions[clientId]; ok {
 		delete(sm.activeSessions, clientId)
@@ -48,10 +49,10 @@ func (sm *SessionManager) UnregisterSession(clientId string) {
 }
 
 func (sm *SessionManager) ValidateSession(clientId string) bool {
-	sm.mu.Lock()
-	defer sm.mu.Unlock()
+	sm.mutex.Lock()
+	defer sm.mutex.Unlock()
 
-	// Check if already active (should not happen in normal flow, but good for safety)
+	// Check if already active
 	if _, ok := sm.activeSessions[clientId]; ok {
 		sm.log.Warningf("Client %s attempted to reconnect but is already marked active.", clientId)
 		return true

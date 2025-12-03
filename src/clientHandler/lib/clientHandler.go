@@ -92,8 +92,6 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 		return err
 	}
 
-	//stringPayload := msg.Payload
-	//clh.log.Debugf("action: Sending results to client | results: %s | of len: %d", strings.Join(stringPayload, ", "), len(stringPayload))
 	clh.log.Debugf("action: Sending results to client | isEOF: %t", msg.IsEof)
 
 	clh.resultsChan <- *msg
@@ -504,7 +502,7 @@ func (clh *ClientHandler) handleConnectionRequest() error {
 	return nil
 }
 
-func (clh *ClientHandler) handleReconnectionRequest() (bool, error) {
+func (clh *ClientHandler) handleReconnectionRequest() (reconnected bool, err error) {
 	clientId, err := clh.protocol.RcvClientId()
 	if err != nil {
 		return false, fmt.Errorf("error receiving client ID for reconnection: %v", err)
@@ -528,7 +526,8 @@ func (clh *ClientHandler) handleReconnectionRequest() (bool, error) {
 		if err != nil {
 			return false, fmt.Errorf("error sending ReconnectionDenied: %v", err)
 		}
-		// Client should start a new connection, so we return false to indicate no reconnection
+
+		// Client should start a new connection, so false is returned to indicate no reconnection
 		return false, nil
 	}
 }

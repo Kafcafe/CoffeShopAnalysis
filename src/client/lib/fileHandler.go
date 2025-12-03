@@ -38,7 +38,7 @@ func (fh *FileHandler) GetFilesWithPattern(pattern string) ([]string, error) {
 	return matchedFiles, nil
 }
 
-// walkDir recursively walks through directories and appends files matching the pattern.
+// walkDir walks through directories and appends files matching the pattern.
 func (fh *FileHandler) walkDir(path, pattern string, matchedFiles *[]string) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {

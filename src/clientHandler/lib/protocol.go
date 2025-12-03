@@ -251,32 +251,6 @@ func (p *Protocol) SendResults(query uint32, results []string, isEof bool) error
 
 }
 
-func (p *Protocol) sendStart() error {
-	start := []byte{Start}
-	if err := p.sendAll(start); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (p *Protocol) sendLines(lines []string) error {
-	for _, line := range lines {
-		lineLenBytes := p.htonsUint32(uint32(len(line)))
-		p.log.Debug("[PROTOCOL] Sending line length ", lineLenBytes)
-		if err := p.sendAll(lineLenBytes); err != nil {
-			return err
-		}
-
-		p.log.Debug(" Sending line data")
-		if err := p.sendAll([]byte(line)); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 // sendAll sends all data over the connection, handling partial writes.
 // Parameters:
 //

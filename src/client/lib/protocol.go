@@ -125,77 +125,97 @@ func (p *Protocol) SendBatch(batch *Batch, batchCount int) error {
 	return nil
 }
 
-func (p *Protocol) Listen() (QueryCod uint32, lines []string, finish bool, err error, finishedAll bool) {
-	// Read first byte to determine message type
-	msgType := make([]byte, 1)
-	if err := p.receiveAll(msgType); err != nil {
-		p.log.Error("Error receiving message type: %v", err)
-		return 0, nil, true, err, false
-	}
+func (p *Protocol) Listen() (queryCode uint32, lines []string, finish bool, err error, finishedAll bool) {
+	for {
+		// Determine message type
+		msgType := make([]byte, 1)
+		if err := p.receiveAll(msgType); err != nil {
+			p.log.Error("Error receiving message type: %v", err)
+			return 0, nil, true, err, false
+		}
 
-	if msgType[0] == Ack {
-		p.log.Debug("Received ACK in Listen loop")
-		p.ackChan <- true
-		// Continue listening (recursive call or return special value to indicate "continue")
-		// Since we need to return something, we can return a special error or handle this loop in the caller.
-		// Better approach: The caller (ProcessResults) should loop.
-		// We return a special "AckReceived" state or similar?
-		// Actually, ProcessResults expects Results. If we get an ACK, we handle it and continue listening.
-		// But ReceiveAck is waiting for this.
-		// So we should just continue listening here? No, this function returns ONE message.
-		// If it's an ACK, we shouldn't return it as a Result.
-		// We should probably loop INSIDE Listen until we get a Result or Error.
-		return p.Listen()
-	}
+		if msgType[0] == Ack {
+			p.log.Debug("Received ACK in Listen loop")
+			p.ackChan <- true
+			continue
+		}
 
-	// If not ACK, it must be a Result (starting with QNumber)
-	// The first byte we read is the first byte of QNumber (uint32).
-	// We need to read the remaining 3 bytes of QNumber.
-	QNumberRemaining := make([]byte, 3)
-	if err := p.receiveAll(QNumberRemaining); err != nil {
-		p.log.Error("Error receiving QNumber remaining bytes: %v", err)
-		return 0, nil, true, err, false
+		// If not ACK then wait for query number
+		queryNumber, err := p.readQueryNumber(msgType)
+		if err != nil {
+			p.log.Error("Error receiving QNumber remaining bytes: %v", err)
+			return 0, nil, true, err, false
+		}
+		p.log.Debug("Received queryNumber: ", queryNumber)
+
+		isFinished, err := p.readFinishQueryStatus()
+		if err != nil {
+			p.log.Error("Error receiving FinishedQuery code: %v", err)
+			return 0, nil, true, err, false
+		}
+
+		if isFinished {
+			allFinished := p.markQueryFinished(queryNumber)
+			return queryNumber, nil, true, nil, allFinished
+		}
+
+		lines, err = p.readQueryResults()
+		if err != nil {
+			return 0, nil, true, err, false
+		}
+
+		p.log.Debug("Finished receiving all lines for query ", queryNumber)
+
+		return queryNumber, lines, false, nil, false
+	}
+}
+
+func (p *Protocol) readQueryNumber(firstByte []byte) (uint32, error) {
+	queryNumberRemaining := make([]byte, 3)
+	if err := p.receiveAll(queryNumberRemaining); err != nil {
+		return 0, err
 	}
 
 	// Combine first byte and remaining bytes
-	QNumber := append(msgType, QNumberRemaining...)
-	qNumber := p.ntohsUint32(QNumber)
-	p.log.Debug("Received QNumber: ", qNumber)
+	queryNumberBytes := append(firstByte, queryNumberRemaining...)
+	return p.ntohsUint32(queryNumberBytes), nil
+}
 
+func (p *Protocol) readFinishQueryStatus() (bool, error) {
 	finishQuery := make([]byte, SIZEOF_UINT8)
 
 	if err := p.receiveAll(finishQuery); err != nil {
-		p.log.Error("Error sending FinishedQuery code: %v", err)
-		return 0, nil, true, err, false
+		return false, err
 	}
 
-	if finishQuery[0] == FinishedQuery {
-		p.finishedAllQueries[int(qNumber)] = true
-		p.log.Debug("[CLIENT-P] | action: receive query end | query:", qNumber)
+	return finishQuery[0] == FinishedQuery, nil
+}
 
-		if p.finishedAllQueries[1] && p.finishedAllQueries[2] && p.finishedAllQueries[3] && p.finishedAllQueries[4] {
-			return qNumber, nil, true, nil, true
-		}
-		return qNumber, nil, true, nil, false
-	}
+func (p *Protocol) markQueryFinished(queryNumber uint32) bool {
+	p.finishedAllQueries[int(queryNumber)] = true
+	p.log.Debug("[CLIENT-P] | action: receive query end | query:", queryNumber)
 
+	return p.finishedAllQueries[1] && p.finishedAllQueries[2] && p.finishedAllQueries[3] && p.finishedAllQueries[4]
+}
+
+func (p *Protocol) readQueryResults() ([]string, error) {
 	totalLines := make([]byte, 4)
 
 	if err := p.receiveAll(totalLines); err != nil {
 		p.log.Error("Error receiving totalLines: %v", err)
-		return 0, nil, true, err, false
+		return nil, err
 	}
 
 	totalLinesBytes := int(p.ntohsUint32(totalLines))
 	p.log.Debug("[CLIENT-P] Received totalLines: ", totalLinesBytes)
 
-	lines = make([]string, totalLinesBytes)
+	lines := make([]string, totalLinesBytes)
 
 	for i := 0; i < totalLinesBytes; i++ {
 		lineLen := make([]byte, SIZEOF_UINT32)
 		if err := p.receiveAll(lineLen); err != nil {
 			p.log.Error("Error receiving line length: %v", err)
-			return 0, nil, true, err, false
+			return nil, err
 		}
 
 		lineLenBytes := int(p.ntohsUint32(lineLen))
@@ -204,44 +224,13 @@ func (p *Protocol) Listen() (QueryCod uint32, lines []string, finish bool, err e
 		lineData := make([]byte, lineLenBytes)
 		if err := p.receiveAll(lineData); err != nil {
 			p.log.Error("Error receiving line data: %v", err)
-			return 0, nil, true, err, false
+			return nil, err
 		}
 		lines[i] = string(lineData)
 		p.log.Debug("Received line data: ", string(lineData))
 	}
 
-	p.log.Debug("Finished receiving all lines for query ", qNumber)
-
-	return qNumber, lines, false, nil, false
-}
-
-// func (p *Protocol) receivedConfirmation() error {
-// 	code := make([]byte, 1)
-// 	err := p.receiveAll(code)
-// 	if err != nil {
-// 		return err
-// 	}
-
-// 	if code[0] != BatchRcvCode {
-// 		return fmt.Errorf("invalid confirmation code received")
-// 	}
-
-// 	return nil
-// }
-
-func (p *Protocol) sendClientId(id string) error {
-	dataLen := uint32(len(id))
-	lenBytes := p.htonsUint32(dataLen)
-
-	if err := p.sendAll(lenBytes); err != nil {
-		return err
-	}
-
-	if err := p.sendAll([]byte(id)); err != nil {
-		return err
-	}
-
-	return nil
+	return lines, nil
 }
 
 func (p *Protocol) SendReconnectionRequest(id string) error {
@@ -261,27 +250,6 @@ func (p *Protocol) finishBatch() error {
 	if err := p.sendAll(code); err != nil {
 		return err
 	}
-	return nil
-}
-
-func (p *Protocol) FinishSendingFilesOf(pattern string) error {
-	// Implement finish sending files logic here
-	return nil
-}
-
-func (p *Protocol) rcvStart() error {
-	start := make([]byte, SIZEOF_UINT8)
-
-	p.log.Debug("rcv start code")
-	if err := p.receiveAll(start); err != nil {
-		return err
-	}
-	startCode := start[0]
-
-	if startCode != Start {
-		return fmt.Errorf("invalid start code received")
-	}
-
 	return nil
 }
 
