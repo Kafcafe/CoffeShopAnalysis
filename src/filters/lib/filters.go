@@ -28,7 +28,7 @@ type FilterConfig struct {
 	crasherEnabled  bool
 }
 
-func FilterByYearConfig(filterId string, filterIdNum, filterCount int, config YearFilterConfig, crasherEnabled bool) FilterConfig {
+func FilterByYearConfig(filterId string, filterIdNum, filterCount int, config YearFilterConfig) FilterConfig {
 	return FilterConfig{
 		id:           filterId,
 		idNum:        filterIdNum,
@@ -42,11 +42,10 @@ func FilterByYearConfig(filterId string, filterIdNum, filterCount int, config Ye
 		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
 			return filter.FilterByYear(batch, config.FromYear, config.ToYear)
 		},
-		crasherEnabled: crasherEnabled,
 	}
 }
 
-func FilterByHourConfig(filterId string, filterIdNum, filterCount int, hourConfig HourFilterConfig, crasherEnabled bool) FilterConfig {
+func FilterByHourConfig(filterId string, filterIdNum, filterCount int, hourConfig HourFilterConfig) FilterConfig {
 	return FilterConfig{
 		id:           filterId,
 		idNum:        filterIdNum,
@@ -59,11 +58,10 @@ func FilterByHourConfig(filterId string, filterIdNum, filterCount int, hourConfi
 		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
 			return filter.FilterByHour(batch, hourConfig.FromHour, hourConfig.ToHour)
 		},
-		crasherEnabled: crasherEnabled,
 	}
 }
 
-func FilterByAmountConfig(filterId string, filterIdNum, filterCount int, amountConfig AmountFilterConfig, crasherEnabled bool) FilterConfig {
+func FilterByAmountConfig(filterId string, filterIdNum, filterCount int, amountConfig AmountFilterConfig) FilterConfig {
 	return FilterConfig{
 		id:            filterId,
 		idNum:         filterIdNum,
@@ -74,7 +72,6 @@ func FilterByAmountConfig(filterId string, filterIdNum, filterCount int, amountC
 		messageCallback: func(filter *Filter, batch []string) (filteredBatch []string) {
 			return filter.FilterByAmount(batch, amountConfig.MinAmount)
 		},
-		crasherEnabled: crasherEnabled,
 	}
 }
 
@@ -94,14 +91,15 @@ func CreateFilterWorker(
 
 	switch filterType {
 	case FILTER_TYPE_YEAR:
-		config = FilterByYearConfig(filterId, filterIdNum, filterCount, yearConfig, crasherEnabled)
+		config = FilterByYearConfig(filterId, filterIdNum, filterCount, yearConfig)
 	case FILTER_TYPE_HOUR:
-		config = FilterByHourConfig(filterId, filterIdNum, filterCount, hourConfig, crasherEnabled)
+		config = FilterByHourConfig(filterId, filterIdNum, filterCount, hourConfig)
 	case FILTER_TYPE_AMOUNT:
-		config = FilterByAmountConfig(filterId, filterIdNum, filterCount, amountConfig, crasherEnabled)
+		config = FilterByAmountConfig(filterId, filterIdNum, filterCount, amountConfig)
 	default:
 		return nil, fmt.Errorf("unknown filter type: %s", filterType)
 	}
+	config.crasherEnabled = crasherEnabled
 
 	// Prepare addresses for WatchMesh
 	peerAddresses := []string{}
