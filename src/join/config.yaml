@@ -9,3 +9,5 @@ watchMesh:
   showHeartbeatLogs: false
   maxResurrectionAttempts: 3
   randomSeedForJitter: 1763675954000000
+crasher:
+  enabled: false
