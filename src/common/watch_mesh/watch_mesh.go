@@ -1,6 +1,7 @@
 package watch_mesh
 
 import (
+	"common/crasher"
 	"common/logger"
 	"common/respawner"
 	"fmt"
@@ -48,6 +49,7 @@ type WatchMesh struct {
 	log                             *logging.Logger
 	respawner                       *respawner.Respawner
 	randGenerator                   *rand.Rand
+	crasher                         *crasher.Crasher
 }
 
 // NewNode creates a new distributed node
@@ -80,6 +82,7 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 		log:                             logger,
 		respawner:                       respawner.NewRespawner(),
 		randGenerator:                   randGenerator,
+		crasher:                         crasher.NewCrasher(config.CrasherEnabled),
 	}
 }
 
@@ -92,6 +95,23 @@ func (wm *WatchMesh) Start() {
 
 		go wm.runHeartbeat()
 	}()
+}
+
+func (wm *WatchMesh) TryCrash(message string) {
+	if wm.anyPeerAlive() {
+		wm.crasher.ThrowDiceAndForceExit(message)
+	}
+}
+
+func (wm *WatchMesh) anyPeerAlive() bool {
+	wm.mutex.Lock()
+	defer wm.mutex.Unlock()
+	for _, peer := range wm.peers {
+		if peer.State.IsAlive() {
+			return true
+		}
+	}
+	return false
 }
 
 // discoverLeader queries all peers for the current leader

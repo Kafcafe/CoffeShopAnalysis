@@ -15,6 +15,7 @@ type WatchMeshConfig struct {
 	ShowHeartbeatLogs        bool
 	MaxResurrectionAttempts  int
 	RandomSeedForJitter      int64
+	CrasherEnabled           bool
 }
 
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
@@ -30,6 +31,7 @@ func NewWatchMeshConfig(
 	nodeType string,
 	maxResurrectionAttempts int,
 	randomSeedForJitter int64,
+	crasherEnabled bool,
 ) WatchMeshConfig {
 
 	return WatchMeshConfig{
@@ -44,6 +46,7 @@ func NewWatchMeshConfig(
 		NodeType:                 nodeType,
 		MaxResurrectionAttempts:  maxResurrectionAttempts,
 		RandomSeedForJitter:      randomSeedForJitter,
+		CrasherEnabled:           crasherEnabled,
 	}
 }
 
@@ -56,6 +59,7 @@ type BasicWatchMeshConfig struct {
 	ShowHeartbeatLogs               bool
 	MaxResurrectionAttempts         int
 	RandomSeedForJitter             int64
+	CrasherEnabled                  bool
 }
 
 // NewBasicWatchMeshConfig creates a new BasicWatchMeshConfig with the provided parameters
@@ -68,6 +72,7 @@ func NewBasicWatchMeshConfig(
 	showHeartbeatLogs bool,
 	maxResurrectionAttempts int,
 	randomSeedForJitter int64,
+	crasherEnabled bool,
 ) BasicWatchMeshConfig {
 
 	return BasicWatchMeshConfig{
@@ -79,5 +84,6 @@ func NewBasicWatchMeshConfig(
 		ShowHeartbeatLogs:               showHeartbeatLogs,
 		MaxResurrectionAttempts:         maxResurrectionAttempts,
 		RandomSeedForJitter:             randomSeedForJitter,
+		CrasherEnabled:                  crasherEnabled,
 	}
 }
