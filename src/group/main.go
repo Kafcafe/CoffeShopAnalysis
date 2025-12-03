@@ -65,7 +65,7 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 
 	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %.2f secs | "+
 		"heartbeatTimeout: %.2f secs | addressResolvingRetries: %d | "+
-		"addressResolvingIntervalSeconds: %.2f | showHeartbeatLogs: %v | maxResurrectionAttempts: %d | randomSeedForJitter: %d",
+		"addressResolvingIntervalSeconds: %.2f | showHeartbeatLogs: %v | maxResurrectionAttempts: %d | randomSeedForJitter: %d | crasherEnabled: %v",
 		v.GetInt("watch_mesh.udp.port"),
 		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
 		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
@@ -74,9 +74,8 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetBool("watchMesh.showHeartbeatLogs"),
 		v.GetInt("watchMesh.maxResurrectionAttempts"),
 		v.GetInt("watchMesh.randomSeedForJitter"),
+		v.GetBool("watchMesh.crasher.enabled"),
 	)
-
-	logger.Infof("Crasher configuration: enabled: %v", v.GetBool("crasher.enabled"))
 }
 
 func main() {
@@ -116,7 +115,7 @@ func main() {
 	showHeartbeatLogs := config.GetBool("watchMesh.showHeartbeatLogs")
 	maxResurrectionAttempts := config.GetInt("watchMesh.maxResurrectionAttempts")
 	randomSeedForJitter := config.GetInt64("watchMesh.randomSeedForJitter")
-	crasherEnabled := config.GetBool("crasher.enabled")
+	crasherEnabled := config.GetBool("watchMesh.crasher.enabled")
 
 	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
 		watchMeshPort,
@@ -127,6 +126,7 @@ func main() {
 		showHeartbeatLogs,
 		maxResurrectionAttempts,
 		randomSeedForJitter,
+		crasherEnabled,
 	)
 
 	groupByWorker, err := group.CreateGroupByWorker(groupType, rabbitConf, groupId, groupCount, config, logger, basicWatchMeshConfig, groupIdNum, crasherEnabled)

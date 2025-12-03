@@ -23,14 +23,13 @@ type GroupByWorker interface {
 }
 
 type GroupByConfig struct {
-	id             string
-	count          int
-	ofType         string
-	prevStageSub   string
-	nextStagePub   string
-	factory        func() structures.AllowedGroup
-	idNum          int
-	crasherEnabled bool
+	id           string
+	count        int
+	ofType       string
+	prevStageSub string
+	nextStagePub string
+	factory      func() structures.AllowedGroup
+	idNum        int
 }
 
 func GroupByYearMonthConfig(groupId string, groupCount, idNum int) GroupByConfig {
@@ -102,6 +101,7 @@ func createWatchMeshConfig(
 		"group",
 		basicWatchMeshConfig.MaxResurrectionAttempts,
 		basicWatchMeshConfig.RandomSeedForJitter,
+		basicWatchMeshConfig.CrasherEnabled,
 	)
 
 	return watchMeshConfig
@@ -140,7 +140,6 @@ func CreateGroupByWorker(
 		return nil, fmt.Errorf("unknown groupBy type: %s", groupType)
 	}
 
-	config.crasherEnabled = crasherEnabled
 	watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
 	groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 	if err != nil {
