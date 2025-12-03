@@ -132,13 +132,20 @@ func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message, eofFlag
 
 	if err != nil {
 		clh.log.Errorf("Error cleaning result for query %d, sending results raw: %v", msg.QueryId, err)
-		if err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof); err != nil {
+		clh.mtx.Lock()
+		err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof)
+		clh.mtx.Unlock()
+		if err != nil {
 			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
 		}
 		return err
 	}
 
-	if err := clh.protocol.SendResults(uint32(queryId), cleanResult, msg.IsEof); err != nil {
+	clh.mtx.Lock()
+	err = clh.protocol.SendResults(uint32(queryId), cleanResult, msg.IsEof)
+	clh.mtx.Unlock()
+
+	if err != nil {
 		clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
 	}
 
@@ -232,7 +239,10 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 
 	clh.log.Infof("Received files dataType: %s", dataType)
 
-	if err := clh.protocol.SendAck(); err != nil {
+	clh.mtx.Lock()
+	err = clh.protocol.SendAck()
+	clh.mtx.Unlock()
+	if err != nil {
 		return dataType, 0, fmt.Errorf("error sending ACK: %v", err)
 	}
 
@@ -243,7 +253,10 @@ func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, 
 		return dataType, 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
 	}
 
-	if err := clh.protocol.SendAck(); err != nil {
+	clh.mtx.Lock()
+	err = clh.protocol.SendAck()
+	clh.mtx.Unlock()
+	if err != nil {
 		return dataType, 0, fmt.Errorf("error sending ACK: %v", err)
 	}
 
@@ -378,7 +391,9 @@ func (clh *ClientHandler) processFile(dataType string) error {
 		// If this is the last batch, stop receiving
 		if isLastBatch {
 			receivingFile = false
+			clh.mtx.Lock()
 			err = clh.protocol.SendAck()
+			clh.mtx.Unlock()
 			if err != nil {
 				return fmt.Errorf("error sending ACK: %v", err)
 			}
@@ -394,7 +409,10 @@ func (clh *ClientHandler) processFile(dataType string) error {
 			return fmt.Errorf("error dispatching batch to middleware: %v", err)
 		}
 
-		if err := clh.protocol.SendAck(); err != nil {
+		clh.mtx.Lock()
+		err = clh.protocol.SendAck()
+		clh.mtx.Unlock()
+		if err != nil {
 			return fmt.Errorf("error sending ACK: %v", err)
 		}
 	}
@@ -465,13 +483,19 @@ func (clh *ClientHandler) handleConnectionRequest() error {
 
 	if !clh.limitHandler.TryAcquire() {
 		clh.log.Info("Connection limit reached, sending WAIT")
-		if err := clh.protocol.SendWait(); err != nil {
+		clh.mtx.Lock()
+		err := clh.protocol.SendWait()
+		clh.mtx.Unlock()
+		if err != nil {
 			return fmt.Errorf("error sending WAIT: %v", err)
 		}
 		clh.limitHandler.Wait()
 	}
 
-	if err := clh.protocol.SendBeginWithClientId(clh.ClientId.Full); err != nil {
+	clh.mtx.Lock()
+	err := clh.protocol.SendBeginWithClientId(clh.ClientId.Full)
+	clh.mtx.Unlock()
+	if err != nil {
 		return fmt.Errorf("error sending Begin and Session ID: %v", err)
 	}
 	clh.log.Infof("Sent Begin for ClientID: %s", clh.ClientId.Full)
@@ -488,14 +512,20 @@ func (clh *ClientHandler) handleReconnectionRequest() (bool, error) {
 
 	if clh.sessionManager.ValidateSession(clientId) {
 		clh.log.Infof("Reconnection accepted for client %s", clientId)
-		if err := clh.protocol.SendReconnectionAccept(); err != nil {
+		clh.mtx.Lock()
+		err := clh.protocol.SendReconnectionAccept()
+		clh.mtx.Unlock()
+		if err != nil {
 			return false, fmt.Errorf("error sending ReconnectionAccept: %v", err)
 		}
 		clh.sessionManager.RegisterSession(clientId)
 		return true, nil
 	} else {
 		clh.log.Infof("Reconnection denied for client %s", clientId)
-		if err := clh.protocol.SendReconnectionDenied(); err != nil {
+		clh.mtx.Lock()
+		err := clh.protocol.SendReconnectionDenied()
+		clh.mtx.Unlock()
+		if err != nil {
 			return false, fmt.Errorf("error sending ReconnectionDenied: %v", err)
 		}
 		// Client should start a new connection, so we return false to indicate no reconnection
@@ -510,7 +540,10 @@ func (clh *ClientHandler) processDataTypes() (string, error) {
 	}
 	clh.log.Infof("Amount of dataTypes to receive: %d", amountOfdataTypes)
 
-	if err := clh.protocol.SendAck(); err != nil {
+	clh.mtx.Lock()
+	err = clh.protocol.SendAck()
+	clh.mtx.Unlock()
+	if err != nil {
 		return "", fmt.Errorf("error sending ACK: %v", err)
 	}
 

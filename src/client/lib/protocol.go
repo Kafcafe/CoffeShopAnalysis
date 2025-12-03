@@ -35,6 +35,7 @@ type Protocol struct {
 	conn               net.Conn
 	finishedAllQueries map[int]bool
 	log                *logging.Logger
+	ackChan            chan bool
 }
 
 func NewProtocol(serverAddress string) (*Protocol, error) {
@@ -54,7 +55,8 @@ func NewProtocol(serverAddress string) (*Protocol, error) {
 			3: false,
 			4: false,
 		},
-		log: logger,
+		log:     logger,
+		ackChan: make(chan bool),
 	}, nil
 }
 
@@ -123,14 +125,40 @@ func (p *Protocol) SendBatch(batch *Batch, batchCount int) error {
 	return nil
 }
 
-func (p *Protocol) rcvResults() (QueryCod uint32, lines []string, finish bool, err error, finishedAll bool) {
-	p.log.Debug("[CLIENT-P] Receiving results...")
-	QNumber := make([]byte, SIZEOF_UINT32)
-	if err := p.receiveAll(QNumber); err != nil {
-		p.log.Error("Error receiving QNumber: %v", err)
+func (p *Protocol) Listen() (QueryCod uint32, lines []string, finish bool, err error, finishedAll bool) {
+	// Read first byte to determine message type
+	msgType := make([]byte, 1)
+	if err := p.receiveAll(msgType); err != nil {
+		p.log.Error("Error receiving message type: %v", err)
 		return 0, nil, true, err, false
 	}
 
+	if msgType[0] == Ack {
+		p.log.Debug("Received ACK in Listen loop")
+		p.ackChan <- true
+		// Continue listening (recursive call or return special value to indicate "continue")
+		// Since we need to return something, we can return a special error or handle this loop in the caller.
+		// Better approach: The caller (ProcessResults) should loop.
+		// We return a special "AckReceived" state or similar?
+		// Actually, ProcessResults expects Results. If we get an ACK, we handle it and continue listening.
+		// But ReceiveAck is waiting for this.
+		// So we should just continue listening here? No, this function returns ONE message.
+		// If it's an ACK, we shouldn't return it as a Result.
+		// We should probably loop INSIDE Listen until we get a Result or Error.
+		return p.Listen()
+	}
+
+	// If not ACK, it must be a Result (starting with QNumber)
+	// The first byte we read is the first byte of QNumber (uint32).
+	// We need to read the remaining 3 bytes of QNumber.
+	QNumberRemaining := make([]byte, 3)
+	if err := p.receiveAll(QNumberRemaining); err != nil {
+		p.log.Error("Error receiving QNumber remaining bytes: %v", err)
+		return 0, nil, true, err, false
+	}
+
+	// Combine first byte and remaining bytes
+	QNumber := append(msgType, QNumberRemaining...)
 	qNumber := p.ntohsUint32(QNumber)
 	p.log.Debug("Received QNumber: ", qNumber)
 
@@ -342,12 +370,6 @@ func (p *Protocol) ReceiveReconnectionResponse() (byte, error) {
 }
 
 func (p *Protocol) ReceiveAck() error {
-	ack := make([]byte, 1)
-	if err := p.receiveAll(ack); err != nil {
-		return err
-	}
-	if ack[0] != Ack {
-		return fmt.Errorf("unexpected ACK response: %x", ack[0])
-	}
+	<-p.ackChan
 	return nil
 }

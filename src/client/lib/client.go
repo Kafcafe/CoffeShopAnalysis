@@ -127,7 +127,7 @@ func (c *Client) Run() ClientExecutionError {
 		return c.return_err_if_not_signaled(err)
 	}
 
-	//go c.ProcessResults()
+	go c.ProcessResults()
 
 	patternsToProcess, err := c.getFilesToProcess(listfiles, fileHandler)
 	if err != nil {
@@ -433,7 +433,7 @@ func (c *Client) processBatch(bg *BatchGenerator, file string, batchCount int) e
 
 func (c *Client) ProcessResults() error {
 	for c.isRunning {
-		query, lines, finish, err, finishedAll := c.protocol.rcvResults()
+		query, lines, finish, err, finishedAll := c.protocol.Listen()
 
 		if err != nil {
 			c.log.Errorf("action: Error receiving results: %v, result: error", err)
