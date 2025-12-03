@@ -46,15 +46,39 @@ def test_three():
     gen_compose.gen_docker_compose(5, 5, 5, 5, 5, 5, 5, 5, 5, 5)
     docker.up()
     time.sleep(20)   
-    node_killer = threading.Thread(target=boom.run)
+    
+    stop_event = threading.Event()
+    node_killer = threading.Thread(target=boom.run, args=(stop_event,))
+    node_killer.daemon = True
     node_killer.start()
-    docker.wait_for_clients(5)
-    read_logs('client1')
-    read_logs('client2')
-    read_logs('client3')
-    read_logs('client4')
-    read_logs('client5')
-    results_paths = build_results_path([1, 2, 3, 4, 5])
-    node_killer.join(2)
-    print()
-    assert compare_results.compare_all_results(results_paths) 
+    
+    try:
+        docker.wait_for_clients(5)
+        read_logs('client1')
+        read_logs('client2')
+        read_logs('client3')
+        read_logs('client4')
+        read_logs('client5')
+        results_paths = build_results_path([1, 2, 3, 4, 5])
+        
+        stop_event.set()
+        node_killer.join(timeout=10)  
+        
+        if node_killer.is_alive():
+            try:
+                os.system("pkill -f boom.sh")
+                os.system("pkill -f chaos_monkey.sh")
+            except Exception:
+                pass
+        
+        print()
+        assert compare_results.compare_all_results(results_paths)
+        
+    finally:
+        stop_event.set()
+        if node_killer.is_alive():
+            try:
+                os.system("pkill -f boom.sh")
+                os.system("pkill -f chaos_monkey.sh")
+            except Exception:
+                pass
