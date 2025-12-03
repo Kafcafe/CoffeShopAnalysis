@@ -82,7 +82,7 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 		log:                             logger,
 		respawner:                       respawner.NewRespawner(),
 		randGenerator:                   randGenerator,
-		crasher:                         crasher.NewCrasher(config.CrasherEnabled),
+		crasher:                         crasher.NewCrasher(config.CurrentNodeIDNum, config.CrasherEnabled),
 	}
 }
 
@@ -98,17 +98,7 @@ func (wm *WatchMesh) Start() {
 }
 
 func (wm *WatchMesh) TryCrash(message string) {
-	wm.crasher.ThrowDiceAndForceExit(wm.allowedToCrash(), message)
-}
-
-// allowedToCrash determines if the node is allowed to crash based on its ID
-// and the current second of the minute.
-func (wm *WatchMesh) allowedToCrash() bool {
-	sec := time.Now().Second()
-	if wm.config.CurrentNodeIDNum%2 == 0 {
-		return sec < 30
-	}
-	return sec > 30
+	wm.crasher.ThrowDiceAndForceExit(message)
 }
 
 // discoverLeader queries all peers for the current leader
