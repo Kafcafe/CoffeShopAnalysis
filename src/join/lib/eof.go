@@ -36,6 +36,8 @@ func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg mi
 	j.ensureResultsChanExists(eofMsg.ClientId, eofMsg.DataType)
 	queue.StartConsuming(j.processResultsResponse, j.errChan)
 
+	j.crasher.ThrowDiceAndForceExit("eof - before requesting results")
+
 	processed, emitted, results, timeout := j.broadcastAndWaitForResults(requestBytes, eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 	if processed == 0 {
 		j.log.Errorf("Unexpected error waiting results for client %s and dataType %s", eofMsg.ClientId, eofMsg.DataType)
@@ -54,6 +56,8 @@ func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg mi
 		j.log.Warningf("Failed to delete ephemeral queue %s: %v", queueName, err)
 	}
 
+	j.crasher.ThrowDiceAndForceExit("eof - after requesting results - before sending next stage")
+
 	response := middleware.NewMessageWithPayload(eofMsg.DataType, eofMsg.ClientId, results, false, eofMsg.QueryId)
 
 	if middleError := j.sendNextStage(*response); middleError != nil {
@@ -70,6 +74,8 @@ func (j *JoinGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg mi
 		answerMessage(NACK_REQUEUE, eofMessage)
 		return
 	}
+
+	j.crasher.ThrowDiceAndForceExit("eof - after sending next stage - before ack")
 
 	j.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Processed count: %d/%d, Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, processed, expectedTotal, emitted)
 	answerMessage(ACK, eofMessage)
@@ -96,13 +102,18 @@ func (j *JoinGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		delete(j.sideTable, msg.ClientId)
 		delete(j.mainTable, msg.ClientId)
 		delete(j.sideTableReceived, msg.ClientId)
+		total, err := j.atomicWritter.CleanClient(msg.ClientId)
+		if err != nil {
+			j.log.Warningf("Failed to count lines for client %s and datatype %s: %v", msg.ClientId, msg.DataType, err)
+		}
+		j.log.Infof("Cleared stored data for client %s and datatype %s. Total lines removed: %d", msg.ClientId, msg.DataType, total)
 		j.log.Infof("Cleared stats for client %s and datatype %s", msg.ClientId, msg.DataType)
 		answerMessage(ACK, message)
 		return nil
 	}
 
 	j.log.Infof("Received results request message from %s for client %s and datatype %s", msg.Origin, msg.ClientId, msg.DataType)
-	processed, emitted := j.getClientStats(msg.ClientId).GetStats(msg.DataType)
+	processed, emitted, _, _ := j.getClientStats(msg.ClientId).GetStats(msg.DataType)
 
 	responseMsg := middleware.MessageResultsResponse{
 		Origin:    j.conf.id,
@@ -130,6 +141,8 @@ func (j *JoinGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 		}
 		responseMsg.Payload = j.conf.joinTables(NewJoiner(), sideTable, currentResults)
 	}
+
+	j.crasher.ThrowDiceAndForceExit("gather results - while sending results")
 
 	responseBytes, err := responseMsg.ToBytes()
 	if err != nil {

@@ -1,6 +1,8 @@
 package join
 
 import (
+	atomicwritter "common/atomic_writter"
+	"common/crasher"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -35,14 +37,16 @@ type JoinGenericWorker struct {
 
 	mutex           sync.Mutex
 	middlewareMutex sync.Mutex
-	clientsStats    map[string]*middleware.ClientStats
+	clientsStats    map[string]*ClientStatsJoin
 
 	sideTable         map[ClientId][]string
 	mainTable         map[ClientId][]string
 	sideTableReceived map[ClientId]chan int
 
-	resultsChans map[ClientId]map[DataType]chan middleware.MessageResultsResponse
-	watchMesh    *watch_mesh.WatchMesh
+	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
+	watchMesh     *watch_mesh.WatchMesh
+	atomicWritter *atomicwritter.AtomicWriter
+	crasher       *crasher.Crasher
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -76,6 +80,9 @@ func NewJoinWorker(
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
+	prefix := fmt.Sprintf("%s_%d", config.ofType, config.idNum)
+	path := fmt.Sprintf("processed_data/%s", prefix)
+	log.Infof("Using atomic writer path: %s", path)
 	return &JoinGenericWorker{
 		log:               log,
 		middlewareHandler: middlewareHandler,
@@ -87,14 +94,16 @@ func NewJoinWorker(
 
 		mutex:           sync.Mutex{},
 		middlewareMutex: sync.Mutex{},
-		clientsStats:    make(map[string]*middleware.ClientStats),
+		clientsStats:    make(map[string]*ClientStatsJoin),
 
 		sideTable:         map[string][]string{},
 		mainTable:         map[string][]string{},
 		sideTableReceived: make(map[ClientId]chan int),
 
-		resultsChans: make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
-		watchMesh:    watch_mesh.NewWatchMesh(watchMeshConfig),
+		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
+		atomicWritter: atomicwritter.NewAtomicWriter(path),
+		crasher:       crasher.NewCrasher(config.crasherEnabled),
 	}, nil
 }
 
@@ -113,7 +122,7 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		return nil
 	}
 
-	j.log.Debugf("Received message for client %s and datatype %s", msg.ClientId, msg.DataType)
+	j.crasher.ThrowDiceAndForceExit("before processing message")
 
 	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
@@ -121,7 +130,7 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		j.sideTableReceived[msg.ClientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
 	}
 	j.mutex.Unlock()
-	if !exists {
+	if !exists && !clientStats.sideTableIsReady {
 		j.log.Warning("Side table not ready!!!! Waiting...")
 		<-j.sideTableReceived[msg.ClientId]
 		j.log.Warning("Side table ready!!! Continuing...")
@@ -137,7 +146,14 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 	j.mutex.Lock()
 	partialUpdate := j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
 	j.sideTable[msg.ClientId] = partialUpdate
-	clientStats.Add(msg.DataType, message.MessageId, true, false)
+	j.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
+	clientStats.Add(msg.DataType, message.MessageId, true, false, "users", partialUpdate)
+	j.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
+	if err := j.Dump(clientStats, msg.ClientId); err != nil {
+		j.mutex.Unlock()
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
 	j.mutex.Unlock()
 
 	answerMessage(ACK, message)
@@ -160,6 +176,8 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return nil
 	}
 
+	j.crasher.ThrowDiceAndForceExit("before processing message")
+
 	msg.QueryId = j.conf.queryId
 
 	if msg.IsEof {
@@ -170,9 +188,17 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	flattenedPayload := flattenPayload(msg.GroupedPayload)
 	j.mutex.Lock()
 	j.mainTable[msg.ClientId] = append(j.mainTable[msg.ClientId], flattenedPayload...)
-	clientStats.Add(msg.DataType, message.MessageId, true, false)
+	j.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
+	clientStats.Add(msg.DataType, message.MessageId, true, false, "main", flattenedPayload)
+	j.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
+	if err := j.Dump(clientStats, msg.ClientId); err != nil {
+		j.mutex.Unlock()
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
 	j.mutex.Unlock()
 
+	j.crasher.ThrowDiceAndForceExit("after processing message - before ack")
 	answerMessage(ACK, message)
 	return nil
 }
@@ -185,12 +211,23 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		return err
 	}
 
+	clientStats := j.getClientStats(msg.ClientId)
+
+	j.crasher.ThrowDiceAndForceExit("before processing message")
+
 	if msg.IsEof {
 		j.log.Infof("Received EOF for %s. Ready to Join.", j.conf.ofType)
 		answerMessage(ACK, message)
 		j.mutex.Lock()
 		if _, exists := j.sideTableReceived[msg.ClientId]; !exists {
 			j.sideTableReceived[msg.ClientId] = make(chan int, SINGLE_ITEM_BUFFER_LEN)
+		}
+		j.clientsStats[msg.ClientId].MarkSideTableAsReady()
+		j.log.Infof("Marked side table as ready for client %s", msg.ClientId)
+		if err := j.Dump(clientStats, msg.ClientId); err != nil {
+			j.mutex.Unlock()
+			answerMessage(NACK_REQUEUE, message)
+			return err
 		}
 		j.mutex.Unlock()
 		j.sideTableReceived[msg.ClientId] <- ACTIVITY
@@ -203,16 +240,25 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		j.sideTable[msg.ClientId] = []string{}
 	}
 	j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
+	j.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
+	clientStats.Add(msg.DataType, message.MessageId, true, false, "side", msg.Payload)
+	j.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
+	if err := j.Dump(clientStats, msg.ClientId); err != nil {
+		j.mutex.Unlock()
+		answerMessage(NACK_REQUEUE, message)
+		return err
+	}
 	j.mutex.Unlock()
 
 	j.log.Infof("Side table size for client %s: %d", msg.ClientId, len(j.sideTable[msg.ClientId]))
+	j.crasher.ThrowDiceAndForceExit("after processing message - before ack")
 	answerMessage(ACK, message)
 	return nil
 }
 
-func (j *JoinGenericWorker) getClientStats(clientId string) *middleware.ClientStats {
+func (j *JoinGenericWorker) getClientStats(clientId string) *ClientStatsJoin {
 	if _, exists := j.clientsStats[clientId]; !exists {
-		j.clientsStats[clientId] = middleware.NewClientStats(middleware.DEFAULT_CACHE_CAPACITY)
+		j.clientsStats[clientId] = NewClientStatsJoin(middleware.DEFAULT_CACHE_CAPACITY)
 	}
 	return j.clientsStats[clientId]
 }
@@ -221,6 +267,12 @@ func (j *JoinGenericWorker) Run() error {
 	go j.handleSignal()
 
 	j.watchMesh.Start()
+
+	j.crasher.ThrowDiceAndForceExit("before recover")
+	if err := j.Recover(); err != nil {
+		return fmt.Errorf("failed to recover state: %v", err)
+	}
+	j.crasher.ThrowDiceAndForceExit("after recover")
 
 	err := j.createExchangeHandlers()
 	if err != nil {
@@ -265,6 +317,11 @@ func (j *JoinGenericWorker) Shutdown() {
 
 	j.middlewareHandlers.Shutdown()
 	j.middlewareHandler.Close()
-
+	values, err := j.atomicWritter.CleanAll()
+	if err != nil {
+		j.log.Warningf("Failed to count lines during shutdown: %v", err)
+	} else {
+		j.log.Infof("Cleaned stored data during shutdown. Total lines removed: %d", values)
+	}
 	j.log.Info("Shutdown complete")
 }

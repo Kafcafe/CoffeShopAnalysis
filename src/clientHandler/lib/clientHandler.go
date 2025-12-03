@@ -77,6 +77,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:
@@ -85,10 +86,9 @@ func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 }
 
 func (clh *ClientHandler) processResults(message amqp.Delivery) error {
-	defer clh.answerMessage(NACK_DISCARD, message)
-
 	msg, err := middleware.NewMessageFromBytes(message.Body)
 	if err != nil {
+		clh.answerMessage(NACK_DISCARD, message)
 		return err
 	}
 
@@ -106,16 +106,12 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	return nil
 }
 
-func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message, eofFlags *map[int]bool) error {
+func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message) error {
 	queryId := msg.QueryId
 
 	if queryId <= 0 || queryId > 4 {
 		clh.log.Warningf("Unrecognized queryId")
 		return nil
-	}
-
-	if msg.IsEof {
-		(*eofFlags)[queryId] = true
 	}
 
 	var cleanResult []string = msg.Payload
@@ -160,21 +156,19 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 		4: false,
 	}
 
-	for {
-		// If all channels flagged EOF -> break out
-		if eofFlags[1] && eofFlags[2] && eofFlags[3] && eofFlags[4] {
-			clh.log.Infof("All queries EOF received, shutting down dispatcher")
-			clh.sentAllResultsChan <- 0
-			return
-		}
-
+	// If all channels flagged EOF -> break out
+	for !eofFlags[1] || !eofFlags[2] || !eofFlags[3] || !eofFlags[4] {
 		select {
 		case msg := <-clh.resultsChan:
 			if !dispathMessage {
 				continue
 			}
 
-			err := clh.dispatchResultMessage(&msg, &eofFlags)
+			if msg.IsEof {
+				eofFlags[msg.QueryId] = true
+			}
+
+			err := clh.dispatchResultMessage(&msg)
 			if err != nil {
 				return
 			}
@@ -186,6 +180,8 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 			dispathMessage = false
 		}
 	}
+	clh.log.Infof("All queries EOF received, shutting down dispatcher")
+	clh.sentAllResultsChan <- 0
 }
 
 func (clh *ClientHandler) launchResultsProcessing() {

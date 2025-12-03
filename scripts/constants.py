@@ -95,12 +95,14 @@ FILTER_TEMPLATE = """
           FILTER_IDNUM: {idnum}
           FILTER_COUNT: {filter_count}
           WATCH_MESH_UDP_PORT: 11000
+          CRASHER_ENABLED: {crasher_enabled}
         build:
           context: ./src/
           dockerfile: filters/Dockerfile
         volumes:
           - ./src/filters/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
+          - ./processed_data/{filter_type}_{idnum}:/processed_data/{filter_type}_{idnum}
 """
 
 # Client service template (parameterized by client ID)
@@ -162,6 +164,7 @@ GROUP_TEMPLATE = """
           GROUP_COUNT: {group_count}
           GROUP_IDNUM: {idnum}
           WATCH_MESH_UDP_PORT: 11000
+          CRASHER_ENABLED: {crasher_enabled}
         build:
           context: ./src/
           dockerfile: group/Dockerfile
@@ -189,10 +192,12 @@ JOIN_TEMPLATE = """
           JOIN_IDNUM: {idnum}
           JOIN_COUNT: {join_count}
           WATCH_MESH_UDP_PORT: 11000
+          CRASHER_ENABLED: {crasher_enabled}
         build:
           context: ./src/
           dockerfile: join/Dockerfile
         volumes:
           - ./src/join/config.yaml:/config.yaml 
           - /var/run/docker.sock:/var/run/docker.sock
+          - ./processed_data/{join_type}_{idnum}:/processed_data/{join_type}_{idnum}
 """
