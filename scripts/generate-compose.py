@@ -14,6 +14,7 @@ Example:
 
 import sys
 import constants
+import os
 
 FILTER_BY_YEAR_TYPE: str = "year"
 FILTER_BY_HOUR_TYPE: str = "hour"
@@ -29,6 +30,7 @@ JOIN_STORE_TYPE: str = "store"
 JOIN_STORE_Q3_TYPE: str = "store_q3"
 JOIN_USERS_TYPE: str = "users"
 
+CRASHER_ENABLED: bool = os.getenv("CRASHER_ENABLED", "false")
 
 def generate_compose(
     file_destination: str,
@@ -74,7 +76,8 @@ def generate_compose(
             id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_year_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(filter_by_hour_nums):
@@ -83,7 +86,8 @@ def generate_compose(
             id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_hour_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(filter_by_amount_nums):
@@ -92,7 +96,8 @@ def generate_compose(
             id=f"-{filter_type}{i + 1}",
             filter_type=filter_type,
             filter_count=filter_by_amount_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(group_by_year_month_nums):
@@ -101,7 +106,8 @@ def generate_compose(
             id=f"-{group_type}{i + 1}",
             group_type=group_type,
             group_count=group_by_year_month_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(group_by_semester_nums):
@@ -110,13 +116,14 @@ def generate_compose(
             id=f"-{group_type}{i + 1}",
             group_type=group_type,
             group_count=group_by_semester_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(join_items_nums):
         join_type = JOIN_ITEMS_TYPE
         compose += constants.JOIN_TEMPLATE.format(
-            id=f"-{join_type}{i + 1}", join_type=join_type, join_count=join_items_nums, idnum=f"{i + 1}"
+            id=f"-{join_type}{i + 1}", join_type=join_type, join_count=join_items_nums, idnum=f"{i + 1}", crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(join_store_nums):
@@ -124,7 +131,8 @@ def generate_compose(
             id=f"-{JOIN_STORE_TYPE}{i + 1}",
             join_type=JOIN_STORE_TYPE,
             join_count=join_store_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(join_store_nums):
@@ -132,7 +140,8 @@ def generate_compose(
             id=f"-{JOIN_STORE_Q3_TYPE}{i + 1}",
             join_type=JOIN_STORE_Q3_TYPE,
             join_count=join_store_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(join_users_nums):
@@ -140,7 +149,8 @@ def generate_compose(
             id=f"-{JOIN_USERS_TYPE}{i + 1}",
             join_type=JOIN_USERS_TYPE,
             join_count=join_users_nums,
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     for i in range(topk_nums):
@@ -149,7 +159,8 @@ def generate_compose(
             id=f"-{group_type}{i + 1}", 
             group_type=group_type,
             group_count=topk_nums, 
-            idnum=f"{i + 1}"
+            idnum=f"{i + 1}",
+            crasher_enabled=CRASHER_ENABLED,
         )
 
     # Write the complete compose file to disk

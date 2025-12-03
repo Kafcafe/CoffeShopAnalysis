@@ -75,6 +75,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 func (clh *ClientHandler) answerMessage(ackType int, message amqp.Delivery) {
 	switch ackType {
 	case ACK:
+		message.Ack(false)
 	case NACK_REQUEUE:
 		message.Nack(false, true)
 	case NACK_DISCARD:

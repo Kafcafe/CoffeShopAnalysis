@@ -2,6 +2,7 @@ package group
 
 import (
 	atomicwritter "common/atomic_writter"
+	"common/crasher"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -50,6 +51,7 @@ type GroupByGenericWorker struct {
 	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh     *watch_mesh.WatchMesh
 	atomicWritter *atomicwritter.AtomicWriter
+	crasher       *crasher.Crasher
 }
 
 func NewGroupByGenericWorker(
@@ -118,6 +120,7 @@ func NewGroupByGenericWorker(
 		sendChannel:     sendChannel,
 		queueChannel:    queueChannel,
 		privateChannels: privateChannels,
+		crasher:         crasher.NewCrasher(conf.crasherEnabled),
 	}, nil
 }
 
