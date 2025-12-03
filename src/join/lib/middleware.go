@@ -182,12 +182,7 @@ func (j *JoinGenericWorker) dispatchMessage(message amqp.Delivery) error {
 		answerMessage(NACK_REQUEUE, message)
 		return fmt.Errorf("failed to dispatch message to private queue %d: %v", destination_id, err)
 	}
-	// DISCLAMER: This is just for simulation purposes
-	// if rand.Float64() < REQUEUE_PROBABILITY {
-	// 	answerMessage(NACK_REQUEUE, message)
-	// 	j.log.Warningf("Simulating message requeue for message %s", message_id)
-	// 	return fmt.Errorf("simulated message requeue for message %s", message_id)
-	// }
+	j.watchMesh.TryCrash("dispatch - dispatched - before ack")
 	answerMessage(ACK, message)
 	return nil
 }

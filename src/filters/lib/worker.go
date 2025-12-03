@@ -2,7 +2,6 @@ package filters
 
 import (
 	atomicwritter "common/atomic_writter"
-	"common/crasher"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -40,7 +39,6 @@ type FilterGenericWorker struct {
 	resultsChans      map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh         *watch_mesh.WatchMesh
 	atomicWritter     *atomicwritter.AtomicWriter
-	crasher           *crasher.Crasher
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -90,7 +88,6 @@ func NewFilterGenericWorker(
 		resultsChans:      make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:         watch_mesh.NewWatchMesh(watchMeshConfig),
 		atomicWritter:     atomicwritter.NewAtomicWriter(path),
-		crasher:           crasher.NewCrasher(config.crasherEnabled),
 	}, nil
 }
 
@@ -105,7 +102,7 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		msg.QueryId = 1
 	}
 
-	f.crasher.ThrowDiceAndForceExit("before processing message")
+	f.watchMesh.TryCrash("before processing message")
 
 	if msg.IsEof {
 		go f.handleEofMessage(message, *msg)
@@ -115,11 +112,11 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 	filteredBatch := f.conf.messageCallback(&f.filter, msg.Payload)
 
 	if len(filteredBatch) == 0 {
-		f.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
+		f.watchMesh.TryCrash("after processing message - before stats update")
 		f.getClientStats(msg.ClientId).Add(msg.DataType, message.MessageId, true, false)
-		f.crasher.ThrowDiceAndForceExit("after processing message - before save worker state")
+		f.watchMesh.TryCrash("after processing message - before save worker state")
 		f.saveWorkerState(msg.ClientId)
-		f.crasher.ThrowDiceAndForceExit("after processing message - before ack")
+		f.watchMesh.TryCrash("after processing message - before ack")
 		answerMessage(ACK, message)
 		return nil
 	}
@@ -132,12 +129,12 @@ func (f *FilterGenericWorker) filterMessage(message amqp.Delivery) error {
 		return err
 	}
 
-	f.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
+	f.watchMesh.TryCrash("after processing message - before stats update")
 
 	f.getClientStats(msg.ClientId).Add(msg.DataType, message.MessageId, true, true)
-	f.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
+	f.watchMesh.TryCrash("after processing message - between stats update and save worker state")
 	f.saveWorkerState(msg.ClientId)
-	f.crasher.ThrowDiceAndForceExit("after processing message - before ack")
+	f.watchMesh.TryCrash("after processing message - before ack")
 
 	answerMessage(ACK, message)
 	// f.log.Infof("Filtered message and sent to next stage")
@@ -166,15 +163,15 @@ func (f *FilterGenericWorker) Run() error {
 
 	f.watchMesh.Start()
 
-	f.crasher.ThrowDiceAndForceExit("before createExchangeHandlers")
+	f.watchMesh.TryCrash("before createExchangeHandlers")
 	err := f.createExchangeHandlers()
 	if err != nil {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
-	f.crasher.ThrowDiceAndForceExit("before recover")
+	f.watchMesh.TryCrash("before recover")
 	f.recover()
-	f.crasher.ThrowDiceAndForceExit("after recover")
+	f.watchMesh.TryCrash("after recover")
 
 	f.middlewareHandlers.prevStageSub.StartConsuming(f.filterMessage, f.errChan)
 	f.middlewareHandlers.broadcastResultsRequestSub.StartConsuming(f.sendResultsRequest, f.errChan)

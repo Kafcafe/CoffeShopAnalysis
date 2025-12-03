@@ -61,7 +61,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 	f.ensureResultsChanExists(eofMsg.ClientId, eofMsg.DataType)
 	queue.StartConsuming(f.processResultsResponse, f.errChan)
 
-	f.crasher.ThrowDiceAndForceExit("eof - before requesting results")
+	f.watchMesh.TryCrash("eof - before requesting results")
 
 	processed, emitted, timeout := f.broadcastAndWaitForResults(requestBytes, eofMsg.ClientId, eofMsg.DataType, eofMsg.TotalEmitted)
 	if processed == 0 {
@@ -79,7 +79,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		f.log.Warningf("Failed to delete ephemeral queue %s: %v", queueName, err)
 	}
 
-	f.crasher.ThrowDiceAndForceExit("eof - after requesting results - before sending next stage")
+	f.watchMesh.TryCrash("eof - after requesting results - before sending next stage")
 
 	expectedTotal := eofMsg.TotalEmitted
 	eofMsg.TotalEmitted = emitted
@@ -89,7 +89,7 @@ func (f *FilterGenericWorker) handleEofMessage(eofMessage amqp.Delivery, eofMsg 
 		return
 	}
 
-	f.crasher.ThrowDiceAndForceExit("eof - after sending next stage - before ack")
+	f.watchMesh.TryCrash("eof - after sending next stage - before ack")
 
 	f.log.Infof("Sent EOF message to next stage for client %s and dataType %s. Processed count: %d/%d, Emitted count: %d", eofMsg.ClientId, eofMsg.DataType, processed, expectedTotal, emitted)
 	answerMessage(ACK, eofMessage)
@@ -139,7 +139,7 @@ func (f *FilterGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 	f.log.Infof("Received results request message from %s for client %s and datatype %s", msg.Origin, msg.ClientId, msg.DataType)
 	processed, emitted := f.getClientStats(msg.ClientId).GetStats(msg.DataType)
 
-	f.crasher.ThrowDiceAndForceExit("gather results - before sending response")
+	f.watchMesh.TryCrash("gather results - before sending response")
 
 	responseMsg := middleware.MessageResultsResponse{
 		Origin:    f.conf.id,

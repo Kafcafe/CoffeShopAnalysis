@@ -141,3 +141,9 @@ func (sm *PeerStateMachine) ResetResurrectingChecks() {
 	defer sm.mu.Unlock()
 	sm.resurrectingChecks = 0
 }
+
+func (sm *PeerStateMachine) IsAlive() bool {
+	sm.mu.Lock()
+	defer sm.mu.Unlock()
+	return sm.state == PeerStatusAlive || sm.state == PeerStatusLeader
+}
