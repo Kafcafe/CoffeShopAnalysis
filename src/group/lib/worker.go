@@ -40,6 +40,11 @@ type GroupByGenericWorker struct {
 	mutex           sync.Mutex
 	middlewareMutex sync.Mutex
 	group           *structures.GrouperPerClient[structures.AllowedGroup]
+	// Dedicated channels for different operations to avoid AMQP concurrency issues
+	sendChannel  *middleware.MiddlewareHandler
+	queueChannel *middleware.MiddlewareHandler
+	// Pool of dedicated channels for private queues to prevent frame collision
+	privateChannels map[int]*middleware.MiddlewareHandler
 	// new eof
 	clientsStats  map[ClientId]*middleware.ClientStats
 	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
@@ -68,6 +73,27 @@ func NewGroupByGenericWorker(
 
 	log.Info("Connection with RabbitMQ successfully established")
 
+	// Create dedicated channels for different operations
+	sendChannel, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create send channel: %v", err)
+	}
+
+	queueChannel, err := middleware.NewMiddlewareHandler(rabbitConn)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create queue channel: %v", err)
+	}
+
+	// Create dedicated channels for each private queue to prevent AMQP frame collision
+	privateChannels := make(map[int]*middleware.MiddlewareHandler)
+	for i := 1; i <= conf.count; i++ {
+		privateChannel, err := middleware.NewMiddlewareHandler(rabbitConn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to create private channel %d: %v", i, err)
+		}
+		privateChannels[i] = privateChannel
+	}
+
 	sigChan := make(chan os.Signal, SINGLE_ITEM_BUFFER_LEN)
 	signal.Notify(sigChan, syscall.SIGTERM, syscall.SIGINT)
 
@@ -83,12 +109,15 @@ func NewGroupByGenericWorker(
 
 		mutex:           sync.Mutex{},
 		middlewareMutex: sync.Mutex{},
-		group:           structures.NewGrouperPerClient[structures.AllowedGroup](conf.factory),
+		group:           structures.NewGrouperPerClient(conf.factory),
 
-		clientsStats:  make(map[ClientId]*middleware.ClientStats),
-		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
-		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
-		atomicWritter: atomicwritter.NewAtomicWriter(path),
+		clientsStats:    make(map[ClientId]*middleware.ClientStats),
+		resultsChans:    make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
+		watchMesh:       watch_mesh.NewWatchMesh(watchMeshConfig),
+		atomicWritter:   atomicwritter.NewAtomicWriter(path),
+		sendChannel:     sendChannel,
+		queueChannel:    queueChannel,
+		privateChannels: privateChannels,
 	}, nil
 }
 
@@ -201,6 +230,14 @@ func (g *GroupByGenericWorker) Shutdown() {
 	g.exchangeHandlers.broadcastResultsRequestSub.StopConsuming()
 	g.exchangeHandlers.broadcastResultsRequestSub.Close()
 	g.middlewareHandler.Close()
+	g.sendChannel.Close()
+	g.queueChannel.Close()
+	// Close all private channels
+	for i, ch := range g.privateChannels {
+		if err := ch.Close(); err != nil {
+			g.log.Errorf("Error closing private channel %d: %v", i, err)
+		}
+	}
 	count, err := g.atomicWritter.CleanAll()
 	if err != nil {
 		g.log.Errorf("Error during atomic writter cleanup: %v", err)

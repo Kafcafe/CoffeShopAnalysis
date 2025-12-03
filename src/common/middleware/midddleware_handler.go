@@ -16,7 +16,7 @@ const (
 
 	EXCHANGE_DURABILITY  = false
 	QUEUE_DURABILITY     = false
-	RESPONSE_TIMEOUT_SEC = 10
+	RESPONSE_TIMEOUT_SEC = 45
 	MAX_EOF_RETRIES      = 3
 )
 
@@ -159,7 +159,7 @@ func (mh *MiddlewareHandler) createExchange(exchangeName, exchangeType, routeKey
 
 	_, err = mh.DeclareQueue(routeKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to declare queue: %v", err)
+		return nil, fmt.Errorf("failed to declare queue in DeclareQueue: %v", err)
 	}
 
 	err = mh.BindQueue(routeKey, exchangeName, routeKey)
