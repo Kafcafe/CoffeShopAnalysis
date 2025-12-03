@@ -69,7 +69,6 @@ CLIENT_HANDLER_TEMPLATE = """
           RABBITMQ_USER: user
           RABBITMQ_PASS: user
           WATCH_MESH_UDP_PORT: 11000
-          CRASHER_ENABLED: {crasher_enabled}
         hostname: "server"
         build:
           context: ./src/
