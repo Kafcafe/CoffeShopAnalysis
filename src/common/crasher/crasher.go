@@ -2,35 +2,42 @@ package crasher
 
 import (
 	"common/logger"
-	"math/rand"
+	"crypto/rand"
+	"encoding/binary"
+	mathrand "math/rand"
 	"os"
-	"time"
-
-	"github.com/op/go-logging"
 )
 
-const FORCE_EXIT_PROBABILITY float64 = 0.00005 // 1 in 20000
+const FORCE_EXIT_PROBABILITY = 0.00005 // 0.005% per event
 
 type Crasher struct {
-	rng     *rand.Rand
-	logger  *logging.Logger
+	rng     *mathrand.Rand
 	enabled bool
 }
 
 func NewCrasher(enabled bool) *Crasher {
-	seed := time.Now().UnixNano() ^
-		int64(rand.Int63())
+	var b [8]byte
+	_, err := rand.Read(b[:])
+	if err != nil {
+		panic("failed to read crypto randomness for RNG seed: " + err.Error())
+	}
+
+	seed := int64(binary.LittleEndian.Uint64(b[:]))
 
 	return &Crasher{
-		rng:     rand.New(rand.NewSource(seed)),
-		logger:  logger.GetLoggerWithPrefix("[CRASHER]"),
+		rng:     mathrand.New(mathrand.NewSource(seed)),
 		enabled: enabled,
 	}
 }
 
 func (c *Crasher) ThrowDiceAndForceExit(message string) {
-	if c.enabled && c.rng.Float64() < FORCE_EXIT_PROBABILITY {
-		c.logger.Errorf("Force exit: %s", message)
+	if !c.enabled {
+		return
+	}
+
+	if c.rng.Float64() < FORCE_EXIT_PROBABILITY {
+		log := logger.GetLoggerWithPrefix("[CRASHER]")
+		log.Errorf("Force exit: %s", message)
 		os.Exit(1)
 	}
 }
