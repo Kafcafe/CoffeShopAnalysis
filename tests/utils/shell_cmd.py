@@ -30,4 +30,5 @@ def pipe(cmd_string):
 
 
 def background(cmd_string):
-	return subprocess.Popen(cmd_string, shell=True, start_new_session=True)
+	process =subprocess.Popen(cmd_string, shell=True, start_new_session=True)
+	return process.pid
