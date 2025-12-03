@@ -58,15 +58,18 @@ class Boom:
         self.__exec_command(commands.DOCKER_KILL, target)
 
     def __exec_command(self, command: str, target: str):
-        print(f"[+] 💥💀 Booming '{target}' 💀💥")
-        file = self.configs.get("f", DOCKER_COMPOSE_FILE)
-        if not file: 
-            file = DOCKER_COMPOSE_FILE
-        sp.run(
-            command.format(compose=file, dead_man=target),
-            shell=True,
-            check=True,
-        )
+        try: 
+            print(f"[+] 💥💀 Booming '{target}' 💀💥")
+            file = self.configs.get("f", DOCKER_COMPOSE_FILE)
+            if not file: 
+                file = DOCKER_COMPOSE_FILE
+            sp.run(
+                command.format(compose=file, dead_man=target),
+                shell=True,
+                check=True,
+            )
+        except Exception as e:
+            print(f"Error executing command: {e}")
 
     def __for_group(self):
         if not self.configs.get("t", None):
