@@ -1,6 +1,7 @@
 
 
 import os
+import threading
 import pytest
 from tests.utils import boom, docker, parser, compare_results, config, gen_compose
 import time
@@ -45,7 +46,8 @@ def test_three():
     gen_compose.gen_docker_compose(5, 5, 5, 5, 5, 5, 5, 5, 5, 5)
     docker.up()
     time.sleep(20)   
-    process_id = boom.run()
+    node_killer = threading.Thread(target=boom.run)
+    node_killer.start()
     docker.wait_for_clients(5)
     read_logs('client1')
     read_logs('client2')
@@ -53,6 +55,6 @@ def test_three():
     read_logs('client4')
     read_logs('client5')
     results_paths = build_results_path([1, 2, 3, 4, 5])
-    boom.stop(process_id)
+    node_killer.join(2)
     print()
     assert compare_results.compare_all_results(results_paths) 

@@ -4,8 +4,12 @@ def _cmd_string_to_arr(cmd_string):
 	return cmd_string.split(' ')
 
 def stdout(cmd_string):
-	cmd_arr = _cmd_string_to_arr(cmd_string)
-	sp = subprocess.run(cmd_arr)
+	# Use shell=True for commands with redirection or complex shell features
+	if '>>' in cmd_string or '>' in cmd_string or '|' in cmd_string:
+		sp = subprocess.run(cmd_string, shell=True)
+	else:
+		cmd_arr = _cmd_string_to_arr(cmd_string)
+		sp = subprocess.run(cmd_arr)
 	
 	return sp.returncode
 
