@@ -153,6 +153,13 @@ func (g *GroupByGenericWorker) dispatchMessage(message amqp.Delivery) error {
 		return fmt.Errorf("failed to dispatch message to private queue %d after 3 retries: %v", destination_id, err)
 	}
 
+	// DISCLAMER: This is just for simulation purposes
+	// if rand.Float64() < REQUEUE_PROBABILITY {
+	// 	answerMessage(NACK_REQUEUE, message)
+	// 	g.log.Warningf("Simulating message requeue for message %s", message_id)
+	// 	return fmt.Errorf("simulated message requeue for message %s", message_id)
+	// }
+
 	answerMessage(ACK, message)
 	return nil
 }
