@@ -25,6 +25,7 @@ type FilterConfig struct {
 	prevStageSub    string
 	nextStagePubs   map[string]string // dataType -> routeKey
 	messageCallback func(filter *Filter, batch []string) (filteredBatch []string)
+	crasherEnabled  bool
 }
 
 func FilterByYearConfig(filterId string, filterIdNum, filterCount int, config YearFilterConfig) FilterConfig {
@@ -84,6 +85,7 @@ func CreateFilterWorker(
 	filterIdNum int,
 	filterCount int,
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
+	crasherEnabled bool,
 ) (*FilterGenericWorker, error) {
 	var config FilterConfig
 
@@ -97,6 +99,7 @@ func CreateFilterWorker(
 	default:
 		return nil, fmt.Errorf("unknown filter type: %s", filterType)
 	}
+	config.crasherEnabled = crasherEnabled
 
 	// Prepare addresses for WatchMesh
 	peerAddresses := []string{}

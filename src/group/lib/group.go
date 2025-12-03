@@ -23,13 +23,14 @@ type GroupByWorker interface {
 }
 
 type GroupByConfig struct {
-	id           string
-	count        int
-	ofType       string
-	prevStageSub string
-	nextStagePub string
-	factory      func() structures.AllowedGroup
-	idNum        int
+	id             string
+	count          int
+	ofType         string
+	prevStageSub   string
+	nextStagePub   string
+	factory        func() structures.AllowedGroup
+	idNum          int
+	crasherEnabled bool
 }
 
 func GroupByYearMonthConfig(groupId string, groupCount, idNum int) GroupByConfig {
@@ -115,41 +116,35 @@ func CreateGroupByWorker(
 	logger *logging.Logger,
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
 	idNum int,
+	crasherEnabled bool,
 ) (*GroupByWorker, error) {
 	var groupByWorker GroupByWorker
 	var err error
+	var config GroupByConfig
 
 	logger.Infof("Creating groupBy worker for group %d", idNum)
 
 	switch groupType {
 	case GROUP_TYPE_YEARMONTH:
-		config := GroupByYearMonthConfig(groupId, groupCount, idNum)
-		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
-		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
-		if err != nil {
-			return nil, err
-		}
+		config = GroupByYearMonthConfig(groupId, groupCount, idNum)
 
 	case GROUP_TYPE_SEMESTER:
-		config := GroupBySemesterConfig(groupId, groupCount, idNum)
-		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
-		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
-		if err != nil {
-			return nil, err
-		}
+		config = GroupBySemesterConfig(groupId, groupCount, idNum)
 
 	case GROUP_TYPE_TOPK:
 		Kconfig := envConfig.GetInt("k")
 		logger.Infof("GroupBy type %s using k: %d", GROUP_TYPE_TOPK, Kconfig)
-		config := GroupByTopKConfig(groupId, groupCount, Kconfig, idNum)
-		watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
-		groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
-		if err != nil {
-			return nil, err
-		}
+		config = GroupByTopKConfig(groupId, groupCount, Kconfig, idNum)
 
 	default:
 		return nil, fmt.Errorf("unknown groupBy type: %s", groupType)
+	}
+
+	config.crasherEnabled = crasherEnabled
+	watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
+	groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
+	if err != nil {
+		return nil, err
 	}
 
 	return &groupByWorker, nil

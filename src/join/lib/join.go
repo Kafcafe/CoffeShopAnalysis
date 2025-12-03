@@ -29,6 +29,7 @@ type JoinWorkerConfig struct {
 	nextStagePubs                  map[string]string
 	joinTables                     func(joiner *Join, sideTable []string, mainTable []string) (joinedItems []string)
 	messageCallbackUpdateSideTable func(sideTable []string, payload []string) (updatedSideTable []string)
+	crasherEnabled                 bool
 }
 
 func JoinItemsConfig(joinId string, joinCount, joinIdNum int) JoinWorkerConfig {
@@ -101,6 +102,7 @@ func CreateJoinerWorker(
 	joinerIdNum int,
 	joinerCount int,
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
+	crasherEnabled bool,
 ) (*JoinItemsWorker, error) {
 
 	var joinItemsWorker JoinItemsWorker
@@ -119,6 +121,8 @@ func CreateJoinerWorker(
 	default:
 		return nil, fmt.Errorf("unknown joiner type: %s", joinItemsType)
 	}
+
+	config.crasherEnabled = crasherEnabled
 
 	// Prepare addresses for WatchMesh
 	peerAddresses := []string{}

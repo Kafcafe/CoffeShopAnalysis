@@ -88,18 +88,18 @@ For testing purposes, a reduced set of data is presented containing all necessar
 
 This script provides a user-friendly interface to the Python Docker Compose generator. It calls the Python script with provided arguments and interprets the exit codes to provide clear feedback to the user.
 
-- `./scripts/gen.sh` - This script provides a user-friendly interface to the Python Docker Compose generator. It generates a Docker Compose YAML file with the number of nodes provided as arguments.
+- `./gen.sh` - This script provides a user-friendly interface to the Python Docker Compose generator. It generates a Docker Compose YAML file with the number of nodes provided as arguments.
 
   Usage:
 
   ```shell
-  ./scripts/gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_join_items> <num_join_store> <num_topk>
+  ./gen.sh <output_file> <num_clients> <num_filters_by_year> <num_filters_by_hour> <num_filters_by_amount> <num_group_by_year_month> <num_group_by_semester> <num_join_items> <num_join_store> <num_topk>
   ```
 
   Usage example:
 
   ```shell
-  ./scripts/gen.sh docker-compose-dev.yaml 1 1 1 1 1 1 1 1 1
+  ./gen.sh docker-compose-dev.yaml 1 1 1 1 1 1 1 1 1
   ```
 
   Expected output:
@@ -120,6 +120,12 @@ This script provides a user-friendly interface to the Python Docker Compose gene
   ✅ docker compose file generated successfully
   ```
 
+  If you want to generate a compose file with crasher enabled, you can use the following command:
+
+  ```shell
+  CRASHER_ENABLED=true ./gen.sh docker-compose-dev.yaml 1 1 1 1 1 1 1 1 1
+  ```
+
 - `make up` - Start all services with rebuild
 
   - Uses `docker-compose-dev.yaml` by default
@@ -138,7 +144,7 @@ This script provides a user-friendly interface to the Python Docker Compose gene
 #### Example on how to run the system, run these commands in order:
 
 ```shell
-./scripts/gen.sh docker-compose-dev.yaml 1 1 1 1 1 1 1 1 1
+./gen.sh docker-compose-dev.yaml 1 1 1 1 1 1 1 1 1
 ```
 
 > (or any other node number combination)
