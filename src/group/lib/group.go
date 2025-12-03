@@ -70,15 +70,16 @@ func GroupByTopKConfig(groupId string, groupCount, k, idNum int) GroupByConfig {
 
 func createWatchMeshConfig(
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
-	id string,
-	groupsCount int,
-	ofType string,
+	groupByConfig GroupByConfig,
+	// id string,
+	// groupsCount int,
+	// ofType string,
 ) watch_mesh.WatchMeshConfig {
 	// Prepare addresses for WatchMesh
 	peerAddresses := []string{}
-	myAddress := fmt.Sprintf("group%s", id)
-	for i := 1; i < groupsCount+1; i++ {
-		peerIp := fmt.Sprintf("group-%s%d", ofType, i)
+	myAddress := fmt.Sprintf("group%s", groupByConfig.id)
+	for i := 1; i < groupByConfig.count+1; i++ {
+		peerIp := fmt.Sprintf("group-%s%d", groupByConfig.ofType, i)
 
 		if peerIp != myAddress {
 			peerAddresses = append(peerAddresses, peerIp)
@@ -90,7 +91,8 @@ func createWatchMeshConfig(
 	addressResolvingIntervalSeconds := time.Duration(basicWatchMeshConfig.AddressResolvingIntervalSeconds) * 1000 * time.Millisecond
 
 	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
-		id,
+		groupByConfig.id,
+		groupByConfig.idNum,
 		basicWatchMeshConfig.Port,
 		peerAddresses,
 		heartbeatIntervalSeconds,
@@ -140,7 +142,7 @@ func CreateGroupByWorker(
 		return nil, fmt.Errorf("unknown groupBy type: %s", groupType)
 	}
 
-	watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config.id, config.count, config.ofType)
+	watchMeshConfig := createWatchMeshConfig(basicWatchMeshConfig, config)
 	groupByWorker, err = NewGroupByGenericWorker(rabbitConf, config, watchMeshConfig)
 	if err != nil {
 		return nil, err

@@ -115,6 +115,7 @@ func CreateFilterWorker(
 
 	watchMeshConfig := watch_mesh.NewWatchMeshConfig(
 		config.id,
+		config.idNum,
 		basicWatchMeshConfig.Port,
 		peerAddresses,
 		heartbeatIntervalSeconds,
