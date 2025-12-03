@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-const FORCE_EXIT_PROBABILITY = 0.00004 // 0.004% per event
+const FORCE_EXIT_PROBABILITY = 0.0001 //4 // 0.004% per event
 
 type Crasher struct {
 	rng     *mathrand.Rand
@@ -30,13 +30,17 @@ func NewCrasher(enabled bool) *Crasher {
 	}
 }
 
-func (c *Crasher) ThrowDiceAndForceExit(message string) {
+func (c *Crasher) ThrowDiceAndForceExit(allowedToCrash bool, message string) {
 	if !c.enabled {
 		return
 	}
 
 	if c.rng.Float64() < FORCE_EXIT_PROBABILITY {
 		log := logger.GetLoggerWithPrefix("[CRASHER]")
+		if !allowedToCrash {
+			log.Warning("Not allowed to crash now, skipping forced exit")
+			return
+		}
 		log.Errorf("Force exit: %s", message)
 		os.Exit(1)
 	}

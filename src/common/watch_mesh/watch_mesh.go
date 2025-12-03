@@ -98,20 +98,17 @@ func (wm *WatchMesh) Start() {
 }
 
 func (wm *WatchMesh) TryCrash(message string) {
-	if wm.anyPeerAlive() {
-		wm.crasher.ThrowDiceAndForceExit(message)
-	}
+	wm.crasher.ThrowDiceAndForceExit(wm.allowedToCrash(), message)
 }
 
-func (wm *WatchMesh) anyPeerAlive() bool {
-	wm.mutex.Lock()
-	defer wm.mutex.Unlock()
-	for _, peer := range wm.peers {
-		if peer.State.IsAlive() {
-			return true
-		}
+// allowedToCrash determines if the node is allowed to crash based on its ID
+// and the current second of the minute.
+func (wm *WatchMesh) allowedToCrash() bool {
+	sec := time.Now().Second()
+	if wm.config.CurrentNodeIDNum%2 == 0 {
+		return sec < 30
 	}
-	return false
+	return sec > 30
 }
 
 // discoverLeader queries all peers for the current leader

@@ -5,6 +5,7 @@ import "time"
 // Config holds the configuration for a distributed node
 type WatchMeshConfig struct {
 	CurrentNodeID            NodeId
+	CurrentNodeIDNum         int
 	WatchMeshPort            int
 	PeerAddresses            []string
 	NodeType                 string
@@ -21,6 +22,7 @@ type WatchMeshConfig struct {
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
 func NewWatchMeshConfig(
 	currentNodeID string,
+	currentNodeIDNum int,
 	watchMeshPort int,
 	peerAddresses []string,
 	heartbeatInterval time.Duration,
@@ -36,6 +38,7 @@ func NewWatchMeshConfig(
 
 	return WatchMeshConfig{
 		CurrentNodeID:            NodeId(currentNodeID),
+		CurrentNodeIDNum:         currentNodeIDNum,
 		WatchMeshPort:            watchMeshPort,
 		PeerAddresses:            peerAddresses,
 		HeartbeatInterval:        heartbeatInterval,
