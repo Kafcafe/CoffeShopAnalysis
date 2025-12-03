@@ -2,6 +2,7 @@ package join
 
 import (
 	atomicwritter "common/atomic_writter"
+	"common/crasher"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -45,6 +46,7 @@ type JoinGenericWorker struct {
 	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh     *watch_mesh.WatchMesh
 	atomicWritter *atomicwritter.AtomicWriter
+	crasher       *crasher.Crasher
 }
 
 // handleSignal listens for SIGTERM signal and triggers shutdown.
@@ -101,6 +103,7 @@ func NewJoinWorker(
 		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
 		atomicWritter: atomicwritter.NewAtomicWriter(path),
+		crasher:       crasher.NewCrasher(config.crasherEnabled),
 	}, nil
 }
 
@@ -118,6 +121,8 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 		answerMessage(ACK, message)
 		return nil
 	}
+
+	j.crasher.ThrowDiceAndForceExit("before processing message")
 
 	j.mutex.Lock()
 	_, exists := j.sideTable[msg.ClientId]
@@ -141,7 +146,9 @@ func (j *JoinGenericWorker) joinWithPayload(message amqp.Delivery) error {
 	j.mutex.Lock()
 	partialUpdate := j.conf.messageCallbackUpdateSideTable(j.sideTable[msg.ClientId], msg.Payload)
 	j.sideTable[msg.ClientId] = partialUpdate
+	j.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
 	clientStats.Add(msg.DataType, message.MessageId, true, false, "users", partialUpdate)
+	j.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
 	if err := j.Dump(clientStats, msg.ClientId); err != nil {
 		j.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
@@ -169,6 +176,8 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 		return nil
 	}
 
+	j.crasher.ThrowDiceAndForceExit("before processing message")
+
 	msg.QueryId = j.conf.queryId
 
 	if msg.IsEof {
@@ -179,7 +188,9 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	flattenedPayload := flattenPayload(msg.GroupedPayload)
 	j.mutex.Lock()
 	j.mainTable[msg.ClientId] = append(j.mainTable[msg.ClientId], flattenedPayload...)
+	j.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
 	clientStats.Add(msg.DataType, message.MessageId, true, false, "main", flattenedPayload)
+	j.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
 	if err := j.Dump(clientStats, msg.ClientId); err != nil {
 		j.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
@@ -187,6 +198,7 @@ func (j *JoinGenericWorker) joinWithSideTable(message amqp.Delivery) error {
 	}
 	j.mutex.Unlock()
 
+	j.crasher.ThrowDiceAndForceExit("after processing message - before ack")
 	answerMessage(ACK, message)
 	return nil
 }
@@ -200,6 +212,8 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 	}
 
 	clientStats := j.getClientStats(msg.ClientId)
+
+	j.crasher.ThrowDiceAndForceExit("before processing message")
 
 	if msg.IsEof {
 		j.log.Infof("Received EOF for %s. Ready to Join.", j.conf.ofType)
@@ -226,7 +240,9 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 		j.sideTable[msg.ClientId] = []string{}
 	}
 	j.sideTable[msg.ClientId] = append(j.sideTable[msg.ClientId], msg.Payload...)
+	j.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
 	clientStats.Add(msg.DataType, message.MessageId, true, false, "side", msg.Payload)
+	j.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
 	if err := j.Dump(clientStats, msg.ClientId); err != nil {
 		j.mutex.Unlock()
 		answerMessage(NACK_REQUEUE, message)
@@ -235,6 +251,7 @@ func (j *JoinGenericWorker) saveSideTable(message amqp.Delivery) error {
 	j.mutex.Unlock()
 
 	j.log.Infof("Side table size for client %s: %d", msg.ClientId, len(j.sideTable[msg.ClientId]))
+	j.crasher.ThrowDiceAndForceExit("after processing message - before ack")
 	answerMessage(ACK, message)
 	return nil
 }
@@ -251,9 +268,11 @@ func (j *JoinGenericWorker) Run() error {
 
 	j.watchMesh.Start()
 
+	j.crasher.ThrowDiceAndForceExit("before recover")
 	if err := j.Recover(); err != nil {
 		return fmt.Errorf("failed to recover state: %v", err)
 	}
+	j.crasher.ThrowDiceAndForceExit("after recover")
 
 	err := j.createExchangeHandlers()
 	if err != nil {
