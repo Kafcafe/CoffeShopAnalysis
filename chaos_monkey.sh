@@ -1,10 +1,12 @@
 #!/bin/bash
 
 # Chaos Monkey Script
-# Usage: ./caos_monkey.sh <docker_compose_file> <number_of_rounds> [sleep_seconds]
+# Usage: ./chaos_monkey.sh <docker_compose_file> <number_of_rounds> [sleep_seconds]
 
 if [ $# -lt 2 ] || [ $# -gt 3 ]; then
     echo "Usage: $0 <docker_compose_file> <number_of_rounds> [sleep_seconds]"
+    echo "Received arguments: $*"
+    echo "Number of arguments: $#"
     exit 1
 fi
 
