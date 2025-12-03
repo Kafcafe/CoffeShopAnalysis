@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"syscall"
@@ -29,13 +30,19 @@ type Client struct {
 	fileTypes    string
 	log          *logging.Logger
 
-	was_signaled bool
-	mutex        sync.Mutex
-	atomicWriter *atomicwritter.AtomicWriter
-	sessionId    string
+	was_signaled      bool
+	mutex             sync.Mutex
+	atomicWriter      *atomicwritter.AtomicWriter
+	sessionId         string
+	lastFileProcessed string
 }
 
 type ClientExecutionError error
+
+type PatternFiles struct {
+	Pattern string
+	Files   []string
+}
 
 func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 	protocol, err := NewProtocol(config.serverAddress)
@@ -122,7 +129,12 @@ func (c *Client) Run() ClientExecutionError {
 
 	//go c.ProcessResults()
 
-	err = c.protocol.sendAmountOfTopics(len(listfiles))
+	patternsToProcess, err := c.getFilesToProcess(listfiles, fileHandler)
+	if err != nil {
+		return c.return_err_if_not_signaled(err)
+	}
+
+	err = c.protocol.sendAmountOfTopics(len(patternsToProcess))
 	if err != nil {
 		c.log.Errorf("| action: Error sending amount of topics: %v | result: error", err)
 		return c.return_err_if_not_signaled(err)
@@ -133,12 +145,9 @@ func (c *Client) Run() ClientExecutionError {
 		return fmt.Errorf("error receiving ACK after sendAmountOfTopics: %v", err)
 	}
 
-	for _, pattern := range listfiles {
-		files, err := c.GetFilesWithPattern(pattern, fileHandler)
-		if err != nil {
-			c.log.Errorf("| action: Error getting files: %v | result: error", err)
-			return c.return_err_if_not_signaled(err)
-		}
+	for _, pf := range patternsToProcess {
+		pattern := pf.Pattern
+		files := pf.Files
 
 		if err = c.protocol.SendFilesTopic(pattern, len(files)); err != nil {
 			c.log.Errorf("| action: Error sending files topic: %v | result: error", err)
@@ -178,6 +187,7 @@ func (c *Client) performHandshake() error {
 
 	if reconnected {
 		c.log.Info("Reconnection successful")
+		c.lastFileProcessed = lastFileProcessed
 		return nil
 	}
 
@@ -295,6 +305,60 @@ func (c *Client) attemptReconnection(sessionId string) (reconnected bool, err er
 	}
 
 	return reconnected, nil
+}
+
+// getFilesToProcess retrieves, sorts, and filters files based on the recovery state.
+// It skips file types and files that have already been processed.
+//
+// Returns:
+//
+//	An array of PatternFiles containing the files to be processed for each pattern.
+//	An error if any file retrieval fails.
+func (c *Client) getFilesToProcess(listfiles []string, fileHandler *FileHandler) ([]PatternFiles, error) {
+	var patternsToProcess []PatternFiles
+	shouldSkip := c.lastFileProcessed != ""
+
+	for _, pattern := range listfiles {
+		// Retrieve files matching the pattern
+		files, err := c.GetFilesWithPattern(pattern, fileHandler)
+		if err != nil {
+			c.log.Errorf("| action: Error getting files: %v | result: error", err)
+			return nil, err
+		}
+		// Sort files to ensure deterministic order
+		sort.Strings(files)
+
+		if shouldSkip {
+			// Check if the last processed file is in this pattern
+			foundIndex := -1
+			for i, f := range files {
+				if f == c.lastFileProcessed {
+					foundIndex = i
+					break
+				}
+			}
+
+			if foundIndex != -1 {
+				c.log.Infof("Found last processed file %s in pattern %s. Resuming...", c.lastFileProcessed, pattern)
+				shouldSkip = false // Found the resume point, stop skipping
+
+				// Add remaining files in this pattern if any
+				if foundIndex+1 < len(files) {
+					remaining := files[foundIndex+1:]
+					patternsToProcess = append(patternsToProcess, PatternFiles{pattern, remaining})
+				} else {
+					c.log.Infof("No more files in pattern %s after recovery", pattern)
+				}
+			} else {
+				// Pattern precedes the one with the last processed file, so skip it
+				c.log.Infof("Skipping pattern %s (precedes last processed file)", pattern)
+			}
+		} else {
+			// Normal processing: add all files for this pattern
+			patternsToProcess = append(patternsToProcess, PatternFiles{pattern, files})
+		}
+	}
+	return patternsToProcess, nil
 }
 
 func (c *Client) GetFilesWithPattern(pattern string, fh *FileHandler) ([]string, error) {
