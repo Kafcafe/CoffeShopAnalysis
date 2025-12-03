@@ -8,7 +8,7 @@ import (
 	"os"
 )
 
-const FORCE_EXIT_PROBABILITY = 0.00005 // 0.005% per event
+const FORCE_EXIT_PROBABILITY = 0.00004 // 0.004% per event
 
 type Crasher struct {
 	rng     *mathrand.Rand
