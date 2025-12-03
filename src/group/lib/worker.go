@@ -2,6 +2,7 @@ package group
 
 import (
 	atomicwritter "common/atomic_writter"
+	"common/crasher"
 	"common/logger"
 	"common/middleware"
 	"common/watch_mesh"
@@ -45,6 +46,7 @@ type GroupByGenericWorker struct {
 	resultsChans  map[ClientId]map[DataType]chan middleware.MessageResultsResponse
 	watchMesh     *watch_mesh.WatchMesh
 	atomicWritter *atomicwritter.AtomicWriter
+	crasher       *crasher.Crasher
 }
 
 func NewGroupByGenericWorker(
@@ -89,6 +91,7 @@ func NewGroupByGenericWorker(
 		resultsChans:  make(map[ClientId]map[DataType]chan middleware.MessageResultsResponse),
 		watchMesh:     watch_mesh.NewWatchMesh(watchMeshConfig),
 		atomicWritter: atomicwritter.NewAtomicWriter(path),
+		crasher:       crasher.NewCrasher("Group", conf.id, conf.crasherEnabled),
 	}, nil
 }
 
@@ -129,6 +132,8 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 		return nil
 	}
 
+	g.crasher.ThrowDiceAndForceExit("before processing message")
+
 	if msg.IsEof {
 		go g.handleEofMessage(message, *msg)
 		return nil
@@ -136,7 +141,9 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 
 	g.mutex.Lock()
 	g.group.Add(msg.ClientId, msg.Payload)
+	g.crasher.ThrowDiceAndForceExit("after processing message - before stats update")
 	clientStats.Add(msg.DataType, message.MessageId, true, false)
+	g.crasher.ThrowDiceAndForceExit("after processing message - between stats update and save worker state")
 	dataType := msg.DataType
 	if err := g.dumpData(msg, message.MessageId, dataType); err != nil {
 		g.mutex.Unlock()
@@ -145,6 +152,7 @@ func (g *GroupByGenericWorker) groupMessage(message amqp.Delivery) error {
 	}
 	g.mutex.Unlock()
 
+	g.crasher.ThrowDiceAndForceExit("after processing message - before ack")
 	answerMessage(ACK, message)
 	return nil
 }
@@ -163,12 +171,15 @@ func (g *GroupByGenericWorker) Run() error {
 
 	g.watchMesh.Start()
 
+	g.crasher.ThrowDiceAndForceExit("before createExchangeHandlers")
 	err := g.createExchangeHandlers()
 	if err != nil {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
 	}
 
+	g.crasher.ThrowDiceAndForceExit("before recover")
 	g.recover()
+	g.crasher.ThrowDiceAndForceExit("after recover")
 
 	g.log.Infof("Starting to consume messages from %s", g.conf.prevStageSub)
 	g.exchangeHandlers.privateQueueSub.StartConsuming(g.groupMessage, g.errChan)
