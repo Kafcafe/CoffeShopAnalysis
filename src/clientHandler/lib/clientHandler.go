@@ -33,6 +33,54 @@ type ResultDelivery struct {
 	Delivery amqp.Delivery
 }
 
+const BATCH_SIZE = 1000
+
+type QueryBuffer struct {
+	items      []string
+	deliveries []amqp.Delivery
+}
+
+func (clh *ClientHandler) flushBuffer(queryId int, buffer *QueryBuffer, isEof bool) error {
+	if len(buffer.items) == 0 && !isEof {
+		return nil
+	}
+
+	clh.log.Infof("Flushing buffer for query %d | items: %d | isEof: %t", queryId, len(buffer.items), isEof)
+
+	clh.mtx.Lock()
+	err := clh.protocol.SendResults(uint32(queryId), buffer.items, isEof)
+	clh.mtx.Unlock()
+
+	if err != nil {
+		clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+		for _, delivery := range buffer.deliveries {
+			clh.answerMessage(NACK_REQUEUE, delivery)
+		}
+		return err
+	}
+
+	clh.log.Infof("Waiting for ACK from client for query %d", queryId)
+	err = clh.protocol.ReceiveAck()
+	if err != nil {
+		clh.log.Errorf("Error receiving ACK from client for query %d: %v", queryId, err)
+		for _, delivery := range buffer.deliveries {
+			clh.answerMessage(NACK_REQUEUE, delivery)
+		}
+		return err
+	}
+	clh.log.Infof("Verified ACK from client for query %d. Proceeding to AMQP ACK.", queryId)
+
+	for _, delivery := range buffer.deliveries {
+		clh.answerMessage(ACK, delivery)
+	}
+
+	// Clear buffer
+	buffer.items = []string{}
+	buffer.deliveries = []amqp.Delivery{}
+
+	return nil
+}
+
 type ClientHandler struct {
 	protocol                                *Protocol
 	log                                     *logging.Logger
@@ -117,8 +165,7 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	return nil
 }
 
-func (clh *ClientHandler) dispatchResultMessage(res *ResultDelivery) error {
-	clh.log.Infof("PROCESSING RESULT MESSAGE")
+func (clh *ClientHandler) bufferResult(res *ResultDelivery, buffers map[int]*QueryBuffer) error {
 	msg := res.Msg
 	queryId := msg.QueryId
 
@@ -126,6 +173,14 @@ func (clh *ClientHandler) dispatchResultMessage(res *ResultDelivery) error {
 		clh.log.Warningf("Unrecognized queryId")
 		return nil
 	}
+
+	if _, exists := buffers[queryId]; !exists {
+		buffers[queryId] = &QueryBuffer{
+			items:      []string{},
+			deliveries: []amqp.Delivery{},
+		}
+	}
+	buffer := buffers[queryId]
 
 	var cleanResult []string = msg.Payload
 	var err error = nil
@@ -139,38 +194,17 @@ func (clh *ClientHandler) dispatchResultMessage(res *ResultDelivery) error {
 
 	if err != nil {
 		clh.log.Errorf("Error cleaning result for query %d, sending results raw: %v", msg.QueryId, err)
-		clh.mtx.Lock()
-		err := clh.protocol.SendResults(uint32(queryId), msg.Payload, msg.IsEof)
-		clh.mtx.Unlock()
-		if err != nil {
-			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
-		}
-		clh.answerMessage(NACK_REQUEUE, res.Delivery)
-		return err
+		cleanResult = msg.Payload
 	}
 
-	clh.mtx.Lock()
-	err = clh.protocol.SendResults(uint32(queryId), cleanResult, msg.IsEof)
-	clh.mtx.Unlock()
+	buffer.items = append(buffer.items, cleanResult...)
+	buffer.deliveries = append(buffer.deliveries, res.Delivery)
 
-	if err != nil {
-		clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
-		clh.answerMessage(NACK_REQUEUE, res.Delivery)
-		return err
+	// Check if we need to flush
+	if len(buffer.items) >= BATCH_SIZE || msg.IsEof {
+		return clh.flushBuffer(queryId, buffer, msg.IsEof)
 	}
 
-	if msg.IsEof {
-		clh.log.Infof("Waiting for ACK from client for query %d", queryId)
-		err := clh.protocol.ReceiveAck()
-		if err != nil {
-			clh.log.Errorf("Error receiving ACK from client for query %d: %v", queryId, err)
-			clh.answerMessage(NACK_REQUEUE, res.Delivery)
-			return err
-		}
-		clh.log.Infof("Received ACK from client for query %d", queryId)
-	}
-
-	clh.answerMessage(ACK, res.Delivery)
 	return nil
 }
 
@@ -184,6 +218,9 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 		4: false,
 	}
 
+	// Initialize buffers
+	buffers := make(map[int]*QueryBuffer)
+
 	// If all channels flagged EOF -> break out
 	for !eofFlags[1] || !eofFlags[2] || !eofFlags[3] || !eofFlags[4] {
 		select {
@@ -196,7 +233,7 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 				eofFlags[res.Msg.QueryId] = true
 			}
 
-			err := clh.dispatchResultMessage(&res)
+			err := clh.bufferResult(&res, buffers)
 			if err != nil {
 				return
 			}

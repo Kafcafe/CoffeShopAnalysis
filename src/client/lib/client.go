@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
-	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -475,16 +474,34 @@ func (c *Client) ProcessResults() error {
 			c.log.Errorf("action: Error receiving results: %v, result: error", err)
 		}
 
+		// Persist results immediately using existing atomic writer
+		if len(lines) > 0 {
+			c.results[int(query)] = append(c.results[int(query)], lines...)
+
+			// Use existing atomic writer to persist all accumulated results for this query
+			// Metadata format: [clientId, "results_qX"]
+			metadata := []string{c.Id, fmt.Sprintf("results_q%d", query)}
+			if err := c.atomicWriter.WriteLines(c.results[int(query)], metadata); err != nil {
+				c.log.Errorf("Failed to persist results for query %d, NOT sending ACK: %v", query, err)
+				continue // Do not send ACK if persistence fails
+			}
+
+			// Send ACK for this batch
+			if err := c.protocol.SendAck(); err != nil {
+				c.log.Errorf("Error sending ACK for query %d: %v", query, err)
+			}
+		}
+
 		if finish && !finishedAll {
 			c.log.Infof("Finished receiving results for query %d | results: %v", query, len(c.results[int(query)]))
-			c.LogFinishQuery(int(query))
+			// Final ACK for EOF message (which might be empty of lines but signals end)
+			// We already persisted lines above if any.
 			if err := c.protocol.SendAck(); err != nil {
 				c.log.Errorf("Error sending ACK for query %d: %v", query, err)
 			}
 			continue
 		} else if finish && finishedAll {
 			c.log.Debugf("Finished receiving results for query %d", query)
-			c.LogFinishQuery(int(query))
 			if err := c.protocol.SendAck(); err != nil {
 				c.log.Errorf("Error sending ACK for query %d: %v", query, err)
 			}
@@ -493,42 +510,9 @@ func (c *Client) ProcessResults() error {
 		}
 
 		c.log.Debugf("[CLIENT] | action: received results for query %d | results: %s | of len: %d", query, strings.Join(lines, ", "), len(lines))
-		//c.log.Infof("[CLIENT] | action: received results for query %d | of len: %d", query, len(lines))
-
-		c.results[int(query)] = append(c.results[int(query)], lines...)
-		c.log.Debug(c.results)
 	}
 
 	return nil
-}
-
-func (c *Client) LogFinishQuery(query int) {
-	if query <= 0 || query >= 5 {
-		return
-	}
-
-	c.log.Infof("| action: Finished receiving results for query %d", query)
-	savePath := fmt.Sprintf("./results/results_q%d_%s.txt", query, c.Id)
-
-	if err := WriteLines(c.results[query], savePath); err != nil {
-		c.log.Errorf("| action: Error writing results for query %d: %v", query, err)
-	}
-}
-
-// WriteLines overwrites the file at filePath with the given lines,
-// creating parent directories if needed.
-func WriteLines(lines []string, filePath string) error {
-	// Ensure parent directory exists
-
-	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		return fmt.Errorf("| action: Error while creating results folder %v", err)
-	}
-
-	// Join lines with newline separator
-	content := strings.Join(lines, "\n")
-
-	// Write or overwrite the file
-	return os.WriteFile(filePath, []byte(content), 0644)
 }
 
 func (c *Client) Shutdown() {
