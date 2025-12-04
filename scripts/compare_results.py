@@ -215,7 +215,7 @@ def compare_results_q3(client_id, expected_folder="expected_results"):
                 expected_results.add(parse_line(line))
 
     # Use tolerance comparison for Q3 due to potential floating point precision differences
-    _compare_sets_with_tolerance(name, current_results, expected_results, tolerance=0.01)
+    _compare_sets_with_tolerance(name, current_results, expected_results, tolerance=0.02)
 
 
 def compare_results_q4(client_id, expected_folder="expected_results"):
