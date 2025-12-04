@@ -108,7 +108,7 @@ def compare_results_q1(client_id, expected_folder="expected_results"):
     current_results = f"./results/results_q1_{client_id}.txt"
     
     if expected_folder == "expected_results_full":
-        expected_results = f"./scripts/expected_results_full/results_q1_{client_id}.txt"
+        expected_results = f"./scripts/expected_results_full/results_q1.txt"
         lines_expected_results = set()
         lines_current_results = set()
 
@@ -149,7 +149,7 @@ def compare_results_q2(client_id, expected_folder="expected_results"):
     current_results_path = f"./results/results_q2_{client_id}.txt"
     
     if expected_folder == "expected_results_full":
-        expected_results_path = f"./scripts/expected_results_full/results_q2_{client_id}.txt"
+        expected_results_path = f"./scripts/expected_results_full/results_q2.txt"
 
         current_results = set()
         expected_results = set()
@@ -187,7 +187,7 @@ def compare_results_q3(client_id, expected_folder="expected_results"):
         return f"{semester},{store},{float(total):.2f}"
 
     if expected_folder == "expected_results_full":
-        expected_results_path = f"./scripts/expected_results_full/results_q3_{client_id}.txt"
+        expected_results_path = f"./scripts/expected_results_full/results_q3.txt"
 
         current_results = set()
         expected_results = set()
@@ -229,7 +229,7 @@ def compare_results_q4(client_id, expected_folder="expected_results"):
         return f"{store},{bday}"
 
     if expected_folder == "expected_results_full":
-        expected_results_path = f"./scripts/expected_results_full/results_q4_{client_id}.txt"
+        expected_results_path = f"./scripts/expected_results_full/results_q4.txt"
 
         current_results = set()
         expected_results = set()
