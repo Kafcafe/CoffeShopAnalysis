@@ -86,9 +86,6 @@ func main() {
 		config.GetInt("batch.maxAmount"),
 	)
 
-	logger.Infof("Client %s starting in %d seconds", clientId, START_DELAY_SECONDS)
-	time.Sleep(time.Second * START_DELAY_SECONDS)
-
 	client := client.NewClient(clientConfig, clientId, filetypes)
 
 	if client == nil {
