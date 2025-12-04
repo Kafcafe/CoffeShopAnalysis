@@ -24,21 +24,22 @@ Distributed coffee shop data analysis system using Docker, RabbitMQ, and Go.
    1. [End2End Testing](#End2End-Testing)
    1. [Cleanup Commands](#Cleanup-Commands)
    1. [Client Restart Test](#Client-Restart-Test)
+1. [Utils](#utils)
 
 ## Dependencies and Setup
 
-You don't really need to have `golang` installed to run the project given all the nodes are Dockerized. `golang` is required to be installed on the local machine only for certain tasks (e.g. running tests natively or running `go mod tidy` manually).
+You don't really need to have `golang` installed to run the project since all the nodes are Dockerized. `golang` is required to be installed on the local machine only for certain tasks (e.g. running tests natively or running `go mod tidy` manually).
 
-You need to have the next dependencies installed:
+You need to have the following dependencies installed:
 
 - **Docker**: to run each container of each node in the system in a virtual machine with all the system requirements.
-- **Docker Compose v2**: to orchestrate and simplify the boot up of the system and configure the environment variables in a proper way. You can distinguish if you have docker compose v1 or v2 based on the command name: `docker-compose` is v1 and `docker compose` is v2.
+- **Docker Compose v2**: to orchestrate and simplify the startup of the system and configure the environment variables properly. You can distinguish if you have docker compose v1 or v2 based on the command name: `docker-compose` is v1 and `docker compose` is v2.
 - **Make**: to simplify and automate the commands to run.
 - **Python v3.12+**: to run the end2end tests that exercise the entire system. A basic version of Python is needed as well to generate the Docker Compose YAML file.
 
 ## Dataset
 
-The system is designed to work with the next Kaggle dataset: https://www.kaggle.com/datasets/geraldooizx/g-coffee-shop-transaction-202307-to-202506/data, from now on reffered to as **the full dataset**.
+The system is designed to work with the following Kaggle dataset: https://www.kaggle.com/datasets/geraldooizx/g-coffee-shop-transaction-202307-to-202506/data, from now on referred to as **the full dataset**.
 
 Some info regarding the data:
 
@@ -246,7 +247,7 @@ First of all you need to have the dataset in a directory called `testData` in th
 └── vouchers.csv
 ```
 
-The exected results are located at `./tests/expected_results`.
+The expected results are located at `./tests/expected_results`.
 
 #### Example on how to test the system, run these commands in order:
 
@@ -339,3 +340,141 @@ This test verifies that the system produces consistent results when a client is 
 - `make clean-all-images` - Remove ALL Docker images (use with caution)
 - `make clean-system` - Complete system cleanup including volumes
   - Removes everything: containers, images, volumes, networks
+
+# Utils
+
+In both the root and scripts directories, there are tools that allow testing of the system. 
+
+## Chaos Monkey
+
+The Chaos Monkey is a fault injection tool designed to test the system's resilience by randomly terminating containers during execution. This tool helps validate the system's fault tolerance capabilities by simulating real-world failures and ensuring the system can recover gracefully.
+
+The chaos monkey script (`chaos_monkey.sh`) can be used to randomly kill containers while the system is running, allowing you to observe how the system handles unexpected failures and validates the robustness of the distributed processing pipeline. 
+
+In order to use this tool, you should run the system first and then invoke the script with:
+
+    ./chaos_monkey.sh <docker compose file> <amount of rounds> [optional: time between attacks]
+    ./chaos_monkey.sh docker-compose-dev.yaml 5
+
+Default time between attacks is 15 seconds
+
+This script will attack filters, groupers, and joins of all types. 
+ 
+
+## Boom Script
+
+The Boom script is a targeted fault injection tool that allows precise control over container termination for testing system resilience. Unlike the Chaos Monkey which attacks containers automatically in sequences, Boom provides manual control for strategic testing scenarios.
+
+### Features
+
+- **Multiple operation modes**: random, target, and group-based container termination
+- **Smart filtering**: Automatically excludes critical containers (RabbitMQ, clients) from random selection
+- **Group operations**: Target multiple instances of the same service type
+- **Docker Compose integration**: Works with any Docker Compose file
+
+### Usage
+
+```shell
+./scripts/boom.sh [options]
+```
+
+**Available Options:**
+
+- `-t <container_name>` - Target a specific container by name
+- `--mode <mode>` - Operation mode (random, target, group)
+- `-f <compose_file>` - Specify Docker Compose file (defaults to docker-compose-dev.yaml)
+
+### Operation Modes
+
+**1. Random Mode (default)**
+```shell
+./scripts/boom.sh
+./scripts/boom.sh --mode random
+```
+Randomly selects and kills a container from eligible services (excludes RabbitMQ and clients).
+
+**2. Target Mode**
+```shell
+./scripts/boom.sh -t filter-year1
+./scripts/boom.sh --mode target -t group-semester2
+```
+Kills a specific container by name. Mode is automatically inferred when using `-t`.
+
+**3. Group Mode**
+```shell
+./scripts/boom.sh --mode group -t filter-year
+```
+Randomly kills one container from a group of services with the same base name (e.g., filter-year1, filter-year2, etc.).
+
+### Examples
+
+```shell
+# Kill a random eligible container
+./scripts/boom.sh
+
+# Kill a specific container
+./scripts/boom.sh -t filter-amount2
+
+# Kill a random container from the year filter group
+./scripts/boom.sh --mode group -t filter-year
+
+# Use with custom compose file
+./scripts/boom.sh -f custom-compose.yaml -t join-items1
+```
+
+### Safety Features
+
+- **Protected containers**: RabbitMQ and client containers are excluded from random selection to maintain system core functionality
+- **Group validation**: Ensures multiple containers exist in a group before random selection
+- **Error handling**: Graceful handling of invalid targets or missing containers
+
+## Compare Results
+
+The Compare Results tool validates the correctness of the distributed system's output by comparing actual results against expected results. This tool is essential for ensuring data integrity and verifying that the system produces accurate analytics across all four queries.
+
+### Features
+
+- **Multi-query validation**: Compares results for all four analytical queries (Q1-Q4)
+- **Detailed difference reporting**: Shows exactly which results differ between actual and expected outputs
+- **Error tolerance**: Continues validation even if individual queries fail
+- **Format normalization**: Handles floating-point precision and formatting differences automatically
+
+### Usage
+
+```shell
+./scripts/compare_results.sh <client_id>
+```
+
+or
+
+```shell
+python3 ./scripts/compare_results.py <client_id>
+```
+
+**Parameters:**
+- `<client_id>` - The client ID to validate results for (e.g., 1, 2, 3)
+
+### Examples
+
+```shell
+# Compare results for client 1
+./scripts/compare_results.sh 1
+
+# Compare results for client 3
+python3 ./scripts/compare_results.py 3
+
+# Example output showing successful validation
+Comparando resultados para client_id 1
+✅ results_q1: Todos los resultados coinciden (8 filas).
+✅ results_q2_best_sellers: Todos los resultados coinciden (24 filas).
+✅ results_q3: Todos los resultados coinciden (16 filas).
+✅ results_q4: Todos los resultados coinciden (40 filas).
+```
+
+### File Structure
+
+The tool expects the following file structure:
+- **Actual results**: `./results/results_q{1-4}_{client_id}.txt`
+- **Expected results**: `./scripts/expected_results/results_q{1-4}.csv`
+
+
