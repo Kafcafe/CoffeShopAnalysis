@@ -146,7 +146,11 @@ func (g *GroupByGenericWorker) sendResultsRequest(message amqp.Delivery) error {
 	currentMapString := g.group.Get(msg.ClientId).ToMapString()
 	g.mutex.Unlock()
 
-	g.sendResultsRequestBatched(msg, currentMapString, BATCH_SIZE_GROUPED_MESSAGE)
+	if err := g.sendResultsRequestBatched(msg, currentMapString, BATCH_SIZE_GROUPED_MESSAGE); err != nil {
+		g.log.Errorf("Failed to send results request batched: %v", err)
+		// g.errChan <- err
+		return err
+	}
 
 	g.watchMesh.TryCrash("gather results - while sending results")
 

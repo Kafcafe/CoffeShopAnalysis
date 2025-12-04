@@ -3,6 +3,7 @@ package group
 import (
 	"common/middleware"
 	"fmt"
+	"time"
 
 	amqp "github.com/rabbitmq/amqp091-go"
 )
@@ -55,7 +56,7 @@ func (g *GroupByGenericWorker) createExchangeHandlers() error {
 	for i := range g.conf.count {
 		privateQueuePubName := fmt.Sprintf("group.%s.private.%d", g.conf.ofType, i+1)
 		g.log.Infof("Creating private queue PUB handler for group %s: %s", g.conf.id, privateQueuePubName)
-		queue, err := g.middlewareHandler.CreateQueue(privateQueuePubName)
+		queue, err := g.privateChannels[i+1].CreateQueue(privateQueuePubName)
 		if err != nil {
 			return fmt.Errorf("error creating private queue PUB for group %s: %v", g.conf.id, err)
 		}
@@ -102,10 +103,10 @@ func (g *GroupByGenericWorker) createExchangeHandlers() error {
 }
 
 func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) middleware.MessageMiddlewareError {
-	// declare queue many to one (many publishers one consumer)
+	// Use dedicated queue channel to avoid AMQP concurrency issues
 	g.middlewareMutex.Lock()
 	defer g.middlewareMutex.Unlock()
-	queue, err := g.middlewareHandler.CreateQueue(queueName)
+	queue, err := g.queueChannel.CreateQueue(queueName)
 
 	if err != nil {
 		g.log.Errorf("Failed to declare queue %s: %v", queueName, err)
@@ -120,6 +121,7 @@ func (g *GroupByGenericWorker) SendToQueue(queueName string, message []byte) mid
 }
 
 func (g *GroupByGenericWorker) sendBytesNextStage(msgBytes []byte) error {
+	// Use dedicated send channel to avoid AMQP concurrency issues
 	g.middlewareMutex.Lock()
 	sendErr := g.exchangeHandlers.nextStagePub.Send(msgBytes)
 	g.middlewareMutex.Unlock()
@@ -131,10 +133,24 @@ func (g *GroupByGenericWorker) sendBytesNextStage(msgBytes []byte) error {
 
 func (g *GroupByGenericWorker) dispatchMessage(message amqp.Delivery) error {
 	message_id, destination_id := middleware.GetMessageId(message.Body, g.conf.count)
-	err := g.exchangeHandlers.privateQueuesPub[destination_id].SendWithId(message.Body, message_id)
+
+	// Retry mechanism for AMQP operations with backoff
+	var err middleware.MessageMiddlewareError
+	for retries := 0; retries < 3; retries++ {
+		err = g.exchangeHandlers.privateQueuesPub[destination_id].SendWithId(message.Body, message_id)
+		if err == middleware.MessageMiddlewareSuccess {
+			break
+		}
+		g.log.Warningf("Failed to dispatch message (attempt %d/3): %v", retries+1, err)
+		if retries < 2 {
+			// Exponential backoff: 1s, 2s, then give up
+			time.Sleep(time.Duration(retries+1) * time.Second)
+		}
+	}
+
 	if err != middleware.MessageMiddlewareSuccess {
 		answerMessage(NACK_REQUEUE, message)
-		return fmt.Errorf("failed to dispatch message to private queue %d: %v", destination_id, err)
+		return fmt.Errorf("failed to dispatch message to private queue %d after 3 retries: %v", destination_id, err)
 	}
 	g.watchMesh.TryCrash("dispatch - dispatched - before ack")
 	answerMessage(ACK, message)
