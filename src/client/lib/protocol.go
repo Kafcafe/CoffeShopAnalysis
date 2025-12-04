@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"net"
+	"sync"
 
 	"github.com/op/go-logging"
 )
@@ -25,6 +26,8 @@ const (
 	Wait                = 0x0C
 	Begin               = 0x0D
 	Ack                 = 0x0E
+	AmountOfDataTypes   = 0x0F
+	FilesDataType       = 0x10
 
 	SIZEOF_UINT32 = 4
 	SIZEOF_UINT8  = 1
@@ -36,6 +39,7 @@ type Protocol struct {
 	finishedAllQueries map[int]bool
 	log                *logging.Logger
 	ackChan            chan bool
+	mutex              sync.Mutex
 }
 
 func NewProtocol(serverAddress string) (*Protocol, error) {
@@ -57,10 +61,18 @@ func NewProtocol(serverAddress string) (*Protocol, error) {
 		},
 		log:     logger,
 		ackChan: make(chan bool),
+		mutex:   sync.Mutex{},
 	}, nil
 }
 
 func (p *Protocol) sendAmountOfTopics(amount int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if err := p.sendAll([]byte{AmountOfDataTypes}); err != nil {
+		return err
+	}
+
 	lenBytes := p.htonsUint32(uint32(amount))
 
 	if err := p.sendAll(lenBytes); err != nil {
@@ -71,6 +83,13 @@ func (p *Protocol) sendAmountOfTopics(amount int) error {
 }
 
 func (p *Protocol) SendFilesTopic(pattern string, amount int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	if err := p.sendAll([]byte{FilesDataType}); err != nil {
+		return err
+	}
+
 	dataLen := uint32(len(pattern))
 	lenBytes := p.htonsUint32(dataLen)
 
@@ -91,6 +110,8 @@ func (p *Protocol) SendFilesTopic(pattern string, amount int) error {
 }
 
 func (p *Protocol) SendBatch(batch *Batch, batchCount int) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
 
 	opCode := []byte{MoreBatches}
 
@@ -155,6 +176,7 @@ func (p *Protocol) Listen() (queryCode uint32, lines []string, finish bool, err 
 		}
 
 		if isFinished {
+			p.log.Infof("Finished receiving all lines for query %d", queryNumber)
 			allFinished := p.markQueryFinished(queryNumber)
 			return queryNumber, nil, true, nil, allFinished
 		}
@@ -163,8 +185,7 @@ func (p *Protocol) Listen() (queryCode uint32, lines []string, finish bool, err 
 		if err != nil {
 			return 0, nil, true, err, false
 		}
-
-		p.log.Debug("Finished receiving all lines for query ", queryNumber)
+		p.log.Infof("Received %d lines for query %d", len(lines), queryNumber)
 
 		return queryNumber, lines, false, nil, false
 	}
@@ -234,6 +255,9 @@ func (p *Protocol) readQueryResults() ([]string, error) {
 }
 
 func (p *Protocol) SendReconnectionRequest(id string) error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
 	dataLen := uint32(len(id))
 	lenBytes := p.htonsUint32(dataLen)
 
@@ -246,6 +270,9 @@ func (p *Protocol) SendReconnectionRequest(id string) error {
 }
 
 func (p *Protocol) finishBatch() error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
 	code := []byte{EndOfBatch}
 	if err := p.sendAll(code); err != nil {
 		return err
@@ -340,4 +367,12 @@ func (p *Protocol) ReceiveReconnectionResponse() (byte, error) {
 func (p *Protocol) ReceiveAck() error {
 	<-p.ackChan
 	return nil
+}
+
+func (p *Protocol) SendAck() error {
+	p.mutex.Lock()
+	defer p.mutex.Unlock()
+
+	p.log.Debug("Sent ACK")
+	return p.sendAll([]byte{Ack})
 }

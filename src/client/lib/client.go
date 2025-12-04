@@ -153,9 +153,11 @@ func (c *Client) Run() ClientExecutionError {
 		}
 	}
 
-	c.atomicWriter.CleanAll()
+	c.log.Info("All files processed. Waiting for results...")
 
 	<-c.finishedChan
+	c.log.Info("All results received. Shutting down")
+	c.atomicWriter.CleanAll()
 	c.Shutdown()
 	return nil
 }
@@ -451,19 +453,27 @@ func (c *Client) ProcessResults() error {
 		if finish && !finishedAll {
 			c.log.Infof("Finished receiving results for query %d | results: %v", query, len(c.results[int(query)]))
 			c.LogFinishQuery(int(query))
+			if err := c.protocol.SendAck(); err != nil {
+				c.log.Errorf("Error sending ACK for query %d: %v", query, err)
+			}
 			continue
 		} else if finish && finishedAll {
-			c.log.Debug("Finished receiving results for query %d", query)
+			c.log.Debugf("Finished receiving results for query %d", query)
 			c.LogFinishQuery(int(query))
+			if err := c.protocol.SendAck(); err != nil {
+				c.log.Errorf("Error sending ACK for query %d: %v", query, err)
+			}
 			c.finishedChan <- true
 			return nil
 		}
 
 		c.log.Debugf("[CLIENT] | action: received results for query %d | results: %s | of len: %d", query, strings.Join(lines, ", "), len(lines))
+		c.log.Infof("[CLIENT] | action: received results for query %d | of len: %d", query, len(lines))
 
 		c.results[int(query)] = append(c.results[int(query)], lines...)
 		c.log.Debug(c.results)
 	}
+
 	return nil
 }
 

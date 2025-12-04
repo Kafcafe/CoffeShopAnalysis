@@ -55,6 +55,8 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 
 	loggerPrefix := fmt.Sprintf("[CL_H-%s]", clientId.Short)
 
+	protocol.StartListening()
+
 	return &ClientHandler{
 		protocol:                                protocol,
 		log:                                     logger.GetLoggerWithPrefix(loggerPrefix),
@@ -143,6 +145,16 @@ func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message) error {
 		clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
 	}
 
+	if msg.IsEof {
+		clh.log.Infof("Waiting for ACK from client for query %d", queryId)
+		err := clh.protocol.ReceiveAck()
+		if err != nil {
+			clh.log.Errorf("Error receiving ACK from client for query %d: %v", queryId, err)
+			return err
+		}
+		clh.log.Infof("Received ACK from client for query %d", queryId)
+	}
+
 	return nil
 }
 
@@ -226,26 +238,12 @@ func (clh *ClientHandler) Handle() error {
 // handleDataType receives and processes a single data type, including its files.
 // Returns the data type name, number of files, and any error.
 func (clh *ClientHandler) handleDataType() (dataType string, amountOfFiles int, err error) {
-	dataType, err = clh.protocol.ReceiveFilesDataType()
+	dataType, amountOfFiles, err = clh.protocol.ReceiveFilesDataTypeFromChannel()
 	if err != nil {
 		return dataType, 0, fmt.Errorf("error receiving files dataType: %v", err)
 	}
 
-	clh.log.Infof("Received files dataType: %s", dataType)
-
-	clh.mtx.Lock()
-	err = clh.protocol.SendAck()
-	clh.mtx.Unlock()
-	if err != nil {
-		return dataType, 0, fmt.Errorf("error sending ACK: %v", err)
-	}
-
-	amountOfFiles, err = clh.protocol.RcvAmountOfFiles()
-	clh.log.Infof("Amount of files to receive for dataType %s: %d", dataType, amountOfFiles)
-
-	if err != nil {
-		return dataType, 0, fmt.Errorf("error receiving amount of files for dataType %s: %v", dataType, err)
-	}
+	clh.log.Infof("Received files dataType: %s with amount: %d", dataType, amountOfFiles)
 
 	clh.mtx.Lock()
 	err = clh.protocol.SendAck()
@@ -377,7 +375,7 @@ func (clh *ClientHandler) processFile(dataType string) error {
 	for receivingFile {
 		clh.log.Debugf("Receiving batch %d for dataType %s", batchCounter, dataType)
 
-		batch, isLastBatch, err := clh.protocol.ReceiveBatch()
+		batch, isLastBatch, err := clh.protocol.ReceiveBatchFromChannel()
 		if err != nil {
 			return fmt.Errorf("error receiving file batch for dataType %s: %v", dataType, err)
 		}
@@ -447,17 +445,21 @@ func (clh *ClientHandler) Shutdown() error {
 
 func (clh *ClientHandler) handleHandshake() error {
 	for {
-		opCode, err := clh.protocol.ReceiveOpCode()
+		msg, err := clh.protocol.ReceiveHandshakeMessage()
 		if err != nil {
 			return fmt.Errorf("error receiving operation code: %v", err)
 		}
 
-		switch opCode {
+		switch msg.OpCode {
 		case ConnectionRequest:
 			return clh.handleConnectionRequest()
 
 		case ReconnectionRequest:
-			reconnected, err := clh.handleReconnectionRequest()
+			payload, ok := msg.Payload.(string)
+			if !ok {
+				return fmt.Errorf("expected string payload for ReconnectionRequest, got %T", msg.Payload)
+			}
+			reconnected, err := clh.handleReconnectionRequest(payload)
 			if err != nil {
 				return err
 			}
@@ -467,7 +469,7 @@ func (clh *ClientHandler) handleHandshake() error {
 			// If not reconnected, loop to receive next OpCode
 
 		default:
-			return fmt.Errorf("unexpected operation code: %d", opCode)
+			return fmt.Errorf("unexpected operation code: %d", msg.OpCode)
 		}
 	}
 }
@@ -498,11 +500,7 @@ func (clh *ClientHandler) handleConnectionRequest() error {
 	return nil
 }
 
-func (clh *ClientHandler) handleReconnectionRequest() (reconnected bool, err error) {
-	clientId, err := clh.protocol.RcvClientId()
-	if err != nil {
-		return false, fmt.Errorf("error receiving client ID for reconnection: %v", err)
-	}
+func (clh *ClientHandler) handleReconnectionRequest(clientId string) (reconnected bool, err error) {
 
 	if clh.sessionManager.ValidateSession(clientId) {
 		clh.log.Infof("Reconnection accepted for client %s", clientId)
@@ -529,7 +527,7 @@ func (clh *ClientHandler) handleReconnectionRequest() (reconnected bool, err err
 }
 
 func (clh *ClientHandler) processDataTypes() (string, error) {
-	amountOfdataTypes, err := clh.protocol.rcvAmountOfDataTypes()
+	amountOfdataTypes, err := clh.protocol.ReceiveAmountOfDataTypesFromChannel()
 	if err != nil {
 		return "", fmt.Errorf("error receiving amount of dataTypes: %v", err)
 	}
