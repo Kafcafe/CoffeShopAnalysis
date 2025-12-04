@@ -157,6 +157,8 @@ func (a *Acceptor) Run() error {
 	a.log.Info("Running and ready to accept connections")
 	go a.handleSignal()
 
+	a.startHealthcheck()
+
 	for a.isRunning {
 		a.log.Info("Waiting for a new client connection...")
 
@@ -218,6 +220,29 @@ func (a *Acceptor) removeClients() {
 			delete(a.currClient, id)
 		}
 	}
+}
+
+func (a *Acceptor) startHealthcheck() {
+	port := ":9001"
+	listener, err := net.Listen(TRANSPORT_LAYER_PROTO, port)
+	if err != nil {
+		a.log.Fatalf("Failed to start health port on %s: %v", port, err)
+		a.Shutdown()
+		return
+	}
+
+	a.log.Infof("Healthcheck port listening on %s", port)
+
+	go func() {
+		for a.isRunning {
+			conn, err := listener.Accept()
+			if err != nil {
+				a.log.Warningf("Healthcheck accept error: %v", err)
+				continue
+			}
+			conn.Close() // enough for healthcheck
+		}
+	}()
 }
 
 // Shutdown gracefully stops the acceptor, closing the listener and current client.
