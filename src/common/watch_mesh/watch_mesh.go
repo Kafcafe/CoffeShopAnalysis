@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"math/rand"
 	"net"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -233,11 +234,11 @@ func (wm *WatchMesh) validateLeader(leaderID NodeId, leaderAddr *net.UDPAddr) {
 	wm.validateFromChan(leaderID)
 }
 
-// compareNodeIDs compares two NodeIds based on the last character as a number.
+// compareNodeIDs compares two NodeIds based on numeric digits in the string.
 // Returns:
 //
 //	-1 if a < b
-//	 0 if a == b or if either ID is empty or the last character is not a digit
+//	 0 if a == b or if either ID is empty or contains no digits
 //	 1 if a > b
 func compareNodeIDs(a, b NodeId) int {
 	aStr := string(a)
@@ -247,11 +248,16 @@ func compareNodeIDs(a, b NodeId) int {
 		return 0
 	}
 
-	aLast := aStr[len(aStr)-1]
-	bLast := bStr[len(bStr)-1]
+	// Extraer solo los dígitos de cada string
+	aDigits := extractDigits(aStr)
+	bDigits := extractDigits(bStr)
 
-	aNum, errA := strconv.Atoi(string(aLast))
-	bNum, errB := strconv.Atoi(string(bLast))
+	if aDigits == "" || bDigits == "" {
+		return 0
+	}
+
+	aNum, errA := strconv.Atoi(aDigits)
+	bNum, errB := strconv.Atoi(bDigits)
 
 	if errA != nil || errB != nil {
 		return 0
@@ -264,6 +270,20 @@ func compareNodeIDs(a, b NodeId) int {
 	}
 
 	return 0
+}
+
+// extractDigits extrae solo los caracteres numéricos de un string usando regex
+func extractDigits(s string) string {
+	re := regexp.MustCompile(`\d+`)
+	matches := re.FindAllString(s, -1)
+	return strings.Join(matches, "")
+}
+
+// extractNonDigits extrae solo los caracteres no numéricos de un string usando regex
+func extractNonDigits(s string) string {
+	re := regexp.MustCompile(`\D+`)
+	matches := re.FindAllString(s, -1)
+	return strings.Join(matches, "")
 }
 
 // SetupPeers configures the peer addresses from the configuration
@@ -1316,6 +1336,9 @@ func (wm *WatchMesh) updatePeerAddress(id NodeId, addr *net.UDPAddr) {
 
 // isMessageFromSameNodeType checks if the sender belongs to the same node type
 func (wm *WatchMesh) isMessageFromSameNodeType(senderID string) bool {
-	expectedPrefix := string(wm.config.CurrentNodeID[:len(wm.config.CurrentNodeID)-1])
-	return strings.HasPrefix(senderID[:len(senderID)-1], expectedPrefix)
+	// Extraer solo los caracteres no numéricos de ambos IDs para comparar tipos
+	expectedNonDigits := extractNonDigits(string(wm.config.CurrentNodeID))
+	senderNonDigits := extractNonDigits(senderID)
+
+	return expectedNonDigits == senderNonDigits
 }
