@@ -223,7 +223,7 @@ func (a *Acceptor) removeClients() {
 }
 
 func (a *Acceptor) startHealthcheck() {
-	port := ":9191"
+	port := ":9001"
 	listener, err := net.Listen(TRANSPORT_LAYER_PROTO, port)
 	if err != nil {
 		a.log.Fatalf("Failed to start health port on %s: %v", port, err)

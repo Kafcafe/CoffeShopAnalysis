@@ -76,7 +76,7 @@ CLIENT_HANDLER_TEMPLATE = """
         volumes:
           - ./src/clientHandler/config.yaml:/config.yaml
         healthcheck:
-          test: ["CMD-SHELL", "nc -z localhost 9191"]
+          test: ["CMD-SHELL", "nc -z localhost 9001"]
           interval: 3s
           timeout: 1s
           retries: 10
