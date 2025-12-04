@@ -17,6 +17,7 @@ type WatchMeshConfig struct {
 	MaxResurrectionAttempts  int
 	RandomSeedForJitter      int64
 	CrasherEnabled           bool
+	CrasherProb              float64
 }
 
 // NewWatchMeshConfig creates a new WatchMeshConfig with the provided parameters
@@ -34,6 +35,7 @@ func NewWatchMeshConfig(
 	maxResurrectionAttempts int,
 	randomSeedForJitter int64,
 	crasherEnabled bool,
+	crasherProb float64,
 ) WatchMeshConfig {
 
 	return WatchMeshConfig{
@@ -50,6 +52,7 @@ func NewWatchMeshConfig(
 		MaxResurrectionAttempts:  maxResurrectionAttempts,
 		RandomSeedForJitter:      randomSeedForJitter,
 		CrasherEnabled:           crasherEnabled,
+		CrasherProb:              crasherProb,
 	}
 }
 
@@ -63,6 +66,7 @@ type BasicWatchMeshConfig struct {
 	MaxResurrectionAttempts         int
 	RandomSeedForJitter             int64
 	CrasherEnabled                  bool
+	CrasherProb                     float64
 }
 
 // NewBasicWatchMeshConfig creates a new BasicWatchMeshConfig with the provided parameters
@@ -76,6 +80,7 @@ func NewBasicWatchMeshConfig(
 	maxResurrectionAttempts int,
 	randomSeedForJitter int64,
 	crasherEnabled bool,
+	crasherProb float64,
 ) BasicWatchMeshConfig {
 
 	return BasicWatchMeshConfig{
@@ -88,5 +93,6 @@ func NewBasicWatchMeshConfig(
 		MaxResurrectionAttempts:         maxResurrectionAttempts,
 		RandomSeedForJitter:             randomSeedForJitter,
 		CrasherEnabled:                  crasherEnabled,
+		CrasherProb:                     crasherProb,
 	}
 }

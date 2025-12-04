@@ -127,6 +127,7 @@ func CreateFilterWorker(
 		basicWatchMeshConfig.MaxResurrectionAttempts,
 		basicWatchMeshConfig.RandomSeedForJitter,
 		basicWatchMeshConfig.CrasherEnabled,
+		basicWatchMeshConfig.CrasherProb,
 	)
 
 	filterWorker, err := NewFilterGenericWorker(rabbitConf, config, watchMeshConfig)
