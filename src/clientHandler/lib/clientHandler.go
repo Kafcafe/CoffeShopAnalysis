@@ -4,7 +4,9 @@ import (
 	logger "common/logger"
 	"common/middleware"
 	"fmt"
+	"io"
 	"net"
+	"strings"
 	"sync"
 	"time"
 
@@ -26,6 +28,11 @@ const (
 type QueryID int
 type DataType = string
 
+type ResultDelivery struct {
+	Msg      middleware.Message
+	Delivery amqp.Delivery
+}
+
 type ClientHandler struct {
 	protocol                                *Protocol
 	log                                     *logging.Logger
@@ -34,7 +41,7 @@ type ClientHandler struct {
 	errChan                                 chan middleware.MessageMiddlewareError
 	isRunning                               bool
 	mtx                                     sync.Mutex
-	resultsChan                             chan middleware.Message
+	resultsChan                             chan ResultDelivery
 	sentAllResultsChan                      chan int
 	timeToProcessAlreadyBufferedResultsChan chan int
 	connectionBroken                        chan int
@@ -42,6 +49,8 @@ type ClientHandler struct {
 	limitHandler                            *ConnectionLimit
 	middlewareHandler                       *middleware.MiddlewareHandler
 	sessionManager                          *SessionManager
+	finishedSuccessfully                    bool
+	replaced                                bool
 }
 
 // NewClientHandler creates a new ClientHandler instance for the given connection.
@@ -65,7 +74,7 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		errChan:                                 make(chan middleware.MessageMiddlewareError, ERROR_CHANNEL_BUFFER_SIZE),
 		isRunning:                               true,
 		mtx:                                     sync.Mutex{},
-		resultsChan:                             make(chan middleware.Message, RESULTS_CHANNEL_BUFFER_SIZE),
+		resultsChan:                             make(chan ResultDelivery, RESULTS_CHANNEL_BUFFER_SIZE),
 		sentAllResultsChan:                      make(chan int, 1),
 		emittedCount:                            make(map[DataType]int),
 		limitHandler:                            limitRef,
@@ -73,6 +82,8 @@ func NewClientHandler(conn net.Conn, clientId ClientUuid, exchangeHandlers Excha
 		timeToProcessAlreadyBufferedResultsChan: make(chan int, 1),
 		connectionBroken:                        make(chan int, 1),
 		sessionManager:                          sessionManager,
+		finishedSuccessfully:                    false,
+		replaced:                                false,
 	}
 }
 
@@ -95,8 +106,7 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 	}
 
 	clh.log.Debugf("action: Sending results to client | isEOF: %t", msg.IsEof)
-
-	clh.resultsChan <- *msg
+	clh.resultsChan <- ResultDelivery{Msg: *msg, Delivery: message}
 
 	if msg.IsEof {
 		clh.log.Info("Received EOF message for result")
@@ -104,11 +114,12 @@ func (clh *ClientHandler) processResults(message amqp.Delivery) error {
 		clh.log.Debugf("Received result message: %v", msg.Payload)
 	}
 
-	clh.answerMessage(ACK, message)
 	return nil
 }
 
-func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message) error {
+func (clh *ClientHandler) dispatchResultMessage(res *ResultDelivery) error {
+	clh.log.Infof("PROCESSING RESULT MESSAGE")
+	msg := res.Msg
 	queryId := msg.QueryId
 
 	if queryId <= 0 || queryId > 4 {
@@ -134,6 +145,7 @@ func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message) error {
 		if err != nil {
 			clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
 		}
+		clh.answerMessage(NACK_REQUEUE, res.Delivery)
 		return err
 	}
 
@@ -143,6 +155,8 @@ func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message) error {
 
 	if err != nil {
 		clh.log.Errorf("Error sending result to client for query %d: %v", queryId, err)
+		clh.answerMessage(NACK_REQUEUE, res.Delivery)
+		return err
 	}
 
 	if msg.IsEof {
@@ -150,11 +164,13 @@ func (clh *ClientHandler) dispatchResultMessage(msg *middleware.Message) error {
 		err := clh.protocol.ReceiveAck()
 		if err != nil {
 			clh.log.Errorf("Error receiving ACK from client for query %d: %v", queryId, err)
+			clh.answerMessage(NACK_REQUEUE, res.Delivery)
 			return err
 		}
 		clh.log.Infof("Received ACK from client for query %d", queryId)
 	}
 
+	clh.answerMessage(ACK, res.Delivery)
 	return nil
 }
 
@@ -171,16 +187,16 @@ func (clh *ClientHandler) launchCentralResultDispatching() {
 	// If all channels flagged EOF -> break out
 	for !eofFlags[1] || !eofFlags[2] || !eofFlags[3] || !eofFlags[4] {
 		select {
-		case msg := <-clh.resultsChan:
+		case res := <-clh.resultsChan:
 			if !dispathMessage {
 				continue
 			}
 
-			if msg.IsEof {
-				eofFlags[msg.QueryId] = true
+			if res.Msg.IsEof {
+				eofFlags[res.Msg.QueryId] = true
 			}
 
-			err := clh.dispatchResultMessage(&msg)
+			err := clh.dispatchResultMessage(&res)
 			if err != nil {
 				return
 			}
@@ -231,6 +247,7 @@ func (clh *ClientHandler) Handle() error {
 
 	<-clh.sentAllResultsChan
 	clh.log.Infof("Finished sending results to client")
+	clh.finishedSuccessfully = true
 
 	return nil
 }
@@ -437,9 +454,18 @@ func (clh *ClientHandler) Shutdown() error {
 	clh.exchangeHandlers.transactionsPublishing.Close()
 	clh.exchangeHandlers.resultsSubscription.Close()
 	clh.middlewareHandler.CloseChannel()
-	clh.log.Info("About to notify limit handler of disconnection")
-	clh.limitHandler.Signal()
-	clh.sessionManager.UnregisterSession(clh.ClientId.Full)
+
+	if !clh.replaced {
+		clh.sessionManager.UnregisterSession(clh.ClientId.Full)
+	}
+
+	if clh.finishedSuccessfully || !clh.sessionManager.ValidateSession(clh.ClientId.Full) {
+		clh.log.Info("About to notify limit handler of disconnection")
+		clh.limitHandler.Signal()
+	} else {
+		clh.log.Info("Session disconnected but valid, retaining connection slot")
+	}
+
 	return nil
 }
 
@@ -511,8 +537,19 @@ func (clh *ClientHandler) handleReconnectionRequest(clientId string) (reconnecte
 			return false, fmt.Errorf("error sending ReconnectionAccept: %v", err)
 		}
 
-		clh.log.Infof("Switching clientId to recognized old sessionId: %s", clientId)
+		clh.log.Infof("Switching from new clientId (%s) to recognized old sessionId (%s)", clh.ClientId.Full, clientId)
+
+		// Signal the old handler to stop waiting
+		clh.sessionManager.SignalReconnection(clientId)
+
 		clh.ClientId = NewClientUuidFromAFullUuidString(clientId)
+
+		// Re-initialize exchange handlers for the old client ID
+		newExchangeHandlers, err := CreateExchangeHandlers(clh.middlewareHandler, clh.ClientId)
+		if err != nil {
+			return false, fmt.Errorf("error re-creating exchange handlers for reconnected client: %v", err)
+		}
+		clh.exchangeHandlers = *newExchangeHandlers
 
 		clh.sessionManager.RegisterSession(clientId)
 		return true, nil
@@ -564,25 +601,69 @@ func (clh *ClientHandler) processDataTypes() (string, error) {
 	return dataType, nil
 }
 
+func (clh *ClientHandler) isConnectionError(err error) bool {
+	isConnectionError := false
+	if err == io.EOF {
+		isConnectionError = true
+	} else if _, ok := err.(*net.OpError); ok {
+		isConnectionError = true
+	} else if strings.Contains(err.Error(), "connection reset by peer") {
+		isConnectionError = true
+	} else if strings.Contains(err.Error(), "EOF") {
+		isConnectionError = true
+	}
+
+	return isConnectionError
+}
+
 func (clh *ClientHandler) handleFailure(err error, dataType string) error {
-	clh.log.Warningf("Sending EOF after failure for error: %v", err)
-	errSending := clh.dispatchBatchToMiddleware(dataType, []string{}, true)
+	isConnectionError := clh.isConnectionError(err)
 
-	var errToReturn error = nil
-	if errSending != nil {
-		errToReturn = fmt.Errorf("error dispatching EOF to middleware: %v", errSending)
+	//clh.log.Warningf("Error type: %T, value: %v", err, err)
+
+	sendEOF := func() error {
+		clh.log.Warningf("Sending EOF after failure for error: %v", err)
+		errSending := clh.dispatchBatchToMiddleware(dataType, []string{}, true)
+		if errSending != nil {
+			return fmt.Errorf("error dispatching EOF to middleware: %v", errSending)
+		}
+		return nil
 	}
 
-	clh.log.Infof("Processing buffered results for %d seconds", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
-	clh.connectionBroken <- 0
-	<-time.After(time.Duration(TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS) * time.Second)
-	clh.log.Infof("Finished buffered time for results (was %ds)", TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS)
-	clh.timeToProcessAlreadyBufferedResultsChan <- 0
+	timeout := time.Duration(TIME_TO_PROCESS_ALREADY_BUFFERED_RESULTS) * time.Second
+	if isConnectionError {
+		clh.log.Infof("Graceful shutdown due to connection error: %v", err)
 
-	if errToReturn != nil {
-		return errToReturn
+		// Wait for reconnection instead of immediately unregistering
+		reconnected := clh.sessionManager.WaitForReconnection(clh.ClientId.Full, SESSION_TIMEOUT)
+
+		if reconnected {
+			clh.log.Infof("Client %s reconnected. Marking session as replaced and exiting without EOF.", clh.ClientId.Full)
+			clh.replaced = true
+			return fmt.Errorf("client reconnected, old handler exiting")
+		} else {
+			clh.log.Infof("Client %s failed to reconnect within timeout. Proceeding with cleanup.", clh.ClientId.Full)
+			clh.sessionManager.UnregisterSession(clh.ClientId.Full)
+			timeout = 0 // No need to wait more, we already waited SESSION_TIMEOUT
+		}
+	} else {
+		clh.log.Warningf("Error was not a ConnectionError, instead type: %T, value: %v", err, err)
+		if err := sendEOF(); err != nil {
+			return err
+		}
 	}
 
-	errToReturn = fmt.Errorf("error while processing: %v", err)
-	return errToReturn
+	if !clh.replaced {
+		clh.log.Infof("Processing buffered results for %v", timeout)
+		clh.connectionBroken <- 0
+		<-time.After(timeout)
+		clh.log.Infof("Finished buffered time for results (was %v)", timeout)
+		clh.timeToProcessAlreadyBufferedResultsChan <- 0
+	}
+
+	return fmt.Errorf("error while processing: %v", err)
+}
+
+func (clh *ClientHandler) SendEOF() error {
+	return clh.dispatchBatchToMiddleware("EOF", []string{}, true)
 }

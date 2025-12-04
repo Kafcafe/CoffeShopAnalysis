@@ -108,6 +108,6 @@ func main() {
 		os.Exit(ERROR_DURING_PROCESSING_EXIT_CODE)
 	}
 
-	logger.Info("ClinetHandler shutdown without errors")
+	logger.Info("ClientHandler shutdown without errors")
 	os.Exit(SUCCESS_EXIT_CODE)
 }

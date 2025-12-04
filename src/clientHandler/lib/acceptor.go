@@ -86,14 +86,14 @@ func NewAcceptor(acceptorConfig *AcceptorConfig) (*Acceptor, error) {
 	return acceptor, nil
 }
 
-func (a *Acceptor) createExchangeHandler(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
+func createExchangeHandler(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
 	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
 		return middlewareHandler.CreateDirectExchange(routeKey)
 	}
 	return middlewareHandler.CreateTopicExchange(routeKey)
 }
 
-func (a *Acceptor) createExchangeHandlerStandalone(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
+func createExchangeHandlerStandalone(middlewareHandler *middleware.MiddlewareHandler, routeKey string, exchangeType string) (*middleware.MessageMiddlewareExchange, error) {
 	if exchangeType == middleware.EXCHANGE_TYPE_DIRECT {
 		return middlewareHandler.CreateDirectExchangeStandalone(routeKey)
 	}
@@ -111,15 +111,15 @@ type ExchangeHandlers struct {
 	resultsSubscription middleware.MessageMiddlewareExchange
 }
 
-func (a *Acceptor) createExchangeHandlers(middlewareHandler *middleware.MiddlewareHandler, newId ClientUuid) (*ExchangeHandlers, error) {
+func CreateExchangeHandlers(middlewareHandler *middleware.MiddlewareHandler, newId ClientUuid) (*ExchangeHandlers, error) {
 	transactionsRouteKey := "transactions"
-	transactionsPublishingHandler, err := a.createExchangeHandlerStandalone(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	transactionsPublishingHandler, err := createExchangeHandlerStandalone(middlewareHandler, transactionsRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
 
 	resultsSubscriptionRouteKey := fmt.Sprintf("results.%s", newId.Full)
-	resultsSubscriptionHandler, err := a.createExchangeHandler(middlewareHandler, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
+	resultsSubscriptionHandler, err := createExchangeHandler(middlewareHandler, resultsSubscriptionRouteKey, middleware.EXCHANGE_TYPE_DIRECT)
 	if err != nil {
 		return nil, fmt.Errorf("error creating exchange handler for transactions: %v", err)
 	}
@@ -190,7 +190,7 @@ func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 	a.log.Infof("Accepted connection from %s", conn.RemoteAddr().String())
 	newId := NewClientUuid()
 
-	exchangeHandlers, err := a.createExchangeHandlers(middlewareHandler, newId)
+	exchangeHandlers, err := CreateExchangeHandlers(middlewareHandler, newId)
 
 	if err != nil {
 		return fmt.Errorf("failed to create exchange handlers: %v", err)
@@ -212,8 +212,16 @@ func (a *Acceptor) CreateNewClient(conn net.Conn) error {
 func (a *Acceptor) removeClients() {
 	for id, client := range a.currClient {
 		if !client.IsRunning() {
-			a.log.Infof("Removing client %s", id.Short)
+			// Always remove the client from the map if it's not running
 			delete(a.currClient, id)
+
+			if a.sessionManager.ValidateSession(id.Full) {
+				a.log.Infof("Client %s disconnected but session is valid. Retaining connection slot.", id.Short)
+				continue
+			}
+
+			a.log.Infof("Removing client %s", id.Short)
+			a.limitHandler.Signal()
 		}
 	}
 }
