@@ -20,7 +20,7 @@ type BatchGenerator struct {
 
 func NewBatchGenerator(dataPath string, filename string) *BatchGenerator {
 	logger := logger.GetLoggerWithPrefix("[BATCH-GEN]")
-	file, err := os.Open(dataPath + "/" + filename)
+	file, err := os.Open(filename)
 
 	if err != nil {
 		logger.Errorf("Error opening file %s: %v", filename, err)

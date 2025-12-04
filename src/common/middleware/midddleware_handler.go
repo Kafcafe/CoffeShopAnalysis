@@ -14,8 +14,10 @@ const (
 	EXCHANGE_NAME_DIRECT_TYPE = "coffee-analysis-direct"
 	EXCHANGE_NAME_FANOUT_TYPE = "coffee-analysis-fanout"
 
-	EXCHANGE_DURABILITY = false
-	QUEUE_DURABILITY    = false
+	EXCHANGE_DURABILITY  = false
+	QUEUE_DURABILITY     = false
+	RESPONSE_TIMEOUT_SEC = 50
+	MAX_EOF_RETRIES      = 3
 )
 
 type MiddlewareHandler struct {
@@ -157,7 +159,7 @@ func (mh *MiddlewareHandler) createExchange(exchangeName, exchangeType, routeKey
 
 	_, err = mh.DeclareQueue(routeKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to declare queue: %v", err)
+		return nil, fmt.Errorf("failed to declare queue in DeclareQueue: %v", err)
 	}
 
 	err = mh.BindQueue(routeKey, exchangeName, routeKey)

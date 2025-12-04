@@ -197,3 +197,8 @@ pytest-verbose:
 	export REPO_PATH=$(PWD)
 	pytest -v -ss
 .PHONY: test-verbose
+
+delete-volumes:
+	rm -rf processed_data/
+	rm -rf results/
+.PHONY: delete-volumes

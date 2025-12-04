@@ -2,3 +2,14 @@ group:
 log:
   level: "INFO"
 k: 35
+watchMesh:
+  heartbeatIntervalSeconds: 2.0
+  heartbeatTimeoutSeconds: 10.0
+  addressResolvingRetries: 3
+  addressResolvingIntervalSeconds: 1.0
+  showHeartbeatLogs: false
+  maxResurrectionAttempts: 3
+  randomSeedForJitter: 1763675954000000
+  crasher:
+    enabled: true
+    probability: 0.0005

@@ -14,15 +14,15 @@ func NewMessageMiddlewareQueue(queueName string, channel MiddlewareChannel, cons
 
 func (m *MessageMiddlewareQueue) StartConsuming(onMessageCallback OnMessageCallback, errChan chan<- MessageMiddlewareError) {
 	// TODO: Establecer prefetch
-	// if err := m.channel.Qos(
-	// 	10,    // prefetchCount: por ejemplo 10 mensajes por consumidor
-	// 	0,     // prefetchSize: sin límite por tamaño
-	// 	false, // global: solo afecta a este consumidor
-	// ); err != nil {
-	// 	middleware_logger.Errorf("failed to set QoS: %v", err)
-	// 	errChan <- MessageMiddlewareDisconnectedError
-	// 	return
-	// }
+	if err := m.channel.Qos(
+		2,     // prefetchCount: por ejemplo 2 mensajes por consumidor sin ACK (EOF + 1)
+		0,     // prefetchSize: sin límite por tamaño
+		false, // global: solo afecta a este consumidor
+	); err != nil {
+		middleware_logger.Errorf("failed to set QoS: %v", err)
+		errChan <- MessageMiddlewareDisconnectedError
+		return
+	}
 
 	consumeChannel, err := m.channel.Consume(
 		m.queueName, // queue
@@ -72,6 +72,26 @@ func (m *MessageMiddlewareQueue) Send(message []byte) (middlewareError MessageMi
 		amqp.Publishing{
 			ContentType: "text/plain",
 			Body:        message,
+		},
+	)
+
+	if err != nil {
+		return MessageMiddlewareMessageError
+	}
+
+	return MessageMiddlewareSuccess
+}
+
+func (m *MessageMiddlewareQueue) SendWithId(message []byte, messageId string) (middlewareError MessageMiddlewareError) {
+	err := m.channel.Publish(
+		"",          // exchange
+		m.queueName, // routing key (queue name)
+		false,       // mandatory
+		false,       // immediate
+		amqp.Publishing{
+			ContentType: "text/plain",
+			Body:        message,
+			MessageId:   messageId,
 		},
 	)
 

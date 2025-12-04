@@ -103,6 +103,11 @@ func (c *Client) Run() ClientExecutionError {
 
 	err := c.protocol.rcvStart()
 
+	if err != nil {
+		c.log.Errorf("| action: Error receiving start from server: %v | result: error", err)
+		return c.return_err_if_not_signaled(err)
+	}
+
 	err = c.protocol.sendClientId(c.Id)
 
 	if err != nil {
@@ -165,7 +170,6 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 			if err := c.processBatch(c.currBg, file); err != nil {
 				return fmt.Errorf("| action: Error processing batch for file %s: %v | result: error", file, err)
 			}
-			c.log.Infof("| action: processed batch for file | client_id: %s | file: %s", c.Id, file)
 		}
 
 		err := c.protocol.finishBatch()
@@ -177,11 +181,6 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
 	}
 
-	err := c.protocol.FinishSendingFilesOf(pattern)
-
-	if err != nil {
-		return fmt.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
-	}
 	return nil
 }
 
@@ -199,8 +198,6 @@ func (c *Client) processBatch(bg *BatchGenerator, file string) error {
 		return fmt.Errorf("| action: Error sending batch from file %s: %v | result: error", file, err)
 	}
 
-	c.log.Infof("| action: Sent batch with information of file: %s", file)
-
 	return nil
 }
 
@@ -213,7 +210,7 @@ func (c *Client) ProcessResults() error {
 		}
 
 		if finish && !finishedAll {
-			c.log.Infof("Finished receiving results for query %d | results: %v", query, c.results[int(query)])
+			c.log.Infof("Finished receiving results for query %d | results: %v", query, len(c.results[int(query)]))
 			c.LogFinishQuery(int(query))
 			continue
 		} else if finish && finishedAll {

@@ -3,6 +3,7 @@ package main
 import (
 	logger "common/logger"
 	middleware "common/middleware"
+	"common/watch_mesh"
 	filters "filters/lib"
 	"fmt"
 	"os"
@@ -50,7 +51,7 @@ func InitConfig() (*viper.Viper, error) {
 //
 //	v: the configuration instance
 func PrintConfig(v *viper.Viper, logger *logging.Logger) {
-	logger.Infof("Filter startup with: id: %s | filterCount : %d",
+	logger.Infof("Filter startup with: id: %s | filterCount: %d",
 		v.GetString("filter.id"), v.GetInt("filter.count"),
 	)
 
@@ -59,7 +60,7 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetInt("filter.year.toYear"),
 	)
 
-	logger.Infof("Config for filter by hour: fromYear: fromHour: %d | toHour: %d",
+	logger.Infof("Config for filter by hour: fromHour: %d | toHour: %d",
 		v.GetInt("filter.hour.fromHour"),
 		v.GetInt("filter.hour.toHour"),
 	)
@@ -68,11 +69,25 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetFloat64("filter.amount.minAmount"),
 	)
 
-	logger.Infof("Detected RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
+	logger.Infof("RabbitMQ configuration: host: %s | port: %d | username: %s | password: %s",
 		v.GetString("rabbitmq.host"),
 		v.GetInt("rabbitmq.port"),
 		v.GetString("rabbitmq.user"),
 		v.GetString("rabbitmq.pass"),
+	)
+
+	logger.Infof("WatchMesh configuration: port: %d | heartbeatInterval: %.2f secs | "+
+		"heartbeatTimeout: %.2f secs | addressResolvingRetries: %d | "+
+		"addressResolvingIntervalSeconds: %.2f | showHeartbeatLogs: %v | maxResurrectionAttempts: %d | randomSeedForJitter: %d | crasherEnabled: %v",
+		v.GetInt("watch_mesh.udp.port"),
+		v.GetFloat64("watchMesh.heartbeatIntervalSeconds"),
+		v.GetFloat64("watchMesh.heartbeatTimeoutSeconds"),
+		v.GetInt("watchMesh.addressResolvingRetries"),
+		v.GetFloat64("watchMesh.addressResolvingIntervalSeconds"),
+		v.GetBool("watchMesh.showHeartbeatLogs"),
+		v.GetInt("watchMesh.maxResurrectionAttempts"),
+		v.GetInt("watchMesh.randomSeedForJitter"),
+		v.GetBool("watchMesh.crasher.enabled"),
 	)
 }
 
@@ -115,11 +130,47 @@ func main() {
 	}
 
 	filterId := config.GetString("filter.id")
+	filterIdNum := config.GetInt("filter.idNum")
 	filterCount := config.GetInt("filter.count")
 
 	filterType := config.GetString("filter.type")
 
-	filterWorker, err := filters.CreateFilterWorker(filterType, rabbitConf, yearConfig, hourConfig, amountConfig, filterId, filterCount)
+	watchMeshPort := config.GetInt("watch.mesh.udp.port")
+	heartbeatIntervalSecs := config.GetFloat64("watchMesh.heartbeatIntervalSeconds")
+	heartbeatTimeoutSecs := config.GetFloat64("watchMesh.heartbeatTimeoutSeconds")
+	addressResolvingRetries := config.GetInt("watchMesh.addressResolvingRetries")
+	addressResolvingIntervalSeconds := config.GetFloat64("watchMesh.addressResolvingIntervalSeconds")
+	showHeartbeatLogs := config.GetBool("watchMesh.showHeartbeatLogs")
+	maxResurrectionAttempts := config.GetInt("watchMesh.maxResurrectionAttempts")
+	randomSeedForJitter := config.GetInt64("watchMesh.randomSeedForJitter")
+	crasherEnabled := config.GetBool("watchMesh.crasher.enabled")
+	crasherProb := config.GetFloat64("watchMesh.crasher.probability")
+
+	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
+		watchMeshPort,
+		heartbeatIntervalSecs,
+		heartbeatTimeoutSecs,
+		addressResolvingRetries,
+		addressResolvingIntervalSeconds,
+		showHeartbeatLogs,
+		maxResurrectionAttempts,
+		randomSeedForJitter,
+		crasherEnabled,
+		crasherProb,
+	)
+
+	filterWorker, err := filters.CreateFilterWorker(
+		filterType,
+		rabbitConf,
+		yearConfig,
+		hourConfig,
+		amountConfig,
+		filterId,
+		filterIdNum,
+		filterCount,
+		basicWatchMeshConfig,
+	)
+
 	if err != nil {
 		logger.Errorf("Failed creating new filter worker: %s", err)
 		os.Exit(STARTUP_ERROR_EXIT_CODE)

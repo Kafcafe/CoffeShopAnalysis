@@ -16,6 +16,7 @@ import (
 const (
 	SUCCESS_EXIT_CODE       = 0
 	STARTUP_ERROR_EXIT_CODE = 1
+	START_DELAY_SECONDS     = 10
 )
 
 func InitConfig() (*viper.Viper, error) {
