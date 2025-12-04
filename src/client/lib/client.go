@@ -178,6 +178,7 @@ func (c *Client) performHandshake() error {
 		c.log.Info("Reconnection successful")
 		c.lastFileProcessed = lastFileProcessed
 		c.lastLineProcessed = lastLineProcessed
+		c.sessionId = sessionId
 		return nil
 	}
 
