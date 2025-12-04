@@ -181,11 +181,6 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
 	}
 
-	err := c.protocol.FinishSendingFilesOf(pattern)
-
-	if err != nil {
-		return fmt.Errorf("| action: Error finishing sending files of pattern %s: %v | result: error", pattern, err)
-	}
 	return nil
 }
 

@@ -215,11 +215,6 @@ func (p *Protocol) finishBatch() error {
 	return nil
 }
 
-func (p *Protocol) FinishSendingFilesOf(pattern string) error {
-	// Implement finish sending files logic here
-	return nil
-}
-
 func (p *Protocol) rcvStart() error {
 	start := make([]byte, SIZEOF_UINT8)
 
