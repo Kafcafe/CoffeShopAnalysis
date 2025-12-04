@@ -144,6 +144,7 @@ func main() {
 	maxResurrectionAttempts := config.GetInt("watchMesh.maxResurrectionAttempts")
 	randomSeedForJitter := config.GetInt64("watchMesh.randomSeedForJitter")
 	crasherEnabled := config.GetBool("watchMesh.crasher.enabled")
+	crasherProb := config.GetFloat64("watchMesh.crasher.probability")
 
 	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
 		watchMeshPort,
@@ -155,6 +156,7 @@ func main() {
 		maxResurrectionAttempts,
 		randomSeedForJitter,
 		crasherEnabled,
+		crasherProb,
 	)
 
 	filterWorker, err := filters.CreateFilterWorker(

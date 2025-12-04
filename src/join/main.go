@@ -74,6 +74,7 @@ func PrintConfig(v *viper.Viper, logger *logging.Logger) {
 		v.GetInt("watchMesh.maxResurrectionAttempts"),
 		v.GetInt("watchMesh.randomSeedForJitter"),
 		v.GetBool("watchMesh.crasher.enabled"),
+		v.GetFloat64("watchMesh.crasher.probability"),
 	)
 }
 
@@ -115,6 +116,7 @@ func main() {
 	maxResurrectionAttempts := config.GetInt("watchMesh.maxResurrectionAttempts")
 	randomSeedForJitter := config.GetInt64("watchMesh.randomSeedForJitter")
 	crasherEnabled := config.GetBool("watchMesh.crasher.enabled")
+	crasherProb := config.GetFloat64("watchMesh.crasher.probability")
 
 	basicWatchMeshConfig := watch_mesh.NewBasicWatchMeshConfig(
 		watchMeshPort,
@@ -126,6 +128,7 @@ func main() {
 		maxResurrectionAttempts,
 		randomSeedForJitter,
 		crasherEnabled,
+		crasherProb,
 	)
 
 	joinItemsWorker, err := join.CreateJoinerWorker(
@@ -136,6 +139,7 @@ func main() {
 		joinerCount,
 		basicWatchMeshConfig,
 		crasherEnabled,
+		crasherProb,
 	)
 
 	if err != nil {

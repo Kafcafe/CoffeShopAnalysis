@@ -8,6 +8,7 @@ import (
 	"math/rand"
 	"net"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -28,7 +29,8 @@ type NodeId string
 
 // Peer represents a peer node in the mesh
 type Peer struct {
-	Address *net.UDPAddr
+	Alias   string       // Node alias/hostname (e.g., "group-topk1")
+	Address *net.UDPAddr // Resolved IP address (updated dynamically)
 	State   *PeerStateMachine
 }
 
@@ -82,7 +84,7 @@ func NewWatchMesh(config WatchMeshConfig) *WatchMesh {
 		log:                             logger,
 		respawner:                       respawner.NewRespawner(),
 		randGenerator:                   randGenerator,
-		crasher:                         crasher.NewCrasher(config.CurrentNodeIDNum, config.CrasherEnabled),
+		crasher:                         crasher.NewCrasher(config.CurrentNodeIDNum, config.CrasherEnabled, config.CrasherProb),
 	}
 }
 
@@ -154,22 +156,22 @@ func (wm *WatchMesh) sendLeaderDiscoveryToPeers() {
 	wm.leaderDiscoveryFinished = false
 	wm.mutex.Unlock()
 
-	// Copy peers to avoid holding lock during I/O
+	// Copy peer aliases to avoid holding lock during I/O
 	wm.mutex.Lock()
-	peerAddrs := make([]*net.UDPAddr, 0, len(wm.peers))
+	peerAliases := make([]string, 0, len(wm.peers))
 	for _, peer := range wm.peers {
-		peerAddrs = append(peerAddrs, peer.Address)
+		peerAliases = append(peerAliases, peer.Alias)
 	}
 	wm.mutex.Unlock()
 
 	// Send LeaderDiscovery messages to all peers
-	for _, addr := range peerAddrs {
+	for _, alias := range peerAliases {
 		msg := NewLeaderDiscoveryMessage(string(wm.config.CurrentNodeID))
-		err := wm.sendMessage(addr, msg)
+		err := wm.sendMessageByNodeAlias(alias, msg)
 		if err != nil {
-			wm.log.Errorf("Failed to send LeaderDiscovery to %s: %v", addr, err)
+			wm.log.Errorf("Failed to send LeaderDiscovery to %s: %v", alias, err)
 		} else {
-			wm.log.Infof("Sent LeaderDiscovery to %s", addr)
+			wm.log.Infof("Sent LeaderDiscovery to %s", alias)
 		}
 	}
 }
@@ -280,43 +282,26 @@ func (wm *WatchMesh) setupPeers() {
 	wg.Wait()
 }
 
-// resolveAndAddPeer handles resolving a single peer address with retries
-func (wm *WatchMesh) resolveAndAddPeer(peerAddress string) {
-	addrWithPort := fmt.Sprintf("%s:%d", peerAddress, wm.config.WatchMeshPort)
+// resolveAndAddPeer handles adding a peer with its alias
+func (wm *WatchMesh) resolveAndAddPeer(peerAlias string) {
+	// Store the peer using its alias (hostname/container name)
+	wm.log.Infof("Adding peer with alias: '%s'", peerAlias)
 
-	var addrWithPortResolved *net.UDPAddr
-	var err error
-
-	for retry := 0; retry < wm.config.AddressResolvingRetries; retry++ {
-		addrWithPortResolved, err = net.ResolveUDPAddr("udp", addrWithPort)
-		if err == nil {
-			break
-		}
-		if retry < (wm.config.AddressResolvingRetries - 1) {
-			time.Sleep(wm.config.AddressResolvingInterval)
-		}
-		wm.log.Infof(
-			"Retrying address resolution for '%v' (%d/%d)",
-			addrWithPort, retry+1, wm.config.AddressResolvingRetries,
-		)
+	// Create peer with alias and placeholder address
+	placeholderAddr := &net.UDPAddr{
+		IP:   net.IPv4zero, // Will be resolved when needed
+		Port: wm.config.WatchMeshPort,
 	}
-
-	if err != nil {
-		wm.log.Warningf(
-			"Failed to resolve peer address '%v' after %d retries: %v",
-			addrWithPort, wm.config.AddressResolvingRetries, err,
-		)
-		return
-	}
-
-	wm.log.Infof("Resolved address for '%v': %v", addrWithPort, addrWithPortResolved)
 
 	wm.mutex.Lock()
-	wm.peers[NodeId(peerAddress)] = &Peer{
-		Address: addrWithPortResolved,
+	wm.peers[NodeId(peerAlias)] = &Peer{
+		Alias:   peerAlias,
+		Address: placeholderAddr,
 		State:   NewPeerStateMachine(),
 	}
 	wm.mutex.Unlock()
+
+	wm.log.Infof("Successfully added peer '%s' using alias-based addressing", peerAlias)
 }
 
 // listenFromSocket continuously reads UDP packets from the connection
@@ -420,8 +405,8 @@ func (wm *WatchMesh) sendHeartbeatToLeader() {
 	}
 
 	if exists {
-		if err := wm.sendMessage(peer.Address, msg); err != nil {
-			wm.log.Warningf("Failed to send heartbeat to %s: %v", peer.Address, err)
+		if err := wm.sendMessageByNodeAlias(peer.Alias, msg); err != nil {
+			wm.log.Warningf("Failed to send heartbeat to %s: %v", peer.Alias, err)
 		}
 	} else {
 		wm.log.Warningf("Unknown leaderId: %v", leaderID)
@@ -656,6 +641,11 @@ func (wm *WatchMesh) handleMessage(msgBytes []byte, addr *net.UDPAddr) {
 		return
 	}
 
+	// Filter messages: only process messages from nodes of the same type
+	if !wm.isMessageFromSameNodeType(msg.SenderID) {
+		return
+	}
+
 	// Use composeFullNodeId to ensure consistent key usage
 	fullNodeId := NodeId(wm.composeFullNodeId(NodeId(msg.SenderID)))
 	wm.updatePeerAddress(fullNodeId, addr)
@@ -721,6 +711,55 @@ func (wm *WatchMesh) sendMessage(addr *net.UDPAddr, msg *WatchMeshMessage) error
 	}
 
 	return nil
+}
+
+// sendMessageByNodeAlias resolves node alias to address and sends message
+func (wm *WatchMesh) sendMessageByNodeAlias(nodeAlias string, msg *WatchMeshMessage) error {
+	// Get the peer by alias
+	wm.mutex.Lock()
+	var targetPeer *Peer
+	for _, peer := range wm.peers {
+		if peer.Alias == nodeAlias {
+			targetPeer = peer
+			break
+		}
+	}
+	wm.mutex.Unlock()
+
+	if targetPeer == nil {
+		return fmt.Errorf("peer with alias '%s' not found", nodeAlias)
+	}
+
+	// Resolve the alias to an address dynamically
+	addrWithPort := fmt.Sprintf("%s:%d", targetPeer.Alias, wm.config.WatchMeshPort)
+
+	var resolvedAddr *net.UDPAddr
+	var err error
+
+	// Try to resolve with retries
+	for retry := 0; retry < wm.config.AddressResolvingRetries; retry++ {
+		resolvedAddr, err = net.ResolveUDPAddr("udp", addrWithPort)
+		if err == nil {
+			break
+		}
+		if retry < (wm.config.AddressResolvingRetries - 1) {
+			time.Sleep(wm.config.AddressResolvingInterval)
+		}
+		wm.log.Debugf("Retrying address resolution for alias '%s' (%d/%d)",
+			nodeAlias, retry+1, wm.config.AddressResolvingRetries)
+	}
+
+	if err != nil {
+		return fmt.Errorf("failed to resolve address for alias '%s': %v", nodeAlias, err)
+	}
+
+	// Update the peer's resolved address
+	wm.mutex.Lock()
+	targetPeer.Address = resolvedAddr
+	wm.mutex.Unlock()
+
+	// Send the message using the resolved address
+	return wm.sendMessage(resolvedAddr, msg)
 }
 
 // shouldStartNewElection determines whether a new election should be started
@@ -804,7 +843,7 @@ func (wm *WatchMesh) sendElectionToHigherPeers(higherPeers []NodeId) {
 		}
 
 		msg := NewElectionMessage(string(wm.config.CurrentNodeID))
-		err := wm.sendMessage(peer.Address, msg)
+		err := wm.sendMessageByNodeAlias(peer.Alias, msg)
 		if err != nil {
 			wm.log.Warningf("Failed to send ElectionMessage: %v", err)
 		} else {
@@ -1247,7 +1286,12 @@ func (wm *WatchMesh) handleLeaderResponseMessage(msg *WatchMeshMessage) {
 }
 
 func (wm *WatchMesh) composeFullNodeId(id NodeId) string {
-	return fmt.Sprintf("%s%s", wm.config.NodeType, id)
+	idStr := string(id)
+	expectedPrefix := wm.config.NodeType
+	if strings.HasPrefix(idStr, expectedPrefix) {
+		return idStr
+	}
+	return fmt.Sprintf("%s%s", expectedPrefix, idStr)
 }
 
 // updatePeerAddress updates the address of a peer if it exists, or adds a new entry if it doesn't
@@ -1257,12 +1301,21 @@ func (wm *WatchMesh) updatePeerAddress(id NodeId, addr *net.UDPAddr) {
 
 	peer, exists := wm.peers[id]
 	if exists {
+		// Update existing peer's resolved address
 		peer.Address = addr
 	} else {
-		// Peer doesn't exist, add new entry
+		// Peer doesn't exist, add new entry with alias
+		alias := string(id) // Use the NodeId as the alias
 		wm.peers[id] = &Peer{
+			Alias:   alias,
 			Address: addr,
 			State:   NewPeerStateMachine(),
 		}
 	}
+}
+
+// isMessageFromSameNodeType checks if the sender belongs to the same node type
+func (wm *WatchMesh) isMessageFromSameNodeType(senderID string) bool {
+	expectedPrefix := string(wm.config.CurrentNodeID[:len(wm.config.CurrentNodeID)-1])
+	return strings.HasPrefix(senderID[:len(senderID)-1], expectedPrefix)
 }

@@ -9,15 +9,18 @@ import (
 	"time"
 )
 
-const FORCE_EXIT_PROBABILITY = 0.0005 // 0.05% chance to crash on each check if slot is allowed
+// const FORCE_EXIT_PROBABILITY = 0.0005 // 0.05% chance to crash on each check if slot is allowed
+const SEC_BEFORE_CRASH_ALLOWED = 50
 
 type Crasher struct {
-	id      int
-	rng     *mathrand.Rand
-	enabled bool
+	id          int
+	rng         *mathrand.Rand
+	enabled     bool
+	startTime   time.Time
+	probability float64
 }
 
-func NewCrasher(id int, enabled bool) *Crasher {
+func NewCrasher(id int, enabled bool, probability float64) *Crasher {
 	var b [8]byte
 	_, err := rand.Read(b[:])
 	if err != nil {
@@ -27,9 +30,11 @@ func NewCrasher(id int, enabled bool) *Crasher {
 	seed := int64(binary.LittleEndian.Uint64(b[:]))
 
 	return &Crasher{
-		id:      id,
-		rng:     mathrand.New(mathrand.NewSource(seed)),
-		enabled: enabled,
+		id:          id,
+		rng:         mathrand.New(mathrand.NewSource(seed)),
+		enabled:     enabled,
+		startTime:   time.Now(),
+		probability: probability,
 	}
 }
 
@@ -38,7 +43,11 @@ func (c *Crasher) ThrowDiceAndForceExit(message string) {
 		return
 	}
 
-	if c.rng.Float64() < FORCE_EXIT_PROBABILITY {
+	if time.Since(c.startTime) < SEC_BEFORE_CRASH_ALLOWED*time.Second {
+		return
+	}
+
+	if c.rng.Float64() < c.probability {
 		log := logger.GetLoggerWithPrefix("[CRASHER]")
 		if !c.allowedToCrash() {
 			log := logger.GetLoggerWithPrefix("[CRASHER]")

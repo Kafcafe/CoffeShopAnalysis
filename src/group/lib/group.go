@@ -104,6 +104,7 @@ func createWatchMeshConfig(
 		basicWatchMeshConfig.MaxResurrectionAttempts,
 		basicWatchMeshConfig.RandomSeedForJitter,
 		basicWatchMeshConfig.CrasherEnabled,
+		basicWatchMeshConfig.CrasherProb,
 	)
 
 	return watchMeshConfig

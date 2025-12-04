@@ -102,6 +102,7 @@ func CreateJoinerWorker(
 	joinerCount int,
 	basicWatchMeshConfig watch_mesh.BasicWatchMeshConfig,
 	crasherEnabled bool,
+	crasherProb float64,
 ) (*JoinItemsWorker, error) {
 
 	var joinItemsWorker JoinItemsWorker
@@ -150,6 +151,7 @@ func CreateJoinerWorker(
 		basicWatchMeshConfig.MaxResurrectionAttempts,
 		basicWatchMeshConfig.RandomSeedForJitter,
 		basicWatchMeshConfig.CrasherEnabled,
+		basicWatchMeshConfig.CrasherProb,
 	)
 
 	joinItemsWorker, err = NewJoinWorker(rabbitConf, config, watchMeshConfig)

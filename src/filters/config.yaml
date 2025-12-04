@@ -19,3 +19,4 @@ watchMesh:
   randomSeedForJitter: 1763675954000000
   crasher:
     enabled: true
+    probability: 0.0005
