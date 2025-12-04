@@ -74,7 +74,12 @@ CLIENT_HANDLER_TEMPLATE = """
           context: ./src/
           dockerfile: clientHandler/Dockerfile
         volumes:
-          - ./src/clientHandler/config.yaml:/config.yaml 
+          - ./src/clientHandler/config.yaml:/config.yaml
+        healthcheck:
+          test: ["CMD-SHELL", "nc -z localhost 9191"]
+          interval: 3s
+          timeout: 1s
+          retries: 10
 """
 
 FILTER_TEMPLATE = """
@@ -114,7 +119,8 @@ CLIENTS_TEMPLATE = """
           CLIENT_ID: {id}
           FILETYPES: "store,menu,transactions,transaction_items,users"
         depends_on:
-          - client-handler
+          client-handler:
+            condition: service_healthy
         networks:
           - analysis_net
         build:
