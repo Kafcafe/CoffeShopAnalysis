@@ -185,7 +185,7 @@ func (p *Protocol) Listen() (queryCode uint32, lines []string, finish bool, err 
 		if err != nil {
 			return 0, nil, true, err, false
 		}
-		p.log.Infof("Received %d lines for query %d", len(lines), queryNumber)
+		p.log.Debugf("Received %d lines for query %d", len(lines), queryNumber)
 
 		return queryNumber, lines, false, nil, false
 	}

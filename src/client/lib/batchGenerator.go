@@ -70,6 +70,16 @@ func (bg *BatchGenerator) GetNextBatch(batchSize int) (*Batch, error) {
 	return batch, nil
 }
 
+func (bg *BatchGenerator) SkipLines(n int) error {
+	for range n {
+		if !bg.scanner.Scan() {
+			bg.isReading = false
+			return nil
+		}
+	}
+	return nil
+}
+
 func (bg *BatchGenerator) processLastLine(batch *Batch) error {
 	if bg.lastLineRead == "" {
 		return nil

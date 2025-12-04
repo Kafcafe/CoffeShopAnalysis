@@ -6,6 +6,7 @@ import (
 	"os/signal"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"syscall"
@@ -34,6 +35,7 @@ type Client struct {
 	atomicWriter      *atomicwritter.AtomicWriter
 	sessionId         string
 	lastFileProcessed string
+	lastLineProcessed int
 }
 
 type ClientExecutionError error
@@ -56,20 +58,21 @@ func NewClient(config *ClientConfig, clientId, fileTypes string) *Client {
 	persistancePath := fmt.Sprintf("sent_data/%s", prefix)
 
 	client := &Client{
-		config:       config,
-		protocol:     protocol,
-		isRunning:    true,
-		sigChan:      make(chan os.Signal, 1),
-		currBg:       nil,
-		results:      make(map[int][]string),
-		finishedChan: make(chan bool, 1),
-		log:          logger,
-		Id:           clientId,
-		fileTypes:    fileTypes,
-		was_signaled: false,
-		mutex:        sync.Mutex{},
-		atomicWriter: atomicwritter.NewAtomicWriter(persistancePath),
-		sessionId:    "",
+		config:            config,
+		protocol:          protocol,
+		isRunning:         true,
+		sigChan:           make(chan os.Signal, 1),
+		currBg:            nil,
+		results:           make(map[int][]string),
+		finishedChan:      make(chan bool, 1),
+		log:               logger,
+		Id:                clientId,
+		fileTypes:         fileTypes,
+		was_signaled:      false,
+		mutex:             sync.Mutex{},
+		atomicWriter:      atomicwritter.NewAtomicWriter(persistancePath),
+		sessionId:         "",
+		lastLineProcessed: 0,
 	}
 
 	signal.Notify(client.sigChan, syscall.SIGTERM)
@@ -116,10 +119,6 @@ func (c *Client) Run() ClientExecutionError {
 
 	fileHandler := NewFileHandler(c.config.dataPath)
 
-	// c.log.Info("Sleeping...")
-	// time.Sleep(time.Duration(15) * time.Second)
-	// c.log.Info("Woke up")
-
 	err := c.performHandshake()
 	if err != nil {
 		c.log.Errorf("| action: Handshake failed: %v | result: error", err)
@@ -163,7 +162,7 @@ func (c *Client) Run() ClientExecutionError {
 }
 
 func (c *Client) performHandshake() error {
-	sessionId, lastFileProcessed := c.attemptRecovery()
+	sessionId, lastFileProcessed, lastLineProcessed := c.attemptRecovery()
 	reconnected := false
 	var err error = nil
 
@@ -178,6 +177,7 @@ func (c *Client) performHandshake() error {
 	if reconnected {
 		c.log.Info("Reconnection successful")
 		c.lastFileProcessed = lastFileProcessed
+		c.lastLineProcessed = lastLineProcessed
 		return nil
 	}
 
@@ -226,30 +226,31 @@ func (c *Client) startNewConnection() error {
 	return nil
 }
 
-func (c *Client) attemptRecovery() (sessionId, lastFileProcessed string) {
+func (c *Client) attemptRecovery() (sessionId, lastFileProcessed string, lastLineProcessed int) {
 	c.log.Info("Attempting recovery")
 
 	savedData, err := c.atomicWriter.Recover()
 	if err != nil {
 		c.log.Warningf("Could not recover state because: %v. Proceeding as new connection", err)
-		return "", ""
+		return "", "", 0
 	}
 
 	sessionId = ""
 	lastFileProcessed = ""
+	lastLineProcessed = 0
 	if savedData != nil {
 		sessionData, ok := savedData["session"]
 		if ok {
-			sessionId, lastFileProcessed = c.validateRecoveredData(sessionData)
+			sessionId, lastFileProcessed, lastLineProcessed = c.validateRecoveredData(sessionData)
 		} else {
 			c.log.Info("No state from previous sessions found. Starting clean")
 		}
 	}
 
-	return sessionId, lastFileProcessed
+	return sessionId, lastFileProcessed, lastLineProcessed
 }
 
-func (c *Client) validateRecoveredData(data *atomicwritter.SavedInfo) (sessionId, lastFileProcessed string) {
+func (c *Client) validateRecoveredData(data *atomicwritter.SavedInfo) (sessionId, lastFileProcessed string, lastLineProcessed int) {
 	sessionId = data.GetDataType()
 
 	if len(sessionId) > 0 {
@@ -266,7 +267,18 @@ func (c *Client) validateRecoveredData(data *atomicwritter.SavedInfo) (sessionId
 		c.log.Info("Could not recover last file processed")
 	}
 
-	return sessionId, lastFileProcessed
+	if len(dataString) > 1 {
+		var err error
+		lastLineProcessed, err = strconv.Atoi(dataString[1])
+		if err != nil {
+			c.log.Warningf("Could not recover last line processed: %v. Defaulting to 0", err)
+			lastLineProcessed = 0
+		} else {
+			c.log.Infof("Recovered last line processed: %d", lastLineProcessed)
+		}
+	}
+
+	return sessionId, lastFileProcessed, lastLineProcessed
 }
 
 func (c *Client) attemptReconnection(sessionId string) (reconnected bool, err error) {
@@ -397,10 +409,20 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 			return fmt.Errorf("| action: Error creating batch generator for file %s | result: error", file)
 		}
 
+		totalLinesProcessed := 0
+		if file == c.lastFileProcessed {
+			c.log.Infof("Skipping %d lines for file %s", c.lastLineProcessed, file)
+			if err := c.currBg.SkipLines(c.lastLineProcessed); err != nil {
+				return fmt.Errorf("error skipping lines: %v", err)
+			}
+			totalLinesProcessed = c.lastLineProcessed
+		}
+
 		batchCount := 1
 
 		for c.currBg.IsReading() {
-			if err := c.processBatch(c.currBg, file, batchCount); err != nil {
+			err := c.processBatch(c.currBg, file, batchCount, &totalLinesProcessed)
+			if err != nil {
 				return fmt.Errorf("| action: Error processing batch %d for file %s: %v | result: error", batchCount, file, err)
 			}
 			batchCount += 1
@@ -416,14 +438,13 @@ func (c *Client) ProcessFileList(files []string, pattern string) error {
 			return fmt.Errorf("error receiving ACK after finishBatch: %v", err)
 		}
 
-		c.atomicWriter.WriteLine(fmt.Sprintf("%s", file), ".txt", []string{"session", c.sessionId})
 		c.log.Infof("| action: Finished processing file | client_id: %s | file: %s", c.Id, file)
 	}
 
 	return nil
 }
 
-func (c *Client) processBatch(bg *BatchGenerator, file string, batchCount int) error {
+func (c *Client) processBatch(bg *BatchGenerator, file string, batchCount int, totalLinesProcessed *int) error {
 	batch, err := bg.GetNextBatch(c.config.batchMaxAmount)
 	if err != nil {
 		return fmt.Errorf("| action: Error getting next batch from file %s: %v | result: error", file, err)
@@ -437,6 +458,9 @@ func (c *Client) processBatch(bg *BatchGenerator, file string, batchCount int) e
 	if err := c.protocol.ReceiveAck(); err != nil {
 		return fmt.Errorf("error receiving ACK after SendBatch: %v", err)
 	}
+
+	*totalLinesProcessed += batch.size
+	c.SaveProgress(file, *totalLinesProcessed)
 
 	c.log.Debugf("Sent batch %d", batchCount)
 	return nil
@@ -468,7 +492,7 @@ func (c *Client) ProcessResults() error {
 		}
 
 		c.log.Debugf("[CLIENT] | action: received results for query %d | results: %s | of len: %d", query, strings.Join(lines, ", "), len(lines))
-		c.log.Infof("[CLIENT] | action: received results for query %d | of len: %d", query, len(lines))
+		//c.log.Infof("[CLIENT] | action: received results for query %d | of len: %d", query, len(lines))
 
 		c.results[int(query)] = append(c.results[int(query)], lines...)
 		c.log.Debug(c.results)
@@ -521,4 +545,9 @@ func (c *Client) Shutdown() {
 
 	c.isRunning = false
 	c.log.Info("Client shutdown complete")
+}
+
+func (c *Client) SaveProgress(file string, linesProcessed int) {
+	c.log.Debugf("Lines processed: %d", linesProcessed)
+	c.atomicWriter.WriteLines([]string{file, strconv.Itoa(linesProcessed)}, []string{"session", c.sessionId})
 }
