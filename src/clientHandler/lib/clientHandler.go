@@ -510,6 +510,10 @@ func (clh *ClientHandler) handleReconnectionRequest(clientId string) (reconnecte
 		if err != nil {
 			return false, fmt.Errorf("error sending ReconnectionAccept: %v", err)
 		}
+
+		clh.log.Infof("Switching clientId to recognized old sessionId: %s", clientId)
+		clh.ClientId = NewClientUuidFromAFullUuidString(clientId)
+
 		clh.sessionManager.RegisterSession(clientId)
 		return true, nil
 	} else {

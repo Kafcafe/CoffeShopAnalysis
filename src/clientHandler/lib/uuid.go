@@ -26,6 +26,13 @@ func NewClientUuid() ClientUuid {
 	}
 }
 
+func NewClientUuidFromAFullUuidString(fullUuid string) ClientUuid {
+	return ClientUuid{
+		Full:  fullUuid,
+		Short: shortenUuid(fullUuid),
+	}
+}
+
 func shortenUuid(longUUID string) string {
 	noDashUuid := strings.ReplaceAll(longUUID, "-", "")
 
